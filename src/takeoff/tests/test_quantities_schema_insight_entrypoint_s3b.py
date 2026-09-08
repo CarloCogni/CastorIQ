@@ -1,5 +1,5 @@
 # takeoff/tests/test_quantities_schema_insight_entrypoint_s3b.py
-"""5D-S3b/S3c Quantities entry point to Schema Quantity Insight report."""
+"""5D-S3b/S3c/S3d Quantities entry point to Schema Quantity Insight report."""
 
 from __future__ import annotations
 
@@ -41,27 +41,40 @@ def _project_with_ifc():
     return project
 
 
+def _entry_html(html: str) -> str:
+    start = html.find('data-testid="qty-schema-insight-entry"')
+    assert start >= 0
+    end = html.find("</section>", start)
+    assert end > start
+    return html[start : end + len("</section>")]
+
+
 @pytest.mark.django_db
 def test_quantities_shows_empty_state_without_fived_version(client):
-    """No snapshot → disabled entry + clear S3c empty copy; no open link."""
+    """No snapshot → disabled entry + clear empty copy; no open link."""
     project = _project_with_ifc()
     client.force_login(project.owner)
     resp = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk}))
     assert resp.status_code == 200
     html = resp.content.decode("utf-8")
-    assert 'data-testid="qty-schema-insight-entry"' in html
-    assert 'data-testid="qty-schema-insight-empty"' in html
-    assert 'data-testid="qty-schema-insight-disabled"' in html
-    assert 'data-testid="qty-schema-insight-open"' not in html
-    assert "No frozen 5D snapshot" in html
-    assert "generated from a frozen 5D snapshot" in html
-    assert "Prepare mappings" in html
-    assert 'data-testid="qty-schema-insight-why-snapshot"' in html
-    assert "does not claim the" in html or "does not claim" in html
+    entry = _entry_html(html)
+    assert 'data-testid="qty-schema-insight-empty"' in entry
+    assert 'data-testid="qty-schema-insight-disabled"' in entry
+    assert 'data-testid="qty-schema-insight-open"' not in entry
+    assert "No frozen 5D snapshot" in entry
+    assert "Prepare mappings" in entry
+    assert "freeze a snapshot" in entry
+    assert 'data-testid="qty-schema-insight-why-snapshot"' in entry
+    assert "View schema-based quantity rollups" in entry
+    assert "Read-only" in entry
+    assert "Snapshot-based" in entry
+    assert "Not BOQ" not in entry
+    assert "Not cost estimate" not in entry
+    assert "This report is not" not in entry
     assert 'data-testid="qty-prep-export"' in html
     assert reverse("takeoff:qto_export", kwargs={"pk": project.pk}) in html
     for term in FORBIDDEN:
-        assert term not in html.lower()
+        assert term not in entry.lower()
 
 
 @pytest.mark.django_db
@@ -89,25 +102,28 @@ def test_quantities_links_to_latest_schema_insight_when_version_exists(client):
     resp = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk}))
     assert resp.status_code == 200
     html = resp.content.decode("utf-8")
-    assert 'data-testid="qty-schema-insight-open"' in html
-    assert "Open latest Schema Insight" in html
-    assert expected in html
-    assert wrong not in html
-    assert 'data-testid="qty-schema-insight-empty"' not in html
-    assert 'data-testid="qty-schema-insight-version-meta"' in html
-    assert "v2" in html
-    assert newer.data_model.name in html
-    assert 'data-testid="qty-schema-insight-why-snapshot"' in html
-    assert "Not BOQ" in html
-    assert "Not cost estimate" in html
+    entry = _entry_html(html)
+    assert 'data-testid="qty-schema-insight-open"' in entry
+    assert "Open latest Schema Insight" in entry
+    assert expected in entry
+    assert wrong not in entry
+    assert 'data-testid="qty-schema-insight-empty"' not in entry
+    assert 'data-testid="qty-schema-insight-version-meta"' in entry
+    assert "v2" in entry
+    assert newer.data_model.name in entry
+    assert 'data-testid="qty-schema-insight-why-snapshot"' in entry
+    assert "Read-only" in entry
+    assert "Snapshot-based" in entry
+    assert "Not BOQ" not in entry
+    assert "Not cost estimate" not in entry
     assert FiveDModelVersion.objects.filter(data_model__project=project).count() == 2
     for term in FORBIDDEN:
-        assert term not in html.lower()
+        assert term not in entry.lower()
 
 
 @pytest.mark.django_db
 def test_entrypoint_follow_through_opens_s3_report(client):
-    """Following the Quantities entry URL loads the S3 report for that version."""
+    """Following the Quantities entry URL loads the cleaned S3 report."""
     project = _project_with_ifc()
     version = FiveDModelVersionFactory(data_model__project=project, version_label="v1")
     client.force_login(project.owner)
@@ -123,6 +139,10 @@ def test_entrypoint_follow_through_opens_s3_report(client):
     body = report.content.decode("utf-8")
     assert "5D Schema Quantity Insight" in body
     assert "fived-schema-quantity-insight-s2-v1" in body
+    assert "This report is not" not in body
+    assert "not_boq" not in body
+    assert "Read-only" in body
+    assert "Snapshot-based" in body
 
 
 @pytest.mark.django_db

@@ -36,9 +36,9 @@
               <li class="mb-1">
                 <span class="badge text-bg-secondary">{{ b.quantity_basis|default:"(blank basis)" }}</span>
                 <span class="badge text-bg-light border">{{ b.unit_basis|default:"(blank unit)" }}</span>
-                <span class="text-secondary">src={{ b.quantity_source|default:"—" }}</span>
+                <span class="text-secondary">{{ b.quantity_source|default:"—" }}</span>
                 · rows {{ b.row_count }}
-                · sum {{ b.total_sum }}
+                · total {{ b.total_sum }}
                 · non-numeric {{ b.non_numeric_count }}
               </li>
               {% endfor %}

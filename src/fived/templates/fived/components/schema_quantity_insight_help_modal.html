@@ -14,52 +14,43 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
 
-            <div class="modal-body px-4 py-4">
+            <div class="modal-body px-4 py-4" data-testid="s3-help-modal-body">
 
                 <p class="fw-semibold fs-7 mb-2">What is it?</p>
-                <p class="text-secondary fs-7 mb-4">
-                    A read-only report over a frozen 5D preparation snapshot (F2).
-                    It groups IFC quantity rows by project schema classification, package,
-                    and work package using C3 provenance when present, and shows unmapped
-                    rows and basis/source gaps honestly.
+                <p class="text-secondary fs-7 mb-4" data-testid="s3-help-boundary-note">
+                    This page summarizes IFC-derived quantities using the project schema saved in
+                    the selected snapshot. It is intended for review of grouping, mappings, gaps,
+                    and provenance. Cost calculation, approvals, and schedule cost loading are
+                    separate workflows.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">Lifecycle</p>
                 <p class="text-secondary fs-7 mb-4">
-                    Quantities preparation → optional schema-backed session mapping →
-                    freeze F2 snapshot → open this report (S2 insight service).
-                    The report does not rebuild Quantities runtime and does not mutate the snapshot.
+                    Prepare quantities and mappings → freeze a 5D snapshot → open this report.
+                    The report reads the frozen snapshot and does not change it.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">How to use it</p>
                 <ul class="text-secondary fs-7 mb-4">
-                    <li>Read snapshot summary and boundary badges first.</li>
-                    <li>Review classification and package rollups (equal primary groupings).</li>
-                    <li>Check work package rollup — it may be mostly Unmapped.</li>
-                    <li>Use gaps and issue sample to see what still needs mapping or basis setup.</li>
-                    <li>Return to Quantities to adjust session mapping, then freeze a new version.</li>
+                    <li>Check snapshot summary for the version you are reviewing.</li>
+                    <li>Review classification and package rollups.</li>
+                    <li>Check work package rollup — it may still be mostly Unmapped.</li>
+                    <li>Use gaps and the issue sample to see what still needs mapping or basis setup.</li>
+                    <li>Return to Quantities to adjust mappings, then freeze a new snapshot.</li>
                 </ul>
 
                 <p class="fw-semibold fs-7 mb-2">Who can do what</p>
                 <p class="text-secondary fs-7 mb-4">
-                    Any project member with read access can open the report.
-                    Mapping happens in Quantities (session). Snapshot creation is a separate action.
-                    This page never writes.
+                    Project members with access can open the report. Mapping happens in Quantities.
+                    Snapshot creation is a separate action. This page is read-only.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">Caveats</p>
-                <ul class="text-secondary fs-7 mb-4">
-                    <li>Session schema mapping is not an approved official assignment.</li>
-                    <li>Demo schemas are internal vocabularies, not certified standards.</li>
-                    <li>Mixed quantity bases and units are never coerced into one total.</li>
-                    <li>Excel / Ask import into schema is not connected yet.</li>
+                <ul class="text-secondary fs-7 mb-0">
+                    <li>Session schema mapping is preparation provenance, not an approved assignment.</li>
+                    <li>Mixed quantity bases and units are shown separately, not merged.</li>
+                    <li>External Excel or Ask import into this schema is not connected yet.</li>
                 </ul>
-
-                <p class="fw-semibold fs-7 mb-2">Not claimed</p>
-                <p class="text-secondary fs-7 mb-0" data-testid="s3-help-not-claims">
-                    Not BOQ. Not QS certified. Not cost estimate. Not rate calculation.
-                    Not EVM. Not schedule cost loading. Not writeback. Not approval.
-                </p>
             </div>
         </div>
     </div>

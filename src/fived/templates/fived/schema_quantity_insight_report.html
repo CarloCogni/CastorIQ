@@ -1,5 +1,5 @@
 {% extends "core/base.html" %}
-<!-- fived/schema_quantity_insight_report.html — 5D-S3 thin schema quantity insight report -->
+<!-- fived/schema_quantity_insight_report.html — 5D-S3 Schema Quantity Insight report -->
 
 {% block title %}5D Schema Quantity Insight — {{ project.name }} — Castor{% endblock %}
 
@@ -28,13 +28,11 @@
         </button>
       </div>
       <p class="text-secondary small mb-2" data-testid="s3-report-subtitle">
-        Schema-driven IFC quantity insight from a frozen 5D snapshot.
+        Schema-based quantity insight from a frozen snapshot. Cost, approval, and schedule
+        workflows are handled separately.
       </p>
-      <div class="d-flex flex-wrap gap-1" data-testid="s3-boundary-badges">
+      <div class="d-flex flex-wrap gap-1" data-testid="s3-product-badges">
         <span class="badge text-bg-secondary">Read-only</span>
-        <span class="badge text-bg-secondary">Not BOQ</span>
-        <span class="badge text-bg-secondary">Not cost estimate</span>
-        <span class="badge text-bg-secondary">No rate calculation</span>
         <span class="badge text-bg-secondary">Snapshot-based</span>
       </div>
     </div>
@@ -45,7 +43,7 @@
     </div>
   </div>
 
-  <!-- 1. Snapshot summary -->
+  <!-- Snapshot summary -->
   <section class="card border mb-3" data-testid="s3-snapshot-summary">
     <div class="card-body py-3">
       <h2 class="h6 mb-3">Snapshot summary</h2>
@@ -63,33 +61,12 @@
     </div>
   </section>
 
-  <!-- 2. Boundary / non-claims -->
-  <section class="alert alert-warning border mb-4" role="status" data-testid="s3-non-claims">
-    <div class="fw-semibold mb-1">This report is not</div>
-    <ul class="mb-0 small">
-      <li>BOQ</li>
-      <li>QS certified estimate</li>
-      <li>cost calculation</li>
-      <li>EVM</li>
-      <li>schedule cost loading</li>
-      <li>approval / writeback</li>
-    </ul>
-    {% if insight.non_claims %}
-    <div class="mt-2 small text-secondary" data-testid="s3-non-claims-flags">
-      Flags:
-      {% for key, val in insight.non_claims.items %}
-        {% if val %}<code class="me-1">{{ key }}</code>{% endif %}
-      {% endfor %}
-    </div>
-    {% endif %}
-  </section>
-
-  <!-- 3–5. Rollups -->
+  <!-- Rollups -->
   {% include "fived/components/schema_quantity_insight_rollup_table.html" with rollup_title="Classification rollup" rollup_testid="s3-classification-rollup" groups=insight.quantity_totals_by_classification %}
   {% include "fived/components/schema_quantity_insight_rollup_table.html" with rollup_title="Package rollup" rollup_testid="s3-package-rollup" groups=insight.quantity_totals_by_package %}
   {% include "fived/components/schema_quantity_insight_rollup_table.html" with rollup_title="Work package rollup" rollup_testid="s3-work-package-rollup" groups=insight.quantity_totals_by_work_package %}
 
-  <!-- 6. Gaps summary -->
+  <!-- Gaps summary -->
   <section class="mb-4" data-testid="s3-gaps-summary">
     <h2 class="h6 mb-2">Gaps summary</h2>
     <div class="row g-3">
@@ -98,7 +75,7 @@
           <div class="text-secondary small mb-2">Unmapped counts</div>
           <ul class="small mb-0" data-testid="s3-unmapped-counts">
             {% for k, v in insight.unmapped_counts.items %}
-            <li><code>{{ k }}</code>: {{ v }}</li>
+            <li>{{ k }}: {{ v }}</li>
             {% empty %}
             <li class="text-secondary">—</li>
             {% endfor %}
@@ -110,7 +87,7 @@
           <div class="text-secondary small mb-2">Missing mapping counts</div>
           <ul class="small mb-0" data-testid="s3-missing-mapping-counts">
             {% for k, v in insight.missing_mapping_counts.items %}
-            <li><code>{{ k }}</code>: {{ v }}</li>
+            <li>{{ k }}: {{ v }}</li>
             {% empty %}
             <li class="text-secondary">—</li>
             {% endfor %}
@@ -122,7 +99,7 @@
           <div class="text-secondary small mb-2">Quantity basis gaps</div>
           <ul class="small mb-0" data-testid="s3-basis-gap-counts">
             {% for k, v in insight.quantity_basis_gap_counts.items %}
-            <li><code>{{ k }}</code>: {{ v }}</li>
+            <li>{{ k }}: {{ v }}</li>
             {% empty %}
             <li class="text-secondary">—</li>
             {% endfor %}
@@ -134,7 +111,7 @@
           <div class="text-secondary small mb-2">Provenance counts</div>
           <ul class="small mb-0" data-testid="s3-provenance-counts">
             {% for k, v in insight.provenance_counts.items %}
-            <li><code>{{ k }}</code>: {{ v }}</li>
+            <li>{{ k }}: {{ v }}</li>
             {% empty %}
             <li class="text-secondary">—</li>
             {% endfor %}
@@ -144,7 +121,7 @@
     </div>
   </section>
 
-  <!-- 7. Basis / unit / source buckets -->
+  <!-- Basis / unit / source buckets -->
   <section class="mb-4" data-testid="s3-basis-unit-buckets">
     <h2 class="h6 mb-2">Basis / unit / source buckets</h2>
     <div class="table-responsive border rounded">
@@ -155,7 +132,7 @@
             <th>Unit</th>
             <th>Source</th>
             <th class="text-end">Rows</th>
-            <th class="text-end">Total sum</th>
+            <th class="text-end">Total</th>
             <th class="text-end">Non-numeric</th>
           </tr>
         </thead>
@@ -177,9 +154,9 @@
     </div>
   </section>
 
-  <!-- 8. Issue sample -->
+  <!-- Issue sample -->
   <section class="mb-4" data-testid="s3-issue-sample">
-    <h2 class="h6 mb-2">Issue sample <span class="text-secondary fw-normal">(capped)</span></h2>
+    <h2 class="h6 mb-2">Issue sample</h2>
     {% if insight.issue_sample %}
     <div class="table-responsive border rounded">
       <table class="table table-sm mb-0 small">
@@ -189,7 +166,7 @@
             <th>IFC class</th>
             <th>Type</th>
             <th>Issues</th>
-            <th>Mapping summary</th>
+            <th>Mapping</th>
           </tr>
         </thead>
         <tbody>
@@ -214,27 +191,24 @@
       </table>
     </div>
     {% else %}
-    <p class="text-secondary small mb-0">No issue rows in this sample.</p>
+    <p class="text-secondary small mb-0">No issues in this sample.</p>
     {% endif %}
   </section>
 
-  <!-- 9. User value -->
   <section class="border rounded p-3 mb-3 bg-body-tertiary" data-testid="s3-user-value">
     <h2 class="h6 mb-2">How to use this report</h2>
     <p class="small mb-0 text-secondary">
-      Use this report to see how IFC quantities are being interpreted through the project schema.
-      Mapped groups can be reviewed, unmapped rows show where setup is incomplete, and basis/source
-      gaps show what must be fixed before future cost/rate work.
+      Review how IFC quantities group through the project schema: mapped rollups for setup
+      that looks complete, Unmapped rows for gaps, and basis/source buckets for quantity
+      interpretation differences.
     </p>
   </section>
 
-  <!-- 10. External input note -->
   <section class="border rounded p-3 mb-4" data-testid="s3-external-input-note">
     <h2 class="h6 mb-2">External inputs</h2>
     <p class="small mb-0 text-secondary">
-      External classification/rate Excel and Ask-assisted document extraction are future workflows.
-      Today, external data does not automatically update this 5D schema. Mapping is still
-      manual/session-backed unless a reviewed import/assignment flow is added later.
+      Classification or rate spreadsheets and Ask-assisted extraction are separate workflows.
+      Mapping for this report comes from the frozen snapshot’s session/schema values.
     </p>
   </section>
 
