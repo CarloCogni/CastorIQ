@@ -15,6 +15,9 @@ from django.views.generic import TemplateView
 
 from core.mixins import ProjectAccessMixin
 from fived.models import FiveDModelVersion
+from fived.services.schema_insight_screen_presentation import (
+    build_schema_insight_screen_presentation,
+)
 from fived.services.schema_quantity_insight_service import (
     FiveDSchemaQuantityInsightService,
 )
@@ -44,6 +47,7 @@ class SchemaQuantityInsightReportView(ProjectAccessMixin, TemplateView):
         project = self.get_project()
         version = self.get_version()
         insight = FiveDSchemaQuantityInsightService().build_schema_quantity_insight(version)
+        screen = build_schema_insight_screen_presentation(insight)
         logger.info(
             "fived S3 insight report project=%s version=%s rows=%s",
             project.pk,
@@ -54,6 +58,8 @@ class SchemaQuantityInsightReportView(ProjectAccessMixin, TemplateView):
         ctx["version"] = version
         ctx["data_model"] = version.data_model
         ctx["insight"] = insight
+        ctx["screen"] = screen
+        ctx["insight_summary"] = screen["summary"]
         ctx["quantities_url"] = reverse("takeoff:qto", kwargs={"pk": project.pk})
         ctx["project_url"] = reverse("projects:detail", kwargs={"pk": project.pk})
         return ctx

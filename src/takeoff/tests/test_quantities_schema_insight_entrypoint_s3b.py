@@ -65,7 +65,8 @@ def test_quantities_shows_empty_state_without_fived_version(client):
     assert "Prepare mappings" in entry
     assert "freeze a snapshot" in entry
     assert 'data-testid="qty-schema-insight-why-snapshot"' in entry
-    assert "View schema-based quantity rollups" in entry
+    assert "View schema-based quantity rollups" not in entry
+    assert "Review schema-based quantity rollups" in entry
     assert "Read-only" in entry
     assert "Snapshot-based" in entry
     assert "Not BOQ" not in entry
@@ -114,6 +115,7 @@ def test_quantities_links_to_latest_schema_insight_when_version_exists(client):
     assert 'data-testid="qty-schema-insight-why-snapshot"' in entry
     assert "Read-only" in entry
     assert "Snapshot-based" in entry
+    assert "Review schema-based quantity rollups" in entry
     assert "Not BOQ" not in entry
     assert "Not cost estimate" not in entry
     assert FiveDModelVersion.objects.filter(data_model__project=project).count() == 2

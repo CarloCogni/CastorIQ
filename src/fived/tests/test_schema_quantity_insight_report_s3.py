@@ -1,5 +1,5 @@
 # fived/tests/test_schema_quantity_insight_report_s3.py
-"""5D-S3/S3d schema quantity insight report page tests."""
+"""5D-S3/S3d/S3e/S3f schema quantity insight report page tests."""
 
 from __future__ import annotations
 
@@ -10,6 +10,9 @@ import pytest
 from django.urls import reverse
 
 from fived.models import FiveDDataModel, FiveDModelRow, FiveDModelVersion
+from fived.services.schema_insight_screen_presentation import (
+    build_schema_insight_screen_summary,
+)
 from fived.tests.factories import (
     FiveDModelRowFactory,
     FiveDModelVersionFactory,
@@ -62,7 +65,7 @@ def _main_without_help(html: str) -> str:
 
 @pytest.mark.django_db
 def test_report_route_200_with_title_contract_and_sections(client):
-    """Valid version returns 200 with product title, rollups, gaps — no defensive block."""
+    """Product screen: summary cards, friendly rollups, no defensive block."""
     version = FiveDModelVersionFactory(
         settings_snapshot={
             "schema_includes": {
@@ -130,6 +133,21 @@ def test_report_route_200_with_title_contract_and_sections(client):
     assert "Read-only" in main
     assert "Snapshot-based" in main
     assert 'data-testid="s3-product-badges"' in main
+
+    assert "Schema insight summary" in main
+    assert 'data-testid="s3-insight-summary"' in main
+    assert 'data-testid="s3-summary-total-rows"' in main
+    assert 'data-testid="s3-summary-mapped-classification"' in main
+    assert 'data-testid="s3-summary-unmapped-rows"' in main
+    assert 'data-testid="s3-summary-basis-gaps"' in main
+    assert 'data-testid="s3-schema-insight-scroll-root"' in html
+    assert "Mapped" in main
+    assert "Unmapped" in main
+    assert "Needs review" in main or "rows need mapping" in main
+    assert "Quantity basis gaps" in main
+    assert 'data-testid="s3-plain-language"' in main
+    assert "IFC-derived quantity rows" in main
+
     assert 'data-testid="s3-classification-rollup"' in main
     assert 'data-testid="s3-package-rollup"' in main
     assert 'data-testid="s3-work-package-rollup"' in main
@@ -137,12 +155,8 @@ def test_report_route_200_with_title_contract_and_sections(client):
     assert "Package rollup" in main
     assert "Work package rollup" in main
     assert 'data-testid="s3-classification-rollup-scroll"' in main
-    assert 'data-testid="s3-package-rollup-scroll"' in main
-    assert 'data-testid="s3-work-package-rollup-scroll"' in main
-    assert "table-responsive" in main
+    assert 'data-testid="s3-classification-rollup-list"' in main
     assert "s3-rollup-scroll" in main
-    assert "Wide tables can scroll horizontally." in main
-    assert main.count("table-responsive") >= 3
     assert 'data-testid="s3-gaps-summary"' in main
     assert "Gaps" in main
     assert "Basis" in main
@@ -152,8 +166,8 @@ def test_report_route_200_with_title_contract_and_sections(client):
     assert 'data-testid="s3-user-value"' in main
     assert 'data-testid="s3-external-input-note"' in main
     assert 'data-testid="s3-help-pill"' in main
-    assert "Unmapped" in main
     assert "EL-DEMO-WALL" in main or "Demo Wall" in main
+    assert "Details" in main
 
     assert "This report is not" not in main
     assert 'data-testid="s3-non-claims"' not in html
@@ -163,15 +177,50 @@ def test_report_route_200_with_title_contract_and_sections(client):
     for flag in RAW_NON_CLAIM_FLAGS:
         assert flag not in main
 
-    # Help modal may explain separate workflows; no raw internal flags.
     assert 'data-testid="s3-help-boundary-note"' in html
-    assert "grouping, mappings, gaps" in html
     for flag in RAW_NON_CLAIM_FLAGS:
         assert flag not in html
 
     lower = main.lower()
     for term in FORBIDDEN_TERMS:
         assert term not in lower
+
+
+def test_screen_summary_uses_payload_values_only():
+    """Summary cards derive mapped/unmapped counts from insight payload."""
+    insight = {
+        "row_count": 50,
+        "quantity_totals_by_classification": [
+            {"is_unmapped": False, "row_count": 1, "code": "A"},
+            {"is_unmapped": False, "row_count": 1, "code": "B"},
+            {"is_unmapped": False, "row_count": 1, "code": "C"},
+            {"is_unmapped": True, "row_count": 47, "code": ""},
+        ],
+        "quantity_totals_by_package": [
+            {"is_unmapped": False, "row_count": 2},
+            {"is_unmapped": False, "row_count": 1},
+            {"is_unmapped": True, "row_count": 47},
+        ],
+        "quantity_totals_by_work_package": [
+            {"is_unmapped": False, "row_count": 3},
+            {"is_unmapped": True, "row_count": 47},
+        ],
+        "unmapped_counts": {"classification": 47, "package_mapping": 47, "work_package": 47},
+        "quantity_basis_gap_counts": {
+            "basis_unresolved_or_blank": 10,
+            "missing_quantity_source": 5,
+            "non_numeric_total": 2,
+        },
+    }
+    summary = build_schema_insight_screen_summary(insight)
+    assert summary["total_rows"] == 50
+    assert summary["mapped_classification_groups"] == 3
+    assert summary["mapped_classification_rows"] == 3
+    assert summary["unmapped_classification_rows"] == 47
+    assert summary["quantity_basis_source_gaps"] == 17
+    assert summary["package_groups"] == 2
+    assert summary["work_package_groups"] == 1
+    assert "47 rows need mapping" in summary["unmapped_label"]
 
 
 @pytest.mark.django_db
