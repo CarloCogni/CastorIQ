@@ -23,19 +23,26 @@
           {% endif %}
         </div>
         <div class="col-md-3" style="min-width:0;">
-          <div class="text-secondary small mb-1">Quantity</div>
+          <div class="text-secondary small mb-1">Total Quantity</div>
           {% if g.primary_bucket and not g.primary_bucket.is_gap_bucket %}
           <div class="fs-5 fw-semibold lh-sm" data-testid="{{ rollup_testid }}-qty">
             {{ g.primary_bucket.display_quantity_number }}
           </div>
-          <div class="small text-secondary">{{ g.primary_bucket.display_unit_status }}</div>
           {% else %}
           <div class="text-secondary">—</div>
           {% endif %}
         </div>
         <div class="col-6 col-md-2">
-          <div class="text-secondary small mb-1">Basis</div>
-          <div>{% if g.primary_bucket %}{{ g.primary_bucket.display_basis }}{% else %}—{% endif %}</div>
+          <div class="text-secondary small mb-1">Unit</div>
+          <div data-testid="{{ rollup_testid }}-unit">
+            {% if g.primary_bucket %}{{ g.primary_bucket.display_unit_status }}{% else %}—{% endif %}
+          </div>
+        </div>
+        <div class="col-6 col-md-2">
+          <div class="text-secondary small mb-1">Measurement Basis</div>
+          <div data-testid="{{ rollup_testid }}-basis">
+            {% if g.primary_bucket %}{{ g.primary_bucket.display_basis }}{% else %}—{% endif %}
+          </div>
         </div>
         <div class="col-6 col-md-1">
           <div class="text-secondary small mb-1">Rows</div>

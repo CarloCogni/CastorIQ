@@ -248,18 +248,16 @@ def test_page_get_overrides_and_boundaries(client):
 
 @pytest.mark.django_db
 def test_unit_basis_derivation_copy_and_available_measures(client):
-    """Unit Basis copy, derived units, and available indexed measures are shown."""
+    """Unit / Measurement Basis copy, derived units, and available indexed measures."""
     project = _wall_slab_project()
     quantities = ModelQuantitiesService(project).build()
     ui = build_preparation_ui(quantities)
-    assert (
-        "Unit Basis is derived from the selected Quantity Basis" in ui["unit_basis_derivation_note"]
-    )
-    assert "not manually edited" in ui["unit_basis_derivation_note"]
+    assert "Unit is separate from Measurement Basis" in ui["unit_basis_derivation_note"]
+    assert "Confirm units" in ui["unit_basis_derivation_note"]
     assert "not a Castor recommendation" in ui["user_selected_basis_note"].lower() or (
         "not a Castor recommendation" in ui["basis_rules_banner"]
     )
-    assert "not manually edited" in ui["prep_unit_basis_note"]
+    assert "Unit is reviewed separately" in ui["prep_unit_basis_note"]
 
     rules = {r["model_group"]: r for r in ui["basis_rules"]}
     beam = rules["IfcBeam"]
@@ -281,7 +279,10 @@ def test_unit_basis_derivation_copy_and_available_measures(client):
     client.force_login(project.owner)
     html = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk})).content.decode()
     assert 'data-testid="qty-unit-basis-derivation-note"' in html
-    assert "Unit Basis is derived from the selected Quantity Basis" in html
+    assert "Unit is separate from Measurement Basis" in html
+    assert 'data-testid="qty-prep-col-measurement-basis"' in html
+    assert 'data-testid="qty-prep-col-unit"' in html
+    assert 'data-testid="qty-prep-col-total-quantity"' in html
     assert (
         "model volume units"
         not in html[
@@ -292,7 +293,6 @@ def test_unit_basis_derivation_copy_and_available_measures(client):
         ]
     )
     assert 'data-testid="qty-prep-unit-basis-note"' in html
-    assert "not manually edited in this slice" in html
     assert "Available indexed measures:" in html
     assert 'data-testid="qty-available-measures-IfcBeam"' in html
     assert 'data-testid="qty-prep-scroll-hint"' in html

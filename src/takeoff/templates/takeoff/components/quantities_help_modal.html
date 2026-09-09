@@ -65,7 +65,7 @@
                         Future Modify handoff (counted unresolved),
                         Manual field (counted unresolved; enter session values in Review row),
                         Not mapped (intentional blank; not counted).</li>
-                    <li>User-defined Measurement Rules — choose a basis per model group. Unit Basis is derived from the selected Quantity Basis.</li>
+                    <li>User-defined Measurement Rules — choose a Measurement Basis per model group (NetVolume, NetArea, Length, Count). Unit is confirmed separately in Quantity units.</li>
                     <li>Generate Preparation Data Model — rebuilds prep rows, register, visual summary, and insights from selected schema + source intents + rules.</li>
                     <li>Generated Preparation Data Model — totals only when source + basis are selected and available. Mapping cells show intent hints only,
                         or session-only Manual preparation values when a field is configured as Manual field.
@@ -113,7 +113,9 @@
                         preparation data model, schema, source intent, row reviews, or manual mapping values.
                         Prefer Export preparation model (session) on the Generated Preparation Data Model
                         for the current preparation snapshot.</li>
-                    <li>Volume / area / length use IFC-reported model units — not SI-normalized.</li>
+                    <li>Quantity units — confirm IFC project units (volume / area / length) in the Quantity units panel before totals show confirmed unit labels. Session-only until freeze; no conversion.</li>
+                    <li>Total Quantity, Unit, and Measurement Basis stay separate columns — never number+unit in one field.</li>
+                    <li>Volume / area / length stay “Unit not resolved” until confirmed — Castor does not invent SI labels from quantity basis names.</li>
                     <li>Hub <code>?tab=quantities</code> on scheduling does not render this page — use the Quantities hub link.</li>
                 </ul>
 

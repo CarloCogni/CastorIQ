@@ -25,6 +25,11 @@ urlpatterns = [
     ),
     path("projects/<uuid:pk>/", views.QTOView.as_view(), name="qto"),
     path(
+        "projects/<uuid:pk>/unit-confirm/",
+        views.QuantityUnitConfirmView.as_view(),
+        name="qty_unit_confirm",
+    ),
+    path(
         "projects/<uuid:pk>/prep-configs/save/",
         views.QuantityPrepConfigSaveView.as_view(),
         name="qty_prep_config_save",

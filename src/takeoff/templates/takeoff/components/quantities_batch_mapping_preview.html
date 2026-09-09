@@ -38,9 +38,9 @@
           <th>Row</th>
           <th>IFC Class</th>
           <th>Type</th>
-          <th>Basis</th>
-          <th>Qty</th>
+          <th class="text-end">Total Quantity</th>
           <th>Unit</th>
+          <th>Measurement Basis</th>
           <th>Current</th>
           <th>New</th>
         </tr>
@@ -51,9 +51,9 @@
           <td>{{ row.row_label }}</td>
           <td>{{ row.ifc_class|default:"—" }}</td>
           <td>{{ row.type_name|default:"—" }}</td>
-          <td>{{ row.quantity_basis|default:"—" }}</td>
           <td class="text-end">{{ row.total_display }}</td>
           <td>{{ row.unit_display }}</td>
+          <td>{{ row.quantity_basis|default:"—" }}</td>
           <td class="small">
             {% for field, val in row.current_mapping.items %}
               {% if field in preview.fields_to_set %}

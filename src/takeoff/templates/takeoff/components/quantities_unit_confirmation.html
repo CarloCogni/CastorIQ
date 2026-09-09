@@ -1,0 +1,132 @@
+<!-- takeoff/components/quantities_unit_confirmation.html — UNIT-2 unit confirmation -->
+{% with uc=qty_prep.unit_confirmation %}
+<section class="qty-builder-section border rounded p-2 mb-2"
+         data-testid="qty-unit-confirmation">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
+    <div style="min-width:0;">
+      <h6 class="mb-0 small fw-semibold" data-testid="qty-unit-confirmation-title">
+        Quantity units
+      </h6>
+      <p class="mi-footnote mb-0" data-testid="qty-unit-confirmation-subtitle">
+        Confirm the IFC project units before using quantity totals for 5D review.
+      </p>
+    </div>
+    {% if uc.any_confirmed %}
+    <span class="badge text-bg-success" data-testid="qty-unit-confirmation-badge">Confirmed</span>
+    {% else %}
+    <span class="badge text-bg-secondary" data-testid="qty-unit-confirmation-badge">Unresolved</span>
+    {% endif %}
+  </div>
+
+  {% if uc.conflict %}
+  <p class="mi-footnote text-warning mb-2" data-testid="qty-unit-confirmation-conflict">
+    {{ uc.helper }}
+  </p>
+  {% endif %}
+
+  <div class="table-responsive mb-2">
+    <table class="table table-sm mb-0 align-middle" data-testid="qty-unit-confirmation-table">
+      <thead>
+        <tr class="small text-secondary">
+          <th>Measure</th>
+          <th>Proposed</th>
+          <th>Source</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in uc.rows %}
+        <tr data-testid="qty-unit-row-{{ row.family }}">
+          <td class="small">{{ row.label }}</td>
+          <td class="small" data-testid="qty-unit-proposed-{{ row.family }}">
+            {% if row.proposed_label %}{{ row.proposed_label }}{% else %}—{% endif %}
+          </td>
+          <td class="small text-secondary">
+            {% if row.family == "count" %}Dimensionless{% else %}IFC project units{% endif %}
+          </td>
+          <td class="small" data-testid="qty-unit-status-{{ row.family }}">
+            {{ row.status_label }}
+            {% if row.active_label and row.status != "unresolved" %}
+            <span class="text-secondary">({{ row.active_label }})</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="4" class="small text-secondary" data-testid="qty-unit-confirmation-empty">
+            No IFC project units are indexed yet.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="d-flex flex-wrap gap-2 align-items-center">
+    <form method="post"
+          action="{{ qty_unit_confirm_url }}"
+          class="d-inline"
+          data-testid="qty-unit-confirm-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="confirm">
+      <input type="hidden" name="families" value="volume,area,length,count">
+      <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
+      <button type="submit"
+              class="btn btn-sm btn-outline-primary"
+              data-testid="qty-unit-confirm-submit"
+              {% if uc.conflict %}disabled{% endif %}>
+        Confirm declared units
+      </button>
+    </form>
+    <form method="post"
+          action="{{ qty_unit_confirm_url }}"
+          class="d-inline"
+          data-testid="qty-unit-clear-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="clear">
+      <input type="hidden" name="families" value="volume,area,length,count">
+      <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
+      <button type="submit"
+              class="btn btn-sm btn-outline-secondary"
+              data-testid="qty-unit-clear-submit">
+        Leave unresolved
+      </button>
+    </form>
+    <form method="post"
+          action="{{ qty_unit_confirm_url }}"
+          class="d-inline-flex flex-wrap align-items-center gap-1"
+          data-testid="qty-unit-override-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="override">
+      <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
+      <label class="visually-hidden" for="qty-unit-override-family">Override family</label>
+      <select class="form-select form-select-sm"
+              id="qty-unit-override-family"
+              name="family"
+              style="width:auto;min-width:7rem;"
+              data-testid="qty-unit-override-family">
+        <option value="volume">Volume</option>
+        <option value="area">Area</option>
+        <option value="length">Length</option>
+        <option value="count">Count</option>
+      </select>
+      <label class="visually-hidden" for="qty-unit-override-token">Override unit</label>
+      <input class="form-control form-control-sm"
+             id="qty-unit-override-token"
+             name="override_token"
+             placeholder="e.g. mm"
+             style="width:6rem;"
+             data-testid="qty-unit-override-token">
+      <button type="submit"
+              class="btn btn-sm btn-outline-secondary"
+              data-testid="qty-unit-override-submit">
+        Override
+      </button>
+    </form>
+  </div>
+  <p class="mi-footnote mt-2 mb-0" data-testid="qty-unit-confirmation-helper">
+    {{ uc.helper }} Session-only until you freeze a 5D snapshot. No unit conversion.
+    Unit stays in its own column — never merged into Total Quantity or Measurement Basis.
+  </p>
+</section>
+{% endwith %}

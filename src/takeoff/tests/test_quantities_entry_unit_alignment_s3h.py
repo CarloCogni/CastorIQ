@@ -33,7 +33,9 @@ def _entry_html(html: str) -> str:
 
 
 def _prep_table_html(html: str) -> str:
-    start = html.find('data-testid="quantities-prep-table"')
+    start = html.find('data-testid="qty-prep-table"')
+    if start < 0:
+        start = html.find('data-testid="quantities-prep-table"')
     if start < 0:
         start = html.find("qty-prep-table")
     assert start >= 0

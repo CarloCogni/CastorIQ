@@ -35,6 +35,7 @@
     {{ qty_prep.session_mapping_note }}
   </p>
   {% endif %}
+  {% include "takeoff/components/quantities_unit_confirmation.html" %}
   {% if qty_prep.semantic_filters %}
   {% include "takeoff/components/quantities_semantic_filters.html" %}
   {% endif %}
@@ -104,9 +105,9 @@
             {% if qty_prep.show.type_name %}
             <th class="qty-col-key qty-sticky qty-sticky-2">Type Name</th>
             {% endif %}
-            <th class="qty-col-key qty-sticky qty-sticky-3">Selected Quantity Basis</th>
-            <th class="qty-col-key qty-sticky qty-sticky-4">Unit Basis</th>
-            <th class="text-end qty-col-key qty-sticky qty-sticky-5">Total Quantity</th>
+            <th class="text-end qty-col-key qty-sticky qty-sticky-3" data-testid="qty-prep-col-total-quantity">Total Quantity</th>
+            <th class="qty-col-key qty-sticky qty-sticky-4" data-testid="qty-prep-col-unit">Unit</th>
+            <th class="qty-col-key qty-sticky qty-sticky-5" data-testid="qty-prep-col-measurement-basis">Measurement Basis</th>
             <th class="qty-col-key">Review Status</th>
             <th class="qty-col-key">Review</th>
             <th class="qty-col-key">Handoff Status</th>
@@ -170,18 +171,7 @@
               {% if row.type_name %}{{ row.type_name }}{% else %}—{% endif %}
             </td>
             {% endif %}
-            <td class="qty-sticky qty-sticky-3">
-              {% if row.quantity_basis %}
-              <span class="qty-pill qty-pill-source">{{ row.quantity_basis }}</span>
-              {% else %}
-              <span class="qty-pill qty-pill-unresolved">Unresolved</span>
-              {% endif %}
-            </td>
-            <td class="qty-sticky qty-sticky-4 text-secondary"
-                data-testid="qty-prep-unit-cell">
-              {% if row.unit_basis_display %}{{ row.unit_basis_display }}{% else %}—{% endif %}
-            </td>
-            <td class="text-end qty-col-total qty-sticky qty-sticky-5"
+            <td class="text-end qty-col-total qty-sticky qty-sticky-3"
                 data-testid="qty-prep-total-cell">
               {% if row.basis_unresolved %}
               <span class="qty-pill qty-pill-unresolved">Unresolved</span>
@@ -189,6 +179,17 @@
               <span class="qty-total-value">{{ row.total }}</span>
               {% else %}
               —
+              {% endif %}
+            </td>
+            <td class="qty-sticky qty-sticky-4 text-secondary"
+                data-testid="qty-prep-unit-cell">
+              {% if row.unit_basis_display %}{{ row.unit_basis_display }}{% else %}—{% endif %}
+            </td>
+            <td class="qty-sticky qty-sticky-5" data-testid="qty-prep-basis-cell">
+              {% if row.quantity_basis %}
+              <span class="qty-pill qty-pill-source">{{ row.quantity_basis }}</span>
+              {% else %}
+              <span class="qty-pill qty-pill-unresolved">Unresolved</span>
               {% endif %}
             </td>
             <td data-testid="qty-prep-review-status-cell">

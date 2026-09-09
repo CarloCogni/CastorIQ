@@ -35,6 +35,9 @@ from takeoff.services.quantity_preparation_ui import (
     parse_schema_includes_from_query,
     parse_source_mappings_from_query,
 )
+from takeoff.services.quantity_unit_confirmation import (
+    apply_unit_confirmation_service_to_qty_prep,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +120,11 @@ def build_qty_prep_session_ui(
 
     # IFC-SEM-1: read-only semantic enrichment + optional prep-row filters.
     IfcSemanticFieldService(project, user).apply_to_qty_prep(qty_prep, query)
+
+    # UNIT-2: session unit confirmation overlays canonical unit_basis tokens.
+    apply_unit_confirmation_service_to_qty_prep(
+        qty_prep, project=project, user=user, session=session
+    )
 
     return {
         "quantities": quantities,

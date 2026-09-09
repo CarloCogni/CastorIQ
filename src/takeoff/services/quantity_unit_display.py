@@ -26,6 +26,10 @@ def resolve_quantity_unit_display(unit_raw: str | None) -> str:
         return "m³"
     if key in {"m2", "m²", "m^2", "square metre", "square metres", "square meter", "square meters"}:
         return "m²"
+    if key in {"mm", "millimetre", "millimetres", "millimeter", "millimeters"}:
+        return "mm"
+    if key in {"cm", "centimetre", "centimetres", "centimeter", "centimeters"}:
+        return "cm"
     if key in {"m", "metre", "metres", "meter", "meters"}:
         return "m"
     if "model volume" in key or key in {"volume unit", "volume units"}:

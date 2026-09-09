@@ -49,6 +49,10 @@ from .services.quantity_preparation_ui import (
     parse_schema_includes_from_query,
     parse_source_mappings_from_query,
 )
+from .services.quantity_unit_confirmation import (
+    FAMILIES,
+    QuantityUnitConfirmationService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +251,7 @@ class QTOView(ProjectTabMixin, TemplateView):
         ctx["qty_prep_row_mapping_batch_url"] = reverse(
             "takeoff:qty_prep_row_mapping_batch", kwargs={"pk": project.pk}
         )
+        ctx["qty_unit_confirm_url"] = reverse("takeoff:qty_unit_confirm", kwargs={"pk": project.pk})
         ctx["qty_prep_export_url"] = reverse("takeoff:qty_prep_export", kwargs={"pk": project.pk})
         ctx["qty_prep_return_query"] = self.request.GET.urlencode()
         # Read-only S3b entry: latest F2 version link (never auto-creates snapshots).
@@ -342,6 +347,47 @@ class QuantityPrepConfigSaveView(ProjectAccessMixin, View):
             f"Saved preparation configuration draft “{config.name}”. "
             "Settings only — not generated quantities.",
         )
+
+
+class QuantityUnitConfirmView(ProjectAccessMixin, View):
+    """POST — confirm / clear / override session quantity unit labels (UNIT-2)."""
+
+    def post(self, request, pk):  # noqa: ANN001
+        project = self.get_project()
+        action = (request.POST.get("action") or "confirm").strip().lower()
+        return_query = (request.POST.get("return_query") or "").strip()
+        raw_families = (request.POST.get("families") or "").strip()
+        families = [f.strip() for f in raw_families.split(",") if f.strip()]
+        if not families:
+            families = [f for f in FAMILIES if request.POST.get(f"family_{f}") == "1"]
+        if not families and action in {"confirm", "clear"}:
+            families = list(FAMILIES)
+
+        svc = QuantityUnitConfirmationService(project, request.user, request.session)
+        if action == "clear":
+            result = svc.clear_families(families or None)
+            toast_msg = "Quantity unit confirmation cleared — labels unresolved."
+        elif action == "override":
+            family = (request.POST.get("family") or "").strip()
+            token = (request.POST.get("override_token") or "").strip()
+            result = svc.override_family(family, token)
+            toast_msg = "Quantity unit override saved for this session."
+        else:
+            result = svc.confirm_families(families)
+            toast_msg = "Quantity units confirmed for this session — freeze to capture in 5D."
+
+        if result.get("error"):
+            return toast_response(result["error"], level="error", status=400)
+
+        redirect_url = reverse("takeoff:qto", kwargs={"pk": project.pk})
+        if return_query:
+            redirect_url = f"{redirect_url}?{return_query}"
+        if request.headers.get("HX-Request"):
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = redirect_url
+            return trigger_toast(response, toast_msg)
+        messages.success(request, toast_msg)
+        return redirect(redirect_url)
 
 
 class QuantityPrepRowReviewView(ProjectAccessMixin, View):

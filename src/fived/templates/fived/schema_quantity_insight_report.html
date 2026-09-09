@@ -155,7 +155,10 @@
         <div class="s3g-summary-card" data-testid="s3-summary-mapped-netvolume">
           <div class="text-secondary small mb-1">Mapped NetVolume</div>
           <div class="s3g-value">{{ insight_summary.mapped_netvolume_display }}</div>
-          <div class="small text-secondary">{{ insight_summary.mapped_netvolume_unit_status }}</div>
+          <div class="small text-secondary">
+            Unit: {{ insight_summary.mapped_netvolume_unit_status }}
+            · Measurement Basis: NetVolume
+          </div>
         </div>
       </div>
       <div class="col-6 col-xl">

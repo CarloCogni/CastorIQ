@@ -44,6 +44,32 @@ _CONFIRMED_CUBIC_METRE_UNITS = frozenset(
     }
 )
 
+_CONFIRMED_SQUARE_METRE_UNITS = frozenset(
+    {
+        "m2",
+        "m²",
+        "m^2",
+        "square metre",
+        "square metres",
+        "square meter",
+        "square meters",
+    }
+)
+
+_CONFIRMED_LENGTH_UNITS = {
+    "mm": "mm",
+    "millimetre": "mm",
+    "millimetres": "mm",
+    "millimeter": "mm",
+    "millimeters": "mm",
+    "cm": "cm",
+    "m": "m",
+    "metre": "m",
+    "metres": "m",
+    "meter": "m",
+    "meters": "m",
+}
+
 _UNRESOLVED_UNIT_TOKENS = frozenset(
     {
         "",
@@ -52,6 +78,8 @@ _UNRESOLVED_UNIT_TOKENS = frozenset(
         "volume unit",
         "volume units",
         "model volume unit",
+        "model area units",
+        "model length units",
     }
 )
 
@@ -85,29 +113,29 @@ def format_quantity_number(value: float | None) -> str:
 def resolve_unit_display(unit_raw: str | None) -> dict[str, Any]:
     """Map snapshot unit text to a product-safe display label.
 
-    Never surfaces ``model volume units``. Confirmed metric cubic metres become
-    ``m³``; everything else remains ``Unit not resolved`` until confirmed.
+    Never surfaces ``model volume units``. Confirmed metric labels become
+    ``m³`` / ``m²`` / ``mm`` / ``m`` / ``count``; everything else remains
+    ``Unit not resolved`` until confirmed.
     """
     raw = str(unit_raw or "").strip()
     key = raw.lower()
     if key in _CONFIRMED_CUBIC_METRE_UNITS:
-        return {
-            "label": "m³",
-            "resolved": True,
-            "raw": raw,
-        }
-    if key in _UNRESOLVED_UNIT_TOKENS or "model volume" in key:
-        return {
-            "label": "Unit not resolved",
-            "resolved": False,
-            "raw": raw,
-        }
+        return {"label": "m³", "resolved": True, "raw": raw}
+    if key in _CONFIRMED_SQUARE_METRE_UNITS:
+        return {"label": "m²", "resolved": True, "raw": raw}
+    if key == "count":
+        return {"label": "count", "resolved": True, "raw": raw}
+    if key in _CONFIRMED_LENGTH_UNITS:
+        return {"label": _CONFIRMED_LENGTH_UNITS[key], "resolved": True, "raw": raw}
+    if (
+        key in _UNRESOLVED_UNIT_TOKENS
+        or "model volume" in key
+        or "model area" in key
+        or "model length" in key
+    ):
+        return {"label": "Unit not resolved", "resolved": False, "raw": raw}
     # Unknown explicit unit strings stay unresolved until Castor confirms them.
-    return {
-        "label": "Unit not resolved",
-        "resolved": False,
-        "raw": raw,
-    }
+    return {"label": "Unit not resolved", "resolved": False, "raw": raw}
 
 
 def order_rollup_groups(groups: list[Mapping[str, Any]] | None) -> list[dict[str, Any]]:

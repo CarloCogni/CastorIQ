@@ -146,21 +146,21 @@ SCHEMA_FIELD_SPECS: tuple[dict[str, Any], ...] = (
     },
     {
         "key": "quantity_basis",
-        "label": "Quantity Basis",
+        "label": "Measurement Basis",
         "required_label": "Required",
         "availability": "Manual",
         "default_included": True,
         "locked": True,
-        "note": "Core locked — required for measurement.",
+        "note": "Core locked — IFC measure to extract (NetVolume, NetArea, Length, Count).",
     },
     {
         "key": "unit_basis",
-        "label": "Unit Basis",
+        "label": "Unit",
         "required_label": "Core output",
         "availability": "Castor indexed field",
         "default_included": True,
         "locked": True,
-        "note": "Core locked — derived from Quantity Basis.",
+        "note": "Core locked — confirmed unit of the number; separate from Measurement Basis.",
     },
     {
         "key": "total_quantity",
@@ -405,23 +405,23 @@ def build_source_mappings_ui(
         },
         {
             "key": "quantity_basis",
-            "field": "Quantity Basis",
-            "label": "Quantity Basis",
+            "field": "Measurement Basis",
+            "label": "Measurement Basis",
             "editable": False,
             "source": "manual_field",
             "source_label": "Manual field",
-            "detail": "Core locked — user-defined measurement rule (basis_*)",
+            "detail": "Core locked — IFC measure to extract (basis_*)",
             "param_name": "",
             "options": [],
         },
         {
             "key": "unit_basis",
-            "field": "Unit Basis",
-            "label": "Unit Basis",
+            "field": "Unit",
+            "label": "Unit",
             "editable": False,
             "source": "castor_indexed_field",
             "source_label": "Castor indexed field",
-            "detail": "Core locked — derived from Quantity Basis",
+            "detail": "Core locked — confirmed unit; separate from Measurement Basis",
             "param_name": "",
             "options": [],
         },
@@ -1198,20 +1198,20 @@ def build_preparation_ui(
         ),
         "source_vs_basis_note": (
             "Quantity Source is the IFC/Qto property used when selected. "
-            "Quantity Basis is the user-selected measurement method for the model group."
+            "Measurement Basis is the IFC measure you choose to extract "
+            "(NetVolume, NetArea, Length, Count, or unresolved)."
         ),
         "unit_basis_derivation_note": (
-            "Unit Basis is derived from the selected Quantity Basis: "
-            "NetVolume → Unit not resolved until model units are confirmed; "
-            "NetArea → Area unit unresolved; "
-            "Length → Length unit unresolved; "
-            "Count → count; "
-            "Unresolved → —. "
-            "Unit Basis is not manually edited in this slice. Confirmed SI labels "
-            "appear only when project/model unit context is known."
+            "Unit is separate from Measurement Basis. "
+            "Measurement Basis answers what to extract from IFC "
+            "(NetVolume / NetArea / Length / Count). "
+            "Unit answers the unit of the number "
+            "(confirmed SI/metric labels, or Unit not resolved until confirmed). "
+            "Confirm units in the Quantity units panel — never merged into the total. "
+            "Unit Basis is derived from the selected Quantity Basis family until confirmation."
         ),
         "user_selected_basis_note": (
-            "Selecting a Quantity Basis is a user choice for the current configuration. "
+            "Selecting a Measurement Basis is a user choice for the current configuration. "
             "Castor does not recommend a measurement method. Large totals can appear "
             "when an indexed measure exists for the selected basis — that is not "
             "readiness or QS verification."
@@ -1226,17 +1226,18 @@ def build_preparation_ui(
         "column_config": schema_fields,
         "prep_helper_note": (
             "Rows are generated only from the selected schema, source mapping intents, "
-            "and user-defined measurement rules. If quantity basis is unresolved, "
+            "and user-defined measurement rules. If measurement basis is unresolved, "
             "Total Quantity shows Unresolved — not a raw IFC number. "
-            "Unit Basis is derived from selected Quantity Basis; it is not manually "
-            "edited in this slice. Totals reflect the user-selected basis, not a "
-            "Castor recommendation. Excluded schema fields are omitted from the table "
+            "Total Quantity, Unit, and Measurement Basis are separate review columns — "
+            "never merged into one cell (number and unit stay apart). "
+            "Unit is confirmed in Quantity units; it is not invented from the basis name. "
+            "Excluded schema fields are omitted from the table "
             "and are not counted as unresolved schema gaps. "
             "Mapping cells show intent hints only — no values are invented."
         ),
         "prep_unit_basis_note": (
-            "Unit Basis is derived from selected Quantity Basis; "
-            "it is not manually edited in this slice."
+            "Unit is reviewed separately from Measurement Basis and Total Quantity. "
+            "Confirm units in Quantity units — labels only, no conversion."
         ),
         "setup_summary": build_setup_summary(
             schema_fields, basis_rules, prep_rows, unresolved_register
