@@ -44,6 +44,8 @@
             class="btn btn-sm btn-primary"
             data-testid="qty-batch-map-selected"
             id="qty-batch-map-selected"
+            data-bs-toggle="modal"
+            data-bs-target="#qtyBatchMappingModal"
             disabled>
       Map selected rows
     </button>
@@ -447,14 +449,13 @@
     });
   }
 
-  if (mapBtn && modalEl && window.bootstrap) {
-    mapBtn.addEventListener("click", function () {
+  if (mapBtn && modalEl) {
+    modalEl.addEventListener("show.bs.modal", function () {
       syncKeysIntoForm();
       refreshCount();
       if (previewHost) {
         previewHost.innerHTML = '<p class="text-secondary small mb-0">Preview appears here before Apply.</p>';
       }
-      bootstrap.Modal.getOrCreateInstance(modalEl).show();
     });
   }
 
@@ -506,6 +507,9 @@
       }
       if (modalEl && window.bootstrap && selectedChecks().length) {
         bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      } else if (mapBtn && selectedChecks().length) {
+        mapBtn.disabled = false;
+        mapBtn.click();
       }
     });
   }
