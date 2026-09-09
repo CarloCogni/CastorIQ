@@ -1,0 +1,125 @@
+<!-- takeoff/components/quantities_semantic_filters.html — IFC-SEM-1 filters -->
+{% with sem=qty_prep.semantic_filters %}
+<section class="qty-builder-section border rounded p-2 mb-2"
+         data-testid="qty-semantic-filters">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-1">
+    <div style="min-width:0;">
+      <h6 class="mb-0 small fw-semibold" data-testid="qty-semantic-filters-title">
+        IFC semantic filters
+      </h6>
+      <p class="mi-footnote mb-0" data-testid="qty-semantic-filters-subtitle">
+        Use available model data to find rows before batch mapping.
+      </p>
+    </div>
+    <p class="mi-footnote mb-0" data-testid="qty-semantic-filters-count">
+      Showing {{ sem.showing_count }} of {{ sem.total_count }} preparation rows
+    </p>
+  </div>
+
+  <form method="get"
+        class="d-flex flex-wrap align-items-end gap-2"
+        data-testid="qty-semantic-filters-form"
+        action="">
+    {% for key, values in request.GET.lists %}
+      {% if key != "semantic_field" and key != "semantic_value" and key != "semantic_sort" and key != "semantic_sort_dir" %}
+        {% for value in values %}
+        <input type="hidden" name="{{ key }}" value="{{ value }}">
+        {% endfor %}
+      {% endif %}
+    {% endfor %}
+
+    <div>
+      <label class="form-label small mb-0" for="qty-semantic-field">Field</label>
+      <select class="form-select form-select-sm"
+              id="qty-semantic-field"
+              name="semantic_field"
+              style="min-width:10rem;"
+              data-testid="qty-semantic-field">
+        <option value="">— Choose field —</option>
+        {% for field in sem.filterable_fields %}
+        <option value="{{ field.key }}"
+                {% if sem.active_field == field.key %}selected{% endif %}>
+          {{ field.label }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="form-label small mb-0" for="qty-semantic-value">Value</label>
+      <select class="form-select form-select-sm"
+              id="qty-semantic-value"
+              name="semantic_value"
+              style="min-width:12rem;"
+              data-testid="qty-semantic-value">
+        <option value="">— Choose value —</option>
+        {% for field in sem.filterable_fields %}
+          {% for sample in field.sample_values %}
+          <option value="{{ sample }}"
+                  data-field="{{ field.key }}"
+                  {% if sem.active_field and sem.active_field != field.key %}hidden{% endif %}
+                  {% if sem.active_field == field.key and sem.active_value == sample %}selected{% endif %}>
+            {{ sample }}
+          </option>
+          {% endfor %}
+        {% endfor %}
+      </select>
+    </div>
+
+    <button type="submit"
+            class="btn btn-sm btn-outline-primary"
+            data-testid="qty-semantic-apply-filter">
+      Apply filter
+    </button>
+    <a class="btn btn-sm btn-outline-secondary"
+       data-testid="qty-semantic-clear-filter"
+       href="?{% for key, values in request.GET.lists %}{% if key != 'semantic_field' and key != 'semantic_value' and key != 'semantic_sort' and key != 'semantic_sort_dir' %}{% for value in values %}{{ key }}={{ value|urlencode }}&amp;{% endfor %}{% endif %}{% endfor %}">
+      Clear filters
+    </a>
+    <button type="button"
+            class="btn btn-sm btn-outline-primary"
+            data-testid="qty-semantic-select-filtered"
+            id="qty-semantic-select-filtered">
+      Select filtered rows
+    </button>
+  </form>
+
+  <p class="mi-footnote mt-2 mb-0" data-testid="qty-semantic-filters-helper">
+    {{ sem.helper }}
+  </p>
+  {% if not sem.filterable_fields %}
+  <p class="mi-footnote mb-0 text-secondary" data-testid="qty-semantic-filters-empty">
+    No filterable semantic fields are available for the current preparation rows.
+  </p>
+  {% endif %}
+</section>
+
+<script>
+(function () {
+  var fieldEl = document.getElementById("qty-semantic-field");
+  var valueEl = document.getElementById("qty-semantic-value");
+  if (fieldEl && valueEl) {
+    fieldEl.addEventListener("change", function () {
+      var key = fieldEl.value;
+      Array.prototype.forEach.call(valueEl.options, function (opt, idx) {
+        if (!idx) return;
+        var match = !key || opt.getAttribute("data-field") === key;
+        opt.hidden = !match;
+        if (!match && opt.selected) opt.selected = false;
+      });
+      valueEl.value = "";
+    });
+  }
+  var selectBtn = document.getElementById("qty-semantic-select-filtered");
+  if (selectBtn) {
+    selectBtn.addEventListener("click", function () {
+      var checks = document.querySelectorAll(".qty-batch-row-check");
+      Array.prototype.forEach.call(checks, function (cb) {
+        cb.checked = true;
+        cb.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    });
+  }
+})();
+</script>
+{% endwith %}

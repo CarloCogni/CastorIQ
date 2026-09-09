@@ -35,6 +35,9 @@
     {{ qty_prep.session_mapping_note }}
   </p>
   {% endif %}
+  {% if qty_prep.semantic_filters %}
+  {% include "takeoff/components/quantities_semantic_filters.html" %}
+  {% endif %}
   {% if qty_prep.manual_mapping_eligible_fields %}
   <div class="d-flex flex-wrap align-items-center gap-2 mb-2 p-2 border rounded"
        data-testid="qty-batch-mapping-toolbar">
@@ -109,6 +112,12 @@
             <th class="qty-col-key">Handoff Status</th>
             {% if qty_prep.show.ifc_class %}
             <th class="qty-col-secondary">IFC Class</th>
+            {% endif %}
+            {% if qty_prep.semantic_filters.show_category_column %}
+            <th class="qty-col-secondary" data-testid="qty-prep-col-semantic-category">Category</th>
+            {% endif %}
+            {% if qty_prep.semantic_filters.show_family_column %}
+            <th class="qty-col-secondary" data-testid="qty-prep-col-semantic-family">Family</th>
             {% endif %}
             {% if qty_prep.show.quantity_source %}
             <th class="qty-col-secondary">Selected Quantity Source</th>
@@ -237,6 +246,16 @@
             </td>
             {% if qty_prep.show.ifc_class %}
             <td class="qty-col-secondary">{{ row.ifc_class|default:"—" }}</td>
+            {% endif %}
+            {% if qty_prep.semantic_filters.show_category_column %}
+            <td class="qty-col-secondary" data-testid="qty-prep-semantic-category">
+              {{ row.semantic_category|default:"—" }}
+            </td>
+            {% endif %}
+            {% if qty_prep.semantic_filters.show_family_column %}
+            <td class="qty-col-secondary" data-testid="qty-prep-semantic-family">
+              {{ row.semantic_family|default:"—" }}
+            </td>
             {% endif %}
             {% if qty_prep.show.quantity_source %}
             <td class="qty-col-secondary">

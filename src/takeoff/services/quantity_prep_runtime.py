@@ -15,6 +15,7 @@ from typing import Any
 from classification.services.quantity_mapping_selectors import (
     get_mapping_selector_options,
 )
+from takeoff.services.ifc_semantic_fields import IfcSemanticFieldService
 from takeoff.services.model_quantities import ModelQuantitiesService
 from takeoff.services.quantity_prep_config import (
     PREP_CONFIG_QUERY_PARAM,
@@ -113,6 +114,9 @@ def build_qty_prep_session_ui(
     review_svc = QuantityPrepRowReviewService(project, user, session)
     review_annotations = review_svc.get_annotations()
     apply_session_reviews_to_ui(qty_prep, review_annotations)
+
+    # IFC-SEM-1: read-only semantic enrichment + optional prep-row filters.
+    IfcSemanticFieldService(project, user).apply_to_qty_prep(qty_prep, query)
 
     return {
         "quantities": quantities,
