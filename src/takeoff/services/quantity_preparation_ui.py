@@ -20,7 +20,8 @@ from takeoff.services.quantity_unit_display import attach_unit_basis_display
 
 logger = logging.getLogger(__name__)
 
-MAX_PREP_ROWS = 50
+# SCALE-1A: align with ModelQuantitiesService.MAX_TYPE_ROWS; UI paginates.
+MAX_PREP_ROWS = 500
 
 ALLOWED_BASIS_VALUES = frozenset({"Unresolved", "NetVolume", "NetArea", "Length", "Count"})
 

@@ -18,7 +18,8 @@ from takeoff.services.ifc_qto_flags import (
 logger = logging.getLogger(__name__)
 
 MAX_CLASS_ROWS = 100
-MAX_TYPE_ROWS = 50
+# SCALE-1A: raise type aggregates so pilot grains (~309) fit; UI paginates display.
+MAX_TYPE_ROWS = 500
 MAX_MISSING_CLASS_ROWS = 50
 
 # Named measures surfaced as column totals (explicit sums, not mixed primary qty).

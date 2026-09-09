@@ -121,6 +121,11 @@ def build_qty_prep_session_ui(
     # IFC-SEM-1: read-only semantic enrichment + optional prep-row filters.
     IfcSemanticFieldService(project, user).apply_to_qty_prep(qty_prep, query)
 
+    # SCALE-1A: paginate filtered prep rows for DOM; keep full prep_rows for freeze.
+    from takeoff.services.quantity_prep_pagination import apply_prep_pagination_to_qty_prep
+
+    apply_prep_pagination_to_qty_prep(qty_prep, query)
+
     # UNIT-2: session unit confirmation overlays canonical unit_basis tokens.
     apply_unit_confirmation_service_to_qty_prep(
         qty_prep, project=project, user=user, session=session
