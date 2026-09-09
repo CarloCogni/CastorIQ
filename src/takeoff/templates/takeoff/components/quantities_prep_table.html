@@ -119,6 +119,10 @@
             {% if qty_prep.semantic_filters.show_family_column %}
             <th class="qty-col-secondary" data-testid="qty-prep-col-semantic-family">Family</th>
             {% endif %}
+            {% for col in qty_prep.semantic_filters.selected_prop_column_meta %}
+            <th class="qty-col-secondary" data-testid="qty-prep-col-prop"
+                title="{{ col.source_property }}">{{ col.label }}</th>
+            {% endfor %}
             {% if qty_prep.show.quantity_source %}
             <th class="qty-col-secondary">Selected Quantity Source</th>
             {% endif %}
@@ -257,6 +261,15 @@
               {{ row.semantic_family|default:"—" }}
             </td>
             {% endif %}
+            {% for cell in row.prop_column_cells %}
+            <td class="qty-col-secondary"
+                data-testid="qty-prep-prop-cell"
+                data-prop-status="{{ cell.status }}"
+                title="{% if cell.distinct_count > 1 %}{{ cell.distinct_count }} values{% endif %}">
+              {{ cell.display }}
+            </td>
+            {% empty %}
+            {% endfor %}
             {% if qty_prep.show.quantity_source %}
             <td class="qty-col-secondary">
               {% if row.quantity_source %}
