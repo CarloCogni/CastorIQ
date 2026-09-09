@@ -1,4 +1,4 @@
-<!-- takeoff/components/quantities_semantic_filters.html — IFC-SEM-1 filters -->
+<!-- takeoff/components/quantities_semantic_filters.html — IFC-SEM-1/2 filters + property columns -->
 {% with sem=qty_prep.semantic_filters %}
 <section class="qty-builder-section border rounded p-2 mb-2"
          data-testid="qty-semantic-filters">
@@ -16,17 +16,86 @@
     </p>
   </div>
 
+  <div class="border rounded p-2 mb-2 bg-body-tertiary"
+       data-testid="qty-property-columns">
+    <div class="mb-1">
+      <span class="small fw-semibold" data-testid="qty-property-columns-title">IFC property columns</span>
+      <p class="mi-footnote mb-0" data-testid="qty-property-columns-subtitle">
+        Add model properties to refine row selection before mapping.
+      </p>
+    </div>
+    <form method="get"
+          class="d-flex flex-wrap align-items-end gap-2 mb-2"
+          data-testid="qty-property-columns-add-form"
+          action="">
+      {% for key, values in request.GET.lists %}
+        {% if key != "sem_cols" %}
+          {% for value in values %}
+          <input type="hidden" name="{{ key }}" value="{{ value }}">
+          {% endfor %}
+        {% endif %}
+      {% endfor %}
+      <div>
+        <label class="form-label small mb-0" for="qty-property-add">Add property column</label>
+        <select class="form-select form-select-sm"
+                id="qty-property-add"
+                name="sem_cols_add"
+                style="min-width:14rem;"
+                data-testid="qty-property-add">
+          <option value="">— Choose property —</option>
+          {% for col in sem.property_columns_available %}
+            {% if col.key not in sem.selected_prop_columns %}
+            <option value="{{ col.key }}">{{ col.group }} / {{ col.label }}</option>
+            {% endif %}
+          {% empty %}
+          <option value="" disabled>No indexed property columns available</option>
+          {% endfor %}
+        </select>
+      </div>
+      <input type="hidden" name="sem_cols" id="qty-sem-cols-hidden"
+             value="{{ sem.sem_cols_param }}"
+             data-testid="qty-sem-cols-hidden">
+      <button type="submit"
+              class="btn btn-sm btn-outline-primary"
+              data-testid="qty-property-add-submit">
+        Add column
+      </button>
+    </form>
+    <div class="d-flex flex-wrap gap-1 mb-1" data-testid="qty-property-column-chips">
+      {% for col in sem.selected_prop_column_meta %}
+      <a class="badge text-bg-secondary text-decoration-none"
+         data-testid="qty-property-chip"
+         title="Remove {{ col.label }}"
+         href="?{% for key, values in request.GET.lists %}{% if key != 'sem_cols' %}{% for value in values %}{{ key }}={{ value|urlencode }}&amp;{% endfor %}{% endif %}{% endfor %}sem_cols={% for c in sem.selected_prop_columns %}{% if c != col.key %}{{ c }},{% endif %}{% endfor %}">
+        {{ col.label }} ×
+      </a>
+      {% empty %}
+      <span class="mi-footnote" data-testid="qty-property-columns-empty">
+        No property columns selected yet.
+      </span>
+      {% endfor %}
+    </div>
+    {% if not sem.property_columns_available %}
+    <p class="mi-footnote mb-0 text-secondary" data-testid="qty-property-gap-state">
+      No indexed IFC property-set columns are available for this project yet.
+    </p>
+    {% endif %}
+  </div>
+
   <form method="get"
         class="d-flex flex-wrap align-items-end gap-2"
         data-testid="qty-semantic-filters-form"
         action="">
     {% for key, values in request.GET.lists %}
-      {% if key != "semantic_field" and key != "semantic_value" and key != "semantic_sort" and key != "semantic_sort_dir" %}
+      {% if key != "semantic_field" and key != "semantic_value" and key != "semantic_sort" and key != "semantic_sort_dir" and key != "sem_cols_add" %}
         {% for value in values %}
         <input type="hidden" name="{{ key }}" value="{{ value }}">
         {% endfor %}
       {% endif %}
     {% endfor %}
+    {% if sem.sem_cols_param %}
+    <input type="hidden" name="sem_cols" value="{{ sem.sem_cols_param }}">
+    {% endif %}
 
     <div>
       <label class="form-label small mb-0" for="qty-semantic-field">Field</label>
@@ -73,7 +142,7 @@
     </button>
     <a class="btn btn-sm btn-outline-secondary"
        data-testid="qty-semantic-clear-filter"
-       href="?{% for key, values in request.GET.lists %}{% if key != 'semantic_field' and key != 'semantic_value' and key != 'semantic_sort' and key != 'semantic_sort_dir' %}{% for value in values %}{{ key }}={{ value|urlencode }}&amp;{% endfor %}{% endif %}{% endfor %}">
+       href="?{% for key, values in request.GET.lists %}{% if key != 'semantic_field' and key != 'semantic_value' and key != 'semantic_sort' and key != 'semantic_sort_dir' and key != 'sem_cols_add' %}{% for value in values %}{{ key }}={{ value|urlencode }}&amp;{% endfor %}{% endif %}{% endfor %}">
       Clear filters
     </a>
     <button type="button"
@@ -87,15 +156,24 @@
   <p class="mi-footnote mt-2 mb-0" data-testid="qty-semantic-filters-helper">
     {{ sem.helper }}
   </p>
-  {% if not sem.filterable_fields %}
-  <p class="mi-footnote mb-0 text-secondary" data-testid="qty-semantic-filters-empty">
-    No filterable semantic fields are available for the current preparation rows.
-  </p>
-  {% endif %}
 </section>
 
 <script>
 (function () {
+  var addForm = document.querySelector('[data-testid="qty-property-columns-add-form"]');
+  var addSel = document.getElementById("qty-property-add");
+  var colsHidden = document.getElementById("qty-sem-cols-hidden");
+  if (addForm && addSel && colsHidden) {
+    addForm.addEventListener("submit", function () {
+      var add = (addSel.value || "").trim();
+      if (!add) return;
+      var current = (colsHidden.value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+      if (current.indexOf(add) === -1) current.push(add);
+      colsHidden.value = current.join(",");
+      // Prevent posting sem_cols_add as a sticky param
+      addSel.name = "";
+    });
+  }
   var fieldEl = document.getElementById("qty-semantic-field");
   var valueEl = document.getElementById("qty-semantic-value");
   if (fieldEl && valueEl) {
