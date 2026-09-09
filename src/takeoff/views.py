@@ -21,7 +21,8 @@ from django.views.generic import TemplateView
 
 from core.http import toast_response, trigger_toast
 from core.mixins import ProjectAccessMixin, ProjectTabMixin
-from fived.models import FiveDModelVersion
+from fived.models import FiveDDataModel, FiveDModelVersion
+from fived.services.snapshot_service import FiveDPrepSnapshotService
 
 from .models import QTOCache, QuantityPreparationConfig
 from .services.link_analysis import LinkAnalysisService
@@ -44,6 +45,7 @@ from .services.quantity_prep_row_review import (
     QuantityPrepRowReviewService,
 )
 from .services.quantity_prep_runtime import build_qty_prep_session_ui
+from .services.quantity_prep_session_state import detect_pending_quantity_review_changes
 from .services.quantity_preparation_ui import (
     build_preparation_ui,
     parse_basis_overrides_from_query,
@@ -254,7 +256,13 @@ class QTOView(ProjectTabMixin, TemplateView):
         )
         ctx["qty_unit_confirm_url"] = reverse("takeoff:qty_unit_confirm", kwargs={"pk": project.pk})
         ctx["qty_prep_export_url"] = reverse("takeoff:qty_prep_export", kwargs={"pk": project.pk})
+        ctx["qty_prep_freeze_url"] = reverse("takeoff:qty_prep_freeze", kwargs={"pk": project.pk})
         ctx["qty_prep_return_query"] = self.request.GET.urlencode()
+        ctx["qty_prep_pending"] = detect_pending_quantity_review_changes(
+            project=project,
+            user=self.request.user,
+            session=self.request.session,
+        )
         # Read-only S3b entry: latest F2 version link (never auto-creates snapshots).
         latest_version = (
             FiveDModelVersion.objects.filter(data_model__project_id=project.pk)
@@ -372,10 +380,16 @@ class QuantityUnitConfirmView(ProjectAccessMixin, View):
             family = (request.POST.get("family") or "").strip()
             token = (request.POST.get("override_token") or "").strip()
             result = svc.override_family(family, token)
-            toast_msg = "Quantity unit override saved for this session."
+            toast_msg = (
+                "Quantity unit override saved for this session. "
+                "Freeze updated 5D snapshot to review in 5D Quantity Review."
+            )
         else:
             result = svc.confirm_families(families)
-            toast_msg = "Quantity units confirmed for this session — freeze to capture in 5D."
+            toast_msg = (
+                "Quantity units confirmed for this session. "
+                "Freeze updated 5D snapshot to review in 5D Quantity Review."
+            )
 
         if result.get("error"):
             return toast_response(result["error"], level="error", status=400)
@@ -389,6 +403,59 @@ class QuantityUnitConfirmView(ProjectAccessMixin, View):
             return trigger_toast(response, toast_msg)
         messages.success(request, toast_msg)
         return redirect(redirect_url)
+
+
+class QuantityPrepFreezeView(ProjectAccessMixin, View):
+    """POST — freeze current prep session into a new F2 snapshot (FREEZE-UX-1).
+
+    Wraps FiveDPrepSnapshotService only. Does not mutate old versions or IFC.
+    """
+
+    def post(self, request, pk):  # noqa: ANN001
+        from datetime import UTC, datetime
+
+        project = self.get_project()
+        return_query = (request.POST.get("return_query") or "").strip()
+        effective = QueryDict(return_query, mutable=False) if return_query else request.GET
+        version_label = (request.POST.get("version_label") or "").strip()
+        if not version_label:
+            version_label = "Quantity Prep Snapshot — " + datetime.now(UTC).strftime(
+                "%Y-%m-%d %H:%M"
+            )
+        notes = (request.POST.get("notes") or "").strip()
+        latest_model = (
+            FiveDDataModel.objects.filter(project_id=project.pk).order_by("-created_at").first()
+        )
+        if latest_model is not None:
+            data_model = latest_model
+            model_name = latest_model.name
+        else:
+            data_model = None
+            model_name = (request.POST.get("model_name") or "").strip() or "Quantity Preparation"
+
+        out = FiveDPrepSnapshotService(project, request.user).create_snapshot(
+            session=request.session,
+            query=effective,
+            model_name=model_name,
+            version_label=version_label,
+            notes=notes or "Guided freeze from Quantities (session mapping/units).",
+            data_model=data_model,
+        )
+        if out.get("error"):
+            return toast_response(out["error"], level="error", status=400)
+
+        version = out["result"]["version"]
+        review_url = reverse(
+            "fived:schema_quantity_insight_report",
+            kwargs={"pk": project.pk, "version_id": version.pk},
+        )
+        toast_msg = "Snapshot created. Opening 5D Quantity Review."
+        if request.headers.get("HX-Request"):
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = review_url
+            return trigger_toast(response, toast_msg)
+        messages.success(request, toast_msg)
+        return redirect(review_url)
 
 
 class QuantityPrepRowReviewView(ProjectAccessMixin, View):
@@ -576,7 +643,7 @@ class QuantityPrepRowMappingBatchView(ProjectAccessMixin, View):
             toast_msg = (
                 f"Session mapping updated ({applied} row"
                 f"{'' if applied == 1 else 's'}). "
-                "Freeze a new snapshot to review updated 5D coverage."
+                "Freeze updated 5D snapshot to review in 5D Quantity Review."
             )
             redirect_url = reverse("takeoff:qto", kwargs={"pk": project.pk})
             if return_query:

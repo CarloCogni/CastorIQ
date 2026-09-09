@@ -50,6 +50,11 @@ urlpatterns = [
         name="qty_prep_row_mapping_batch",
     ),
     path(
+        "projects/<uuid:pk>/prep-freeze/",
+        views.QuantityPrepFreezeView.as_view(),
+        name="qty_prep_freeze",
+    ),
+    path(
         "projects/<uuid:pk>/prep-export/",
         views.QuantityPrepExportView.as_view(),
         name="qty_prep_export",

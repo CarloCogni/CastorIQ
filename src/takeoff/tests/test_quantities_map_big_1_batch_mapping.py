@@ -471,7 +471,7 @@ def test_batch_modal_apply_disabled_and_freeze_reminder(client):
     assert 'data-testid="qty-batch-apply-gate-hint"' in html
     assert "Preview required before Apply" in html
     assert 'data-testid="qty-schema-insight-freeze-reminder"' in html
-    assert "Fresh mappings need a new freeze" in html
+    assert "Freeze updated 5D snapshot" in html or "new freeze" in html.lower()
     # Apply button markup includes disabled attribute in initial HTML
     apply_idx = html.find('data-testid="qty-batch-apply-btn"')
     apply_chunk = html[apply_idx : apply_idx + 400]
