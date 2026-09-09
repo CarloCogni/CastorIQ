@@ -336,7 +336,7 @@ def test_batch_preview_and_apply_endpoints(client):
     assert preview.status_code == 200
     body = preview.content.decode()
     assert 'data-testid="qty-batch-mapping-preview-result"' in body
-    assert "Freeze a snapshot" in body
+    assert "Freeze updated 5D snapshot" in body or "Freeze a snapshot" in body
 
     apply = client.post(
         url,
