@@ -1,0 +1,78 @@
+<!-- takeoff/components/quantities_batch_mapping_preview.html — MAP-BIG-1 preview panel -->
+<div data-testid="qty-batch-mapping-preview-result">
+  <div class="alert alert-secondary py-2 small mb-2" data-testid="qty-batch-preview-summary">
+    <strong>{{ preview.valid_row_count }}</strong> row{{ preview.valid_row_count|pluralize }} will be updated
+    {% if preview.ignored_or_missing_row_count %}
+    · <span class="text-secondary">{{ preview.ignored_or_missing_row_count }} ignored / missing</span>
+    {% endif %}
+    {% if preview.overwrite_warning_count %}
+    · <span class="text-warning" data-testid="qty-batch-overwrite-warning">
+      {{ preview.overwrite_warning_count }} already mapped (will overwrite after Apply)
+    </span>
+    {% endif %}
+  </div>
+  <p class="small mb-2" data-testid="qty-batch-preview-proposed">
+    Proposed:
+    {% for field, label in preview.proposed_mapping_summary.items %}
+      <span class="qty-pill qty-pill-source me-1">
+        {% if field == "classification_code" %}Classification
+        {% elif field == "package_boq_mapping" %}Package
+        {% elif field == "work_package" %}Work package
+        {% else %}{{ field }}{% endif %}: {{ label }}
+      </span>
+    {% empty %}
+      —
+    {% endfor %}
+  </p>
+  <p class="qty-mapping-hint mb-2" data-testid="qty-batch-preview-affected">
+    IFC classes: {{ preview.affected_ifc_classes|join:", "|default:"—" }}
+    · Bases: {{ preview.affected_quantity_bases|join:", "|default:"—" }}
+  </p>
+  <div class="table-responsive" style="max-height: 14rem;">
+    <table class="table table-sm mb-0" data-testid="qty-batch-preview-table">
+      <thead>
+        <tr>
+          <th>Row</th>
+          <th>IFC Class</th>
+          <th>Type</th>
+          <th>Basis</th>
+          <th>Qty</th>
+          <th>Unit</th>
+          <th>Current</th>
+          <th>New</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in preview.rows_sample %}
+        <tr data-testid="qty-batch-preview-row"{% if row.will_overwrite %} class="table-warning"{% endif %}>
+          <td>{{ row.row_label }}</td>
+          <td>{{ row.ifc_class|default:"—" }}</td>
+          <td>{{ row.type_name|default:"—" }}</td>
+          <td>{{ row.quantity_basis|default:"—" }}</td>
+          <td class="text-end">{{ row.total_display }}</td>
+          <td>{{ row.unit_display }}</td>
+          <td class="small">
+            {% for field, val in row.current_mapping.items %}
+              <div>{{ val }}</div>
+            {% endfor %}
+          </td>
+          <td class="small">
+            {% for field, val in row.new_mapping.items %}
+              <div>{{ val }}</div>
+            {% endfor %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8" class="text-secondary">No valid rows to preview.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if preview.sample_capped %}
+  <p class="qty-mapping-hint mt-1 mb-0">Showing first {{ preview.rows_sample|length }} rows.</p>
+  {% endif %}
+  <p class="qty-builder-note mt-2 mb-0" data-testid="qty-batch-preview-freeze-hint">
+    This updates the current preparation session. Freeze a snapshot to review the updated 5D coverage.
+    Existing mapped rows will be overwritten only after Apply.
+  </p>
+</div>

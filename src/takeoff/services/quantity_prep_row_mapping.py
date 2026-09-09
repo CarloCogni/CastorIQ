@@ -378,6 +378,121 @@ def collect_posted_mapping_values(
     return values
 
 
+def collect_posted_batch_mapping_values(
+    *,
+    project: Any,
+    post: Mapping[str, Any],
+    eligible_keys: set[str],
+) -> dict[str, Any]:
+    """Parse batch modal POST into values to set (empty field = omit / leave).
+
+    Unlike single-row collect, an empty select does **not** mean clear. Only
+    fields with an explicit valid node (or free-text when allowed) are returned.
+    Invalid node_id without free-text is skipped (field left unchanged on apply).
+    """
+    from classification.services.quantity_mapping_selectors import (
+        build_validated_session_mapping,
+    )
+
+    values: dict[str, Any] = {}
+    for field in MAPPING_FIELD_KEYS:
+        if field not in eligible_keys:
+            continue
+        node_id = str(post.get(f"{field}__node_id") or "").strip()
+        free_text = sanitize_mapping_value(
+            str(post.get(f"{field}__free_text") or post.get(field) or "")
+        )
+        if node_id:
+            structured = build_validated_session_mapping(project, field, node_id)
+            if structured is not None:
+                values[field] = structured
+                continue
+            logger.info(
+                "qty batch mapping skipped invalid node_id field=%s node_id=%s",
+                field,
+                node_id,
+            )
+            if free_text:
+                values[field] = free_text
+            continue
+        if free_text:
+            values[field] = free_text
+    return values
+
+
+def parse_posted_row_keys(post: Mapping[str, Any]) -> list[str]:
+    """Deduplicate posted row keys while preserving order."""
+    raw_list: list[str] = []
+    if hasattr(post, "getlist"):
+        raw_list.extend(str(x) for x in post.getlist("row_keys"))  # type: ignore[attr-defined]
+        raw_list.extend(str(x) for x in post.getlist("row_key"))  # type: ignore[attr-defined]
+    single = str(post.get("row_keys") or post.get("row_key") or "").strip()
+    if single:
+        if "," in single and "|" in single:
+            raw_list.extend(part.strip() for part in single.split(","))
+        else:
+            raw_list.append(single)
+    seen: set[str] = set()
+    out: list[str] = []
+    for key in raw_list:
+        key_s = str(key or "").strip()
+        if not key_s or key_s in seen:
+            continue
+        seen.add(key_s)
+        out.append(key_s)
+    return out
+
+
+def _display_mapping_value(raw: Any) -> str:
+    """Human display string for a stored or proposed mapping value."""
+    norm = normalize_mapping_field_value(raw)
+    value = str(norm.get("value") or "").strip()
+    if not value:
+        return "—"
+    label = str(norm.get("label") or "").strip()
+    if label and label != value:
+        return f"{value} — {label}"
+    return value
+
+
+def filter_similar_prep_rows(
+    prep_rows: list[Mapping[str, Any]],
+    *,
+    seed_row: Mapping[str, Any],
+    match_ifc_class: bool = True,
+    match_type_name: bool = False,
+    match_quantity_basis: bool = False,
+) -> list[dict[str, Any]]:
+    """Return prep rows matching selected similarity axes against a seed row."""
+    if not match_ifc_class and not match_type_name and not match_quantity_basis:
+        return []
+    seed_class = str(seed_row.get("ifc_class") or "")
+    seed_type = str(seed_row.get("type_name") or "")
+    seed_basis = str(seed_row.get("quantity_basis") or "")
+    matched: list[dict[str, Any]] = []
+    for row in prep_rows:
+        if match_ifc_class and str(row.get("ifc_class") or "") != seed_class:
+            continue
+        if match_type_name and str(row.get("type_name") or "") != seed_type:
+            continue
+        if match_quantity_basis and str(row.get("quantity_basis") or "") != seed_basis:
+            continue
+        matched.append(dict(row))
+    return matched
+
+
+def filter_prep_rows_by_ifc_class(
+    prep_rows: list[Mapping[str, Any]],
+    *,
+    ifc_class: str,
+) -> list[dict[str, Any]]:
+    """Return prep rows whose IFC class equals ``ifc_class`` (Mode C)."""
+    target = str(ifc_class or "").strip()
+    if not target:
+        return []
+    return [dict(row) for row in prep_rows if str(row.get("ifc_class") or "") == target]
+
+
 class QuantityPrepRowMappingService:
     """Apply / clear session-only manual mapping values for one project."""
 
@@ -470,6 +585,216 @@ class QuantityPrepRowMappingService:
             {"contract_version": CONTRACT_VERSION_V1, "annotations": annotations},
         )
         return {"result": {"row_key": key, "cleared": True}, "error": None}
+
+    def preview_batch_mapping(
+        self,
+        *,
+        row_keys: list[str],
+        values: Mapping[str, Any],
+        eligible_keys: set[str],
+        prep_rows: list[Mapping[str, Any]],
+        sample_limit: int = 25,
+    ) -> dict[str, Any]:
+        """Dry-run batch mapping against prep rows (no session write).
+
+        Empty ``values`` keys are not present — those fields stay unchanged.
+        """
+        if not eligible_keys:
+            return {
+                "result": None,
+                "error": "Manual mapping values are available only for fields "
+                "configured as Manual field.",
+            }
+        incoming: dict[str, Any] = {}
+        for field in MAPPING_FIELD_KEYS:
+            if field not in values or field not in eligible_keys:
+                continue
+            norm = normalize_mapping_field_value(values.get(field))
+            stored = _session_store_value(norm)
+            if stored:
+                incoming[field] = stored
+        if not incoming:
+            return {
+                "result": None,
+                "error": "Choose at least one schema node (or free-text value) to map.",
+            }
+
+        known_by_key = {
+            str(row.get("row_key") or ""): dict(row) for row in prep_rows if row.get("row_key")
+        }
+        annotations = self.get_annotations()
+        selected = list(row_keys)
+        valid_keys: list[str] = []
+        ignored_keys: list[str] = []
+        for key in selected:
+            if not _ROW_KEY_SAFE.match(key) or key not in known_by_key:
+                ignored_keys.append(key)
+                continue
+            valid_keys.append(key)
+
+        overwrite_count = 0
+        samples: list[dict[str, Any]] = []
+        ifc_classes: set[str] = set()
+        type_names: set[str] = set()
+        bases: set[str] = set()
+
+        for key in valid_keys:
+            row = known_by_key[key]
+            existing = dict(annotations.get(key) or {})
+            will_overwrite = any(
+                field in existing
+                and normalize_mapping_field_value(existing.get(field)).get("value")
+                for field in incoming
+            )
+            if will_overwrite:
+                overwrite_count += 1
+            ifc_classes.add(str(row.get("ifc_class") or "") or "—")
+            type_names.add(str(row.get("type_name") or "") or "—")
+            bases.add(str(row.get("quantity_basis") or "") or "—")
+            if len(samples) < sample_limit:
+                proposed = dict(existing)
+                proposed.update(incoming)
+                samples.append(
+                    {
+                        "row_key": key,
+                        "row_label": str(row.get("model_group") or row.get("ifc_class") or key),
+                        "ifc_class": str(row.get("ifc_class") or ""),
+                        "type_name": str(row.get("type_name") or ""),
+                        "quantity_basis": str(row.get("quantity_basis") or ""),
+                        "total_display": (
+                            "Unresolved"
+                            if row.get("basis_unresolved")
+                            else str(
+                                row.get("total") if row.get("total") not in (None, "") else "—"
+                            )
+                        ),
+                        "unit_display": str(row.get("unit_basis_display") or "—"),
+                        "current_mapping": {
+                            field: _display_mapping_value(existing.get(field))
+                            for field in MAPPING_FIELD_KEYS
+                            if field in eligible_keys
+                        },
+                        "new_mapping": {
+                            field: _display_mapping_value(proposed.get(field))
+                            for field in MAPPING_FIELD_KEYS
+                            if field in eligible_keys
+                        },
+                        "will_overwrite": will_overwrite,
+                    }
+                )
+
+        proposed_summary = {field: _display_mapping_value(val) for field, val in incoming.items()}
+        return {
+            "result": {
+                "selected_row_count": len(selected),
+                "valid_row_count": len(valid_keys),
+                "ignored_or_missing_row_count": len(ignored_keys),
+                "valid_row_keys": valid_keys,
+                "ignored_row_keys": ignored_keys[:20],
+                "fields_to_set": sorted(incoming.keys()),
+                "proposed_mapping_summary": proposed_summary,
+                "overwrite_warning_count": overwrite_count,
+                "affected_ifc_classes": sorted(c for c in ifc_classes if c),
+                "affected_type_names": sorted(t for t in type_names if t)[:20],
+                "affected_quantity_bases": sorted(b for b in bases if b),
+                "rows_sample": samples,
+                "sample_capped": len(valid_keys) > sample_limit,
+            },
+            "error": None,
+        }
+
+    def apply_batch_mapping(
+        self,
+        *,
+        row_keys: list[str],
+        values: Mapping[str, Any],
+        eligible_keys: set[str],
+        known_row_keys: set[str] | None = None,
+    ) -> dict[str, Any]:
+        """Apply the same mapping values to many row keys (leave-empty-unchanged).
+
+        Only fields present in ``values`` are written. Existing mappings on other
+        fields are preserved. Does not create F2 snapshots.
+        """
+        if not eligible_keys:
+            return {
+                "result": None,
+                "error": "Manual mapping values are available only for fields "
+                "configured as Manual field.",
+            }
+        incoming: dict[str, Any] = {}
+        for field in MAPPING_FIELD_KEYS:
+            if field not in values or field not in eligible_keys:
+                continue
+            norm = normalize_mapping_field_value(values.get(field))
+            stored = _session_store_value(norm)
+            if stored:
+                incoming[field] = stored
+        if not incoming:
+            return {
+                "result": None,
+                "error": "Choose at least one schema node (or free-text value) to map.",
+            }
+
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for key in row_keys:
+            key_s = str(key or "").strip()
+            if not key_s or key_s in seen:
+                continue
+            seen.add(key_s)
+            ordered.append(key_s)
+
+        payload = load_payload(self.session, self.project.pk)
+        annotations = dict(payload["annotations"])
+        applied = 0
+        ignored = 0
+        overwrite_count = 0
+        for key in ordered:
+            if not _ROW_KEY_SAFE.match(key):
+                ignored += 1
+                continue
+            if known_row_keys is not None and key not in known_row_keys:
+                ignored += 1
+                continue
+            existing = dict(annotations.get(key) or {})
+            if any(
+                field in existing
+                and normalize_mapping_field_value(existing.get(field)).get("value")
+                for field in incoming
+            ):
+                overwrite_count += 1
+            existing.update(incoming)
+            existing = {
+                f: v
+                for f, v in existing.items()
+                if f in MAPPING_FIELD_KEYS and normalize_mapping_field_value(v).get("value")
+            }
+            annotations[key] = existing
+            applied += 1
+
+        save_payload(
+            self.session,
+            self.project.pk,
+            {"contract_version": CONTRACT_VERSION_V1, "annotations": annotations},
+        )
+        logger.info(
+            "qty batch mapping applied project=%s rows=%s fields=%s overwrite=%s user=%s",
+            self.project.pk,
+            applied,
+            sorted(incoming.keys()),
+            overwrite_count,
+            getattr(self.user, "pk", None),
+        )
+        return {
+            "result": {
+                "applied_row_count": applied,
+                "ignored_row_count": ignored,
+                "overwrite_count": overwrite_count,
+                "fields_set": sorted(incoming.keys()),
+            },
+            "error": None,
+        }
 
 
 def apply_session_mapping_values_to_ui(

@@ -34,8 +34,10 @@ from .services.quantity_prep_config import (
 from .services.quantity_prep_export import QuantityPrepExportService
 from .services.quantity_prep_row_mapping import (
     QuantityPrepRowMappingService,
+    collect_posted_batch_mapping_values,
     collect_posted_mapping_values,
     eligible_mapping_fields,
+    parse_posted_row_keys,
 )
 from .services.quantity_prep_row_review import (
     QuantityPrepRowReviewService,
@@ -241,6 +243,9 @@ class QTOView(ProjectTabMixin, TemplateView):
         )
         ctx["qty_prep_row_mapping_url"] = reverse(
             "takeoff:qty_prep_row_mapping", kwargs={"pk": project.pk}
+        )
+        ctx["qty_prep_row_mapping_batch_url"] = reverse(
+            "takeoff:qty_prep_row_mapping_batch", kwargs={"pk": project.pk}
         )
         ctx["qty_prep_export_url"] = reverse("takeoff:qty_prep_export", kwargs={"pk": project.pk})
         ctx["qty_prep_return_query"] = self.request.GET.urlencode()
@@ -460,6 +465,105 @@ class QuantityPrepRowMappingView(ProjectAccessMixin, View):
             return trigger_toast(response, toast_msg)
         messages.success(request, toast_msg)
         return redirect(redirect_url)
+
+
+class QuantityPrepRowMappingBatchView(ProjectAccessMixin, View):
+    """POST — preview or apply batch session schema mapping (MAP-BIG-1).
+
+    Does not create F2 snapshots. Empty target fields leave existing values
+    unchanged (unlike single-row apply which clears omitted fields).
+    """
+
+    def post(self, request, pk):  # noqa: ANN001
+        project = self.get_project()
+        action = (request.POST.get("action") or "preview").strip().lower()
+        return_query = (request.POST.get("return_query") or "").strip()
+        quantities = ModelQuantitiesService(project).build()
+        effective = QueryDict(return_query, mutable=False) if return_query else request.GET
+        basis_overrides, schema_includes, source_mappings = _qty_prep_runtime_from_query(
+            project, request.user, effective
+        )
+        qty_prep = build_preparation_ui(
+            quantities,
+            basis_overrides=basis_overrides,
+            schema_includes=schema_includes,
+            source_mappings=source_mappings,
+        )
+        known_keys = {
+            str(row.get("row_key") or "")
+            for row in (qty_prep.get("prep_rows") or [])
+            if row.get("row_key")
+        }
+        eligible = {
+            item["key"]
+            for item in eligible_mapping_fields(
+                show=qty_prep.get("show") or {},
+                source_intents=qty_prep.get("source_mapping_intents") or {},
+            )
+        }
+        row_keys = parse_posted_row_keys(request.POST)
+        if not row_keys:
+            return toast_response("Select at least one preparation row.", level="error", status=400)
+        if not eligible:
+            return toast_response(
+                "Manual mapping values are available only for fields configured as Manual field.",
+                level="error",
+                status=400,
+            )
+
+        values = collect_posted_batch_mapping_values(
+            project=project,
+            post=request.POST,
+            eligible_keys=eligible,
+        )
+        svc = QuantityPrepRowMappingService(project, request.user, request.session)
+
+        if action == "apply":
+            result = svc.apply_batch_mapping(
+                row_keys=row_keys,
+                values=values,
+                eligible_keys=eligible,
+                known_row_keys=known_keys,
+            )
+            if result.get("error"):
+                return toast_response(result["error"], level="error", status=400)
+            applied = (result.get("result") or {}).get("applied_row_count", 0)
+            toast_msg = (
+                f"Session mapping applied to {applied} row"
+                f"{'' if applied == 1 else 's'}. "
+                "Freeze a new snapshot to review updated 5D coverage."
+            )
+            redirect_url = reverse("takeoff:qto", kwargs={"pk": project.pk})
+            if return_query:
+                redirect_url = f"{redirect_url}?{return_query}"
+            if request.headers.get("HX-Request"):
+                response = HttpResponse(status=204)
+                response["HX-Redirect"] = redirect_url
+                return trigger_toast(response, toast_msg)
+            messages.success(request, toast_msg)
+            return redirect(redirect_url)
+
+        # Default: preview (no session write)
+        preview = svc.preview_batch_mapping(
+            row_keys=row_keys,
+            values=values,
+            eligible_keys=eligible,
+            prep_rows=list(qty_prep.get("prep_rows") or []),
+        )
+        if preview.get("error"):
+            return toast_response(preview["error"], level="error", status=400)
+        return render(
+            request,
+            "takeoff/components/quantities_batch_mapping_preview.html",
+            {
+                "preview": preview["result"],
+                "mapping_field_labels": {
+                    "classification_code": "Classification",
+                    "package_boq_mapping": "Package",
+                    "work_package": "Work package",
+                },
+            },
+        )
 
 
 class QTODataView(ProjectAccessMixin, View):

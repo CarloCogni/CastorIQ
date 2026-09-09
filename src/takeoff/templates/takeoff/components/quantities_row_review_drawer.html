@@ -158,6 +158,33 @@
         {% endif %}
       </div>
       {% endfor %}
+      {% if qty_prep.manual_mapping_eligible_fields %}
+      <div class="border rounded p-2 mb-3" data-testid="qty-map-similar-panel">
+        <p class="small fw-semibold mb-1">Apply to similar rows</p>
+        <p class="qty-mapping-hint mb-2">Select matching axes, then open batch mapping with those rows selected.</p>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="qty-similar-ifc" checked
+                 data-testid="qty-similar-ifc">
+          <label class="form-check-label small" for="qty-similar-ifc">Same IFC class</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="qty-similar-type"
+                 data-testid="qty-similar-type">
+          <label class="form-check-label small" for="qty-similar-type">Same type name</label>
+        </div>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="qty-similar-basis"
+                 data-testid="qty-similar-basis">
+          <label class="form-check-label small" for="qty-similar-basis">Same quantity basis</label>
+        </div>
+        <button type="button"
+                class="btn btn-sm btn-outline-primary w-100"
+                id="qty-map-similar-rows"
+                data-testid="qty-map-similar-rows">
+          Select similar rows for batch mapping
+        </button>
+      </div>
+      {% endif %}
       <button type="submit"
               class="btn btn-sm btn-primary w-100 mb-2"
               data-testid="qty-row-mapping-apply">

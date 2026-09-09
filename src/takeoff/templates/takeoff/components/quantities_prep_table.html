@@ -35,6 +35,40 @@
     {{ qty_prep.session_mapping_note }}
   </p>
   {% endif %}
+  {% if qty_prep.manual_mapping_eligible_fields %}
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-2 p-2 border rounded"
+       data-testid="qty-batch-mapping-toolbar">
+    <span class="small fw-semibold">Batch schema mapping</span>
+    <span class="small text-secondary" data-testid="qty-batch-toolbar-count">0 selected</span>
+    <button type="button"
+            class="btn btn-sm btn-primary"
+            data-testid="qty-batch-map-selected"
+            id="qty-batch-map-selected"
+            disabled>
+      Map selected rows
+    </button>
+    <button type="button"
+            class="btn btn-sm btn-outline-secondary"
+            data-testid="qty-batch-clear-selection"
+            id="qty-batch-clear-selection">
+      Clear selection
+    </button>
+    <div class="vr d-none d-md-block"></div>
+    <label class="small mb-0 text-secondary" for="qty-batch-ifc-filter">Map by IFC class</label>
+    <select id="qty-batch-ifc-filter"
+            class="form-select form-select-sm"
+            style="width:auto;max-width:12rem;"
+            data-testid="qty-batch-ifc-filter">
+      <option value="">— Choose class —</option>
+    </select>
+    <button type="button"
+            class="btn btn-sm btn-outline-primary"
+            data-testid="qty-batch-select-ifc-class"
+            id="qty-batch-select-ifc-class">
+      Select class rows
+    </button>
+  </div>
+  {% endif %}
   {% if qty_prep.session_review_stale_message %}
   <p class="qty-builder-note mb-2 text-secondary" data-testid="qty-session-review-stale">
     {{ qty_prep.session_review_stale_message }}
@@ -52,6 +86,15 @@
              data-testid="qty-prep-table">
         <thead>
           <tr>
+            {% if qty_prep.manual_mapping_eligible_fields %}
+            <th class="qty-col-key" style="width:2rem;" data-testid="qty-batch-select-col">
+              <input type="checkbox"
+                     id="qty-batch-select-all"
+                     data-testid="qty-batch-select-all"
+                     title="Select all rows"
+                     aria-label="Select all rows">
+            </th>
+            {% endif %}
             <th class="qty-col-key qty-sticky qty-sticky-1">Model Group</th>
             {% if qty_prep.show.type_name %}
             <th class="qty-col-key qty-sticky qty-sticky-2">Type Name</th>
@@ -94,6 +137,18 @@
               data-qty-missing-source="{% if row.missing_quantity_source %}1{% else %}0{% endif %}"
               data-qty-session-review="{% if row.session_review %}1{% else %}0{% endif %}"
               class="{% if row.basis_unresolved %}qty-row-unresolved{% endif %}">
+            {% if qty_prep.manual_mapping_eligible_fields %}
+            <td>
+              <input type="checkbox"
+                     class="qty-batch-row-check form-check-input"
+                     data-testid="qty-batch-row-check"
+                     data-qty-row-key="{{ row.row_key }}"
+                     data-qty-ifc-class="{{ row.ifc_class }}"
+                     data-qty-type-name="{{ row.type_name }}"
+                     data-qty-basis="{{ row.quantity_basis }}"
+                     aria-label="Select row {{ row.model_group }}">
+            </td>
+            {% endif %}
             <td class="qty-col-primary qty-sticky qty-sticky-1">{{ row.model_group|default:"—" }}</td>
             {% if qty_prep.show.type_name %}
             <td class="qty-col-type qty-sticky qty-sticky-2" title="{{ row.type_name }}">
@@ -296,3 +351,164 @@
   </div>
 </section>
 {% include "takeoff/components/quantities_row_review_drawer.html" %}
+{% if qty_prep.manual_mapping_eligible_fields %}
+{% include "takeoff/components/quantities_batch_mapping_modal.html" %}
+<script>
+(function () {
+  var table = document.querySelector('[data-testid="qty-prep-table"]');
+  if (!table) return;
+  var countEl = document.querySelector('[data-testid="qty-batch-toolbar-count"]');
+  var mapBtn = document.getElementById("qty-batch-map-selected");
+  var clearBtn = document.getElementById("qty-batch-clear-selection");
+  var selectAll = document.getElementById("qty-batch-select-all");
+  var keysHost = document.getElementById("qty-batch-row-keys");
+  var modalEl = document.getElementById("qtyBatchMappingModal");
+  var ifcFilter = document.getElementById("qty-batch-ifc-filter");
+  var ifcSelectBtn = document.getElementById("qty-batch-select-ifc-class");
+  var previewHost = document.getElementById("qty-batch-mapping-preview");
+
+  function checks() {
+    return Array.prototype.slice.call(document.querySelectorAll(".qty-batch-row-check"));
+  }
+
+  function selectedChecks() {
+    return checks().filter(function (c) { return c.checked; });
+  }
+
+  function refreshCount() {
+    var sel = selectedChecks();
+    if (countEl) countEl.textContent = sel.length + " selected";
+    if (mapBtn) mapBtn.disabled = sel.length === 0;
+    var classes = {};
+    sel.forEach(function (c) {
+      var ic = c.getAttribute("data-qty-ifc-class") || "";
+      if (ic) classes[ic] = true;
+    });
+    var classEl = document.getElementById("qty-batch-selected-classes");
+    if (classEl) {
+      var keys = Object.keys(classes);
+      classEl.textContent = keys.length ? "(" + keys.join(", ") + ")" : "";
+    }
+    var countModal = document.getElementById("qty-batch-selected-count");
+    if (countModal) countModal.textContent = String(sel.length);
+  }
+
+  function syncKeysIntoForm() {
+    if (!keysHost) return;
+    keysHost.innerHTML = "";
+    selectedChecks().forEach(function (c) {
+      var input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "row_keys";
+      input.value = c.getAttribute("data-qty-row-key") || "";
+      keysHost.appendChild(input);
+    });
+  }
+
+  function populateIfcFilter() {
+    if (!ifcFilter) return;
+    var seen = {};
+    checks().forEach(function (c) {
+      var ic = c.getAttribute("data-qty-ifc-class") || "";
+      if (ic) seen[ic] = true;
+    });
+    var current = ifcFilter.value;
+    ifcFilter.innerHTML = '<option value="">— Choose class —</option>';
+    Object.keys(seen).sort().forEach(function (ic) {
+      var opt = document.createElement("option");
+      opt.value = ic;
+      opt.textContent = ic;
+      ifcFilter.appendChild(opt);
+    });
+    if (current && seen[current]) ifcFilter.value = current;
+  }
+
+  table.addEventListener("change", function (ev) {
+    if (ev.target && ev.target.classList.contains("qty-batch-row-check")) {
+      refreshCount();
+    }
+  });
+
+  if (selectAll) {
+    selectAll.addEventListener("change", function () {
+      checks().forEach(function (c) { c.checked = selectAll.checked; });
+      refreshCount();
+    });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener("click", function () {
+      checks().forEach(function (c) { c.checked = false; });
+      if (selectAll) selectAll.checked = false;
+      refreshCount();
+      if (previewHost) {
+        previewHost.innerHTML = '<p class="text-secondary small mb-0">Preview appears here before Apply.</p>';
+      }
+    });
+  }
+
+  if (mapBtn && modalEl && window.bootstrap) {
+    mapBtn.addEventListener("click", function () {
+      syncKeysIntoForm();
+      refreshCount();
+      if (previewHost) {
+        previewHost.innerHTML = '<p class="text-secondary small mb-0">Preview appears here before Apply.</p>';
+      }
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    });
+  }
+
+  if (ifcSelectBtn && ifcFilter) {
+    ifcSelectBtn.addEventListener("click", function () {
+      var target = ifcFilter.value;
+      if (!target) return;
+      checks().forEach(function (c) {
+        c.checked = (c.getAttribute("data-qty-ifc-class") || "") === target;
+      });
+      refreshCount();
+    });
+  }
+
+  populateIfcFilter();
+  refreshCount();
+
+  // Mode B — apply to similar rows from review drawer
+  var similarBtn = document.getElementById("qty-map-similar-rows");
+  if (similarBtn) {
+    similarBtn.addEventListener("click", function () {
+      var seedKey = (document.getElementById("qty-row-mapping-key") || {}).value || "";
+      var matchClass = document.getElementById("qty-similar-ifc");
+      var matchType = document.getElementById("qty-similar-type");
+      var matchBasis = document.getElementById("qty-similar-basis");
+      var seed = checks().find(function (c) {
+        return (c.getAttribute("data-qty-row-key") || "") === seedKey;
+      });
+      if (!seed) return;
+      var sc = seed.getAttribute("data-qty-ifc-class") || "";
+      var st = seed.getAttribute("data-qty-type-name") || "";
+      var sb = seed.getAttribute("data-qty-basis") || "";
+      checks().forEach(function (c) {
+        var ok = true;
+        if (matchClass && matchClass.checked && (c.getAttribute("data-qty-ifc-class") || "") !== sc) ok = false;
+        if (matchType && matchType.checked && (c.getAttribute("data-qty-type-name") || "") !== st) ok = false;
+        if (matchBasis && matchBasis.checked && (c.getAttribute("data-qty-basis") || "") !== sb) ok = false;
+        if (!(matchClass && matchClass.checked) && !(matchType && matchType.checked) && !(matchBasis && matchBasis.checked)) {
+          ok = false;
+        }
+        c.checked = ok;
+      });
+      refreshCount();
+      syncKeysIntoForm();
+      var drawer = document.getElementById("qtyRowReviewDrawer");
+      if (drawer && window.bootstrap) {
+        var inst = bootstrap.Offcanvas.getInstance(drawer);
+        if (inst) inst.hide();
+      }
+      if (modalEl && window.bootstrap && selectedChecks().length) {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      }
+    });
+  }
+})();
+</script>
+{% endif %}
