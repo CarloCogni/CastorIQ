@@ -67,7 +67,12 @@ def test_discover_returns_prep_native_fields():
     assert "ifc_class" in keys
     assert "quantity_basis" in keys
     assert all(len(f.get("sample_values") or []) <= 20 for f in discovered["fields"])
-    assert discovered["property_sets_available_on_prep"] is False
+    # SEM-2: indexed Other.* / Pset keys surface as available property columns.
+    assert discovered["property_sets_available_on_prep"] is True
+    assert any(
+        str(c.get("key", "")).startswith("prop:")
+        for c in (discovered.get("property_columns_available") or [])
+    )
 
 
 @pytest.mark.django_db
