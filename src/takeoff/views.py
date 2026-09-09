@@ -27,6 +27,7 @@ from .models import QTOCache, QuantityPreparationConfig
 from .services.link_analysis import LinkAnalysisService
 from .services.model_inventory import ModelInventoryService
 from .services.model_quantities import ModelQuantitiesService
+from .services.quantity_mapping_safety import analyze_batch_selection_safety
 from .services.quantity_prep_config import (
     PREP_CONFIG_QUERY_PARAM,
     QuantityPrepConfigService,
@@ -524,17 +525,15 @@ class QuantityPrepRowMappingBatchView(ProjectAccessMixin, View):
         project = self.get_project()
         action = (request.POST.get("action") or "preview").strip().lower()
         return_query = (request.POST.get("return_query") or "").strip()
-        quantities = ModelQuantitiesService(project).build()
         effective = QueryDict(return_query, mutable=False) if return_query else request.GET
-        basis_overrides, schema_includes, source_mappings = _qty_prep_runtime_from_query(
-            project, request.user, effective
+        # Session UI so Unit confirmation + SEM fields are available for safety.
+        runtime = build_qty_prep_session_ui(
+            project=project,
+            user=request.user,
+            session=request.session,
+            query=effective,
         )
-        qty_prep = build_preparation_ui(
-            quantities,
-            basis_overrides=basis_overrides,
-            schema_includes=schema_includes,
-            source_mappings=source_mappings,
-        )
+        qty_prep = runtime["qty_prep"]
         known_keys = {
             str(row.get("row_key") or "")
             for row in (qty_prep.get("prep_rows") or [])
@@ -590,19 +589,28 @@ class QuantityPrepRowMappingBatchView(ProjectAccessMixin, View):
             return redirect(redirect_url)
 
         # Default: preview (no session write)
+        prep_rows = list(qty_prep.get("prep_rows") or [])
         preview = svc.preview_batch_mapping(
             row_keys=row_keys,
             values=values,
             eligible_keys=eligible,
-            prep_rows=list(qty_prep.get("prep_rows") or []),
+            prep_rows=prep_rows,
         )
         if preview.get("error"):
             return toast_response(preview["error"], level="error", status=400)
+        result = preview["result"] or {}
+        by_key = {str(row.get("row_key") or ""): row for row in prep_rows if row.get("row_key")}
+        selected_rows = [
+            by_key[key] for key in (result.get("valid_row_keys") or []) if key in by_key
+        ]
+        selection_safety = analyze_batch_selection_safety(selected_rows)
+        result["selection_safety"] = selection_safety
         return render(
             request,
             "takeoff/components/quantities_batch_mapping_preview.html",
             {
-                "preview": preview["result"],
+                "preview": result,
+                "selection_safety": selection_safety,
                 "mapping_field_labels": {
                     "classification_code": "Classification",
                     "package_boq_mapping": "Package",

@@ -452,8 +452,15 @@
     }
   }
 
+  function setApplyLabel(label) {
+    if (!applyBtn) return;
+    var text = label || "Apply to session";
+    applyBtn.textContent = text;
+  }
+
   function invalidatePreview() {
     setApplyEnabled(false);
+    setApplyLabel("Apply to session");
     if (previewHost) {
       previewHost.innerHTML = '<p class="text-secondary small mb-0">Preview appears here before Apply.</p>';
     }
@@ -559,6 +566,11 @@
     previewHost.addEventListener("htmx:afterSwap", function () {
       var ready = previewHost.querySelector('[data-qty-batch-preview-ready="1"]');
       setApplyEnabled(!!ready);
+      if (ready) {
+        setApplyLabel(ready.getAttribute("data-qty-batch-apply-label") || "Apply to session");
+      } else {
+        setApplyLabel("Apply to session");
+      }
     });
   }
 

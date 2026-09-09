@@ -1,5 +1,30 @@
-<!-- takeoff/components/quantities_batch_mapping_preview.html — MAP-BIG batch preview -->
-<div data-testid="qty-batch-mapping-preview-result" data-qty-batch-preview-ready="1">
+<!-- takeoff/components/quantities_batch_mapping_preview.html — MAP-BIG + MAP-SAFETY-1 -->
+{% with safety=selection_safety|default:preview.selection_safety %}
+<div data-testid="qty-batch-mapping-preview-result"
+     data-qty-batch-preview-ready="1"
+     data-qty-selection-safety="{{ safety.status|default:'consistent' }}"
+     data-qty-batch-apply-label="{{ safety.apply_label|default:'Apply to session' }}">
+  {% if safety %}
+  {% if safety.status == "mixed" %}
+  <div class="alert alert-warning py-2 small mb-2" data-testid="qty-batch-selection-warning">
+    <strong data-testid="qty-batch-selection-warning-message">{{ safety.message }}</strong>
+    <ul class="mb-0 mt-1 ps-3" data-testid="qty-batch-selection-warning-details">
+      {% for warn in safety.warnings %}
+      <li data-testid="qty-batch-selection-warning-item"
+          data-qty-warning-field="{{ warn.field }}">
+        {{ warn.label }}: {{ warn.value_count }} value{{ warn.value_count|pluralize }} —
+        {{ warn.sample_values|join:", " }}{% if warn.samples_capped %}…{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% else %}
+  <div class="alert alert-success py-2 small mb-2" data-testid="qty-batch-selection-consistent">
+    <span data-testid="qty-batch-selection-consistent-message">{{ safety.message }}</span>
+  </div>
+  {% endif %}
+  {% endif %}
+
   <div class="alert alert-secondary py-2 small mb-2" data-testid="qty-batch-preview-summary">
     <strong>{{ preview.valid_row_count }}</strong> row{{ preview.valid_row_count|pluralize }} will be updated
     {% if preview.ignored_or_missing_row_count %}
@@ -93,3 +118,4 @@
     Existing mapped rows will be overwritten only after Apply.
   </p>
 </div>
+{% endwith %}
