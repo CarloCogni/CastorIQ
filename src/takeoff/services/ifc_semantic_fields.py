@@ -118,13 +118,23 @@ def _majority(counter: Counter[str]) -> str:
 
 
 def _is_noisy_property_key(key: str) -> bool:
+    """Return True for keys unsuitable as prep property columns.
+
+    Excludes ids/guids and IFC Qto_* measure dumps (already available via
+    quantity basis; raw Qto names must not appear in Quantities primary UI).
+    """
     k = _str_val(key)
     if not k or "." not in k:
         return True
     if _NOISY_PROP_RE.search(k):
         return True
     lower = k.lower()
-    return lower.endswith(".id") or "guid" in lower
+    if lower.endswith(".id") or "guid" in lower:
+        return True
+    # Quantity takeoff measures — not semantic mapping columns.
+    if k.startswith("Qto_") or lower.startswith("qto_"):
+        return True
+    return False
 
 
 def prop_column_key(source_property: str) -> str:

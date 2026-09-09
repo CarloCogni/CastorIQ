@@ -99,11 +99,12 @@ def _str_val_row(row, key: str) -> str:
 
 @pytest.mark.django_db
 def test_discover_excludes_noisy_id_keys():
-    """Discovery descriptors never invent keys and skip *.id noise when scanned."""
+    """Discovery descriptors never invent keys and skip *.id / Qto_* noise when scanned."""
     project = _project_with_props()
     # Direct scan may return empty under MIN_PROP_NONEMPTY=50 in tiny fixtures.
     cols = discover_indexed_property_columns(project=project)
     assert all(not str(c["source_property"]).lower().endswith(".id") for c in cols)
+    assert all(not str(c["source_property"]).startswith("Qto_") for c in cols)
     assert all(str(c["key"]).startswith("prop:") for c in cols)
 
 
