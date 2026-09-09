@@ -2,9 +2,13 @@
 <section class="qty-builder-section" data-testid="quantities-prep-table" id="qty-prep-table-section">
   <div class="qty-builder-h">
     <h6 class="mb-0" data-testid="quantities-prep-table-title">Generated Preparation Data Model</h6>
-    <span class="mi-footnote">
-      {% if qty_prep.prep_row_grain == "type" %}By Type (capped){% else %}By IFC Class{% endif %}
-      · {{ qty_prep.prep_rows|length }} row{{ qty_prep.prep_rows|length|pluralize }}
+    <span class="mi-footnote" data-testid="qty-prep-row-count-footnote">
+      {% if qty_prep.prep_row_grain == "type" %}By Type{% else %}By IFC Class{% endif %}
+      {% if qty_prep.pagination %}
+      · {{ qty_prep.pagination.filtered_rows }} filtered preparation row{{ qty_prep.pagination.filtered_rows|pluralize }}
+      {% else %}
+      · {{ qty_prep.prep_rows|length }} preparation row{{ qty_prep.prep_rows|length|pluralize }}
+      {% endif %}
     </span>
     <div class="ms-auto d-flex flex-column align-items-end gap-1">
       <a href="{% if qty_prep_return_query %}{{ qty_prep_export_url }}?{{ qty_prep_return_query }}{% else %}{{ qty_prep_export_url }}{% endif %}"
@@ -51,13 +55,20 @@
             data-bs-toggle="modal"
             data-bs-target="#qtyBatchMappingModal"
             disabled>
-      Map selected rows
+      Map selected visible rows
     </button>
     <button type="button"
             class="btn btn-sm btn-outline-secondary"
             data-testid="qty-batch-clear-selection"
             id="qty-batch-clear-selection">
       Clear selection
+    </button>
+    <button type="button"
+            class="btn btn-sm btn-outline-secondary"
+            data-testid="qty-batch-map-all-filtered"
+            disabled
+            title="Map all filtered rows — coming in a later slice">
+      Map all filtered rows (future)
     </button>
     <div class="vr d-none d-md-block"></div>
     <label class="small mb-0 text-secondary" for="qty-batch-ifc-filter">Map by IFC class</label>
@@ -71,9 +82,12 @@
             class="btn btn-sm btn-outline-primary"
             data-testid="qty-batch-select-ifc-class"
             id="qty-batch-select-ifc-class">
-      Select class rows
+      Select visible class rows
     </button>
   </div>
+  {% endif %}
+  {% if qty_prep.pagination %}
+  {% include "takeoff/components/quantities_prep_pagination.html" %}
   {% endif %}
   {% if qty_prep.session_review_stale_message %}
   <p class="qty-builder-note mb-2 text-secondary" data-testid="qty-session-review-stale">
@@ -97,7 +111,7 @@
               <input type="checkbox"
                      id="qty-batch-select-all"
                      data-testid="qty-batch-select-all"
-                     title="Select all rows"
+                     title="Select all visible rows on this page"
                      aria-label="Select all rows">
             </th>
             {% endif %}
@@ -145,7 +159,8 @@
           </tr>
         </thead>
         <tbody>
-          {% for row in qty_prep.prep_rows %}
+          {% with display_rows=qty_prep.prep_page_rows|default:qty_prep.prep_rows %}
+          {% for row in display_rows %}
           <tr data-testid="qty-prep-row"
               data-qty-row-key="{{ row.row_key }}"
               data-qty-basis-unresolved="{% if row.basis_unresolved %}1{% else %}0{% endif %}"
@@ -369,12 +384,19 @@
             {% endif %}
           </tr>
           {% empty %}
-          <tr>
+          <tr data-testid="qty-prep-empty-filtered">
             <td colspan="15" class="text-secondary">
+              {% if qty_prep.pagination and qty_prep.prep_rows %}
+              No preparation rows match the current filters.
+              {% elif qty_prep.pagination %}
+              No filtered preparation rows on this page.
+              {% else %}
               No preparation rows yet. Index an IFC model first.
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
+          {% endwith %}
         </tbody>
       </table>
     </div>
@@ -384,6 +406,14 @@
       Quantity and mapping cells are review-only here. Use Review row to adjust session mapping.
     </p>
   </div>
+  {% if qty_prep.pagination %}
+  {% include "takeoff/components/quantities_prep_pagination.html" %}
+  {% endif %}
+  {% if qty_prep.prep_rows_capped %}
+  <p class="qty-builder-note mt-2 mb-0" data-testid="qty-prep-aggregate-cap-note">
+    Preparation aggregates are capped for safety. Use filters to focus the working set.
+  </p>
+  {% endif %}
 </section>
 {% include "takeoff/components/quantities_row_review_drawer.html" %}
 {% if qty_prep.manual_mapping_eligible_fields %}
@@ -431,7 +461,7 @@
 
   function refreshCount() {
     var sel = selectedChecks();
-    if (countEl) countEl.textContent = sel.length + " selected";
+    if (countEl) countEl.textContent = sel.length + " selected visible";
     if (mapBtn) mapBtn.disabled = sel.length === 0;
     var classes = {};
     sel.forEach(function (c) {

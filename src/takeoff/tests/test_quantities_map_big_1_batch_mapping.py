@@ -300,7 +300,7 @@ def test_quantities_page_renders_batch_controls(client):
     assert 'data-testid="qty-batch-row-check"' in html
     assert 'data-testid="qty-batch-mapping-modal"' in html
     assert "Batch schema mapping" in html
-    assert "Map selected rows" in html
+    assert "Map selected visible rows" in html
     prep_chunk = html.split('data-testid="quantities-prep-table"', 1)[1][:12000]
     assert "manual_session_schema_node" not in prep_chunk
     assert "model volume units" not in prep_chunk.lower()
