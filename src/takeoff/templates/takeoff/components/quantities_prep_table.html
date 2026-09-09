@@ -365,9 +365,11 @@
   var selectAll = document.getElementById("qty-batch-select-all");
   var keysHost = document.getElementById("qty-batch-row-keys");
   var modalEl = document.getElementById("qtyBatchMappingModal");
+  var formEl = document.getElementById("qty-batch-mapping-form");
   var ifcFilter = document.getElementById("qty-batch-ifc-filter");
   var ifcSelectBtn = document.getElementById("qty-batch-select-ifc-class");
   var previewHost = document.getElementById("qty-batch-mapping-preview");
+  var applyBtn = document.querySelector('[data-testid="qty-batch-apply-btn"]');
 
   function checks() {
     return Array.prototype.slice.call(document.querySelectorAll(".qty-batch-row-check"));
@@ -375,6 +377,23 @@
 
   function selectedChecks() {
     return checks().filter(function (c) { return c.checked; });
+  }
+
+  function setApplyEnabled(enabled) {
+    if (!applyBtn) return;
+    applyBtn.disabled = !enabled;
+    if (enabled) {
+      applyBtn.removeAttribute("title");
+    } else {
+      applyBtn.setAttribute("title", "Generate a preview before applying");
+    }
+  }
+
+  function invalidatePreview() {
+    setApplyEnabled(false);
+    if (previewHost) {
+      previewHost.innerHTML = '<p class="text-secondary small mb-0">Preview appears here before Apply.</p>';
+    }
   }
 
   function refreshCount() {
@@ -428,6 +447,8 @@
   table.addEventListener("change", function (ev) {
     if (ev.target && ev.target.classList.contains("qty-batch-row-check")) {
       refreshCount();
+      invalidatePreview();
+      syncKeysIntoForm();
     }
   });
 
@@ -435,6 +456,8 @@
     selectAll.addEventListener("change", function () {
       checks().forEach(function (c) { c.checked = selectAll.checked; });
       refreshCount();
+      invalidatePreview();
+      syncKeysIntoForm();
     });
   }
 
@@ -443,9 +466,8 @@
       checks().forEach(function (c) { c.checked = false; });
       if (selectAll) selectAll.checked = false;
       refreshCount();
-      if (previewHost) {
-        previewHost.innerHTML = '<p class="text-secondary small mb-0">Preview appears here before Apply.</p>';
-      }
+      invalidatePreview();
+      syncKeysIntoForm();
     });
   }
 
@@ -453,9 +475,27 @@
     modalEl.addEventListener("show.bs.modal", function () {
       syncKeysIntoForm();
       refreshCount();
-      if (previewHost) {
-        previewHost.innerHTML = '<p class="text-secondary small mb-0">Preview appears here before Apply.</p>';
+      invalidatePreview();
+    });
+  }
+
+  if (formEl) {
+    formEl.addEventListener("change", function (ev) {
+      if (ev.target && ev.target.classList.contains("qty-batch-target-input")) {
+        invalidatePreview();
       }
+    });
+    formEl.addEventListener("input", function (ev) {
+      if (ev.target && ev.target.classList.contains("qty-batch-target-input")) {
+        invalidatePreview();
+      }
+    });
+  }
+
+  if (previewHost) {
+    previewHost.addEventListener("htmx:afterSwap", function () {
+      var ready = previewHost.querySelector('[data-qty-batch-preview-ready="1"]');
+      setApplyEnabled(!!ready);
     });
   }
 
@@ -467,11 +507,14 @@
         c.checked = (c.getAttribute("data-qty-ifc-class") || "") === target;
       });
       refreshCount();
+      invalidatePreview();
+      syncKeysIntoForm();
     });
   }
 
   populateIfcFilter();
   refreshCount();
+  setApplyEnabled(false);
 
   // Mode B — apply to similar rows from review drawer
   var similarBtn = document.getElementById("qty-map-similar-rows");
@@ -499,6 +542,7 @@
         c.checked = ok;
       });
       refreshCount();
+      invalidatePreview();
       syncKeysIntoForm();
       var drawer = document.getElementById("qtyRowReviewDrawer");
       if (drawer && window.bootstrap) {

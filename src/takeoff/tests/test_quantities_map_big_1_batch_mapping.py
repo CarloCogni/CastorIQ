@@ -374,3 +374,105 @@ def test_single_row_mapping_still_works(client):
         },
     )
     assert resp.status_code in (204, 302)
+
+
+@pytest.mark.django_db
+def test_batch_apply_all_three_fields_then_s2_rollups(client):
+    """MAP-BIG-2: batch sets classification+package+WP; S2 sees all three."""
+    from fived.services.schema_quantity_insight_service import FiveDSchemaQuantityInsightService
+    from fived.services.snapshot_service import FiveDPrepSnapshotService
+
+    project = _project_with_rows()
+    seed_demo_project_classification_schemas(project)
+    session: dict = {}
+    svc = QuantityPrepRowMappingService(project, project.owner, session)
+    qty = _prep(project)
+    keys = [r["row_key"] for r in qty["prep_rows"] if r.get("ifc_class") == "IfcWall"]
+    assert keys
+    values = {
+        "classification_code": build_validated_session_mapping(
+            project, "classification_code", _node_id(project, "classification_code", "EL-DEMO-WALL")
+        ),
+        "package_boq_mapping": build_validated_session_mapping(
+            project,
+            "package_boq_mapping",
+            _node_id(project, "package_boq_mapping", "PKG-DEMO-ARCHITECTURE"),
+        ),
+        "work_package": build_validated_session_mapping(
+            project, "work_package", _node_id(project, "work_package", "WP-DEMO-BASEMENT-Z1")
+        ),
+    }
+    assert all(values.values())
+    preview = svc.preview_batch_mapping(
+        row_keys=keys,
+        values=values,
+        eligible_keys={"classification_code", "package_boq_mapping", "work_package"},
+        prep_rows=qty["prep_rows"],
+    )
+    assert preview["error"] is None
+    assert set(preview["result"]["fields_to_set"]) == {
+        "classification_code",
+        "package_boq_mapping",
+        "work_package",
+    }
+    assert (
+        "PKG-DEMO-ARCHITECTURE"
+        in preview["result"]["proposed_mapping_summary"]["package_boq_mapping"]
+    )
+    assert "WP-DEMO-BASEMENT-Z1" in preview["result"]["proposed_mapping_summary"]["work_package"]
+
+    applied = svc.apply_batch_mapping(
+        row_keys=keys,
+        values=values,
+        eligible_keys={"classification_code", "package_boq_mapping", "work_package"},
+        known_row_keys={r["row_key"] for r in qty["prep_rows"]},
+    )
+    assert applied["error"] is None
+    ann = svc.get_annotations()[keys[0]]
+    assert normalize_has(ann, "classification_code")
+    assert normalize_has(ann, "package_boq_mapping")
+    assert normalize_has(ann, "work_package")
+
+    out = FiveDPrepSnapshotService(project, project.owner).create_snapshot(
+        session=session,
+        query=_manual_params(),
+        model_name="MAP-BIG-2 Three Field Test",
+        version_label="MAP-BIG-2-TEST-v1",
+    )
+    assert out.get("error") is None
+    version = out["result"]["version"]
+    insight = FiveDSchemaQuantityInsightService().build_schema_quantity_insight(version)
+    pkg_groups = insight.get("quantity_totals_by_package") or []
+    wp_groups = insight.get("quantity_totals_by_work_package") or []
+    class_groups = insight.get("quantity_totals_by_classification") or []
+    assert any(
+        g.get("code") == "EL-DEMO-WALL" or "WALL" in str(g) for g in class_groups
+    ) or "EL-DEMO-WALL" in str(insight)
+    assert any(
+        (g.get("code") == "PKG-DEMO-ARCHITECTURE") or ("ARCHITECTURE" in str(g)) for g in pkg_groups
+    ) or "PKG-DEMO-ARCHITECTURE" in str(insight)
+    assert any(
+        (g.get("code") == "WP-DEMO-BASEMENT-Z1") or ("BASEMENT" in str(g)) for g in wp_groups
+    ) or "WP-DEMO-BASEMENT-Z1" in str(insight)
+
+
+@pytest.mark.django_db
+def test_batch_modal_apply_disabled_and_freeze_reminder(client):
+    """Apply starts disabled; freeze reminder copy present on Quantities."""
+    project = _project_with_rows()
+    seed_demo_project_classification_schemas(project)
+    client.force_login(project.owner)
+    html = client.get(
+        reverse("takeoff:qto", kwargs={"pk": project.pk}),
+        _manual_params(),
+    ).content.decode()
+    assert 'data-testid="qty-batch-apply-btn"' in html
+    assert 'data-qty-batch-apply-requires-preview="1"' in html
+    assert 'data-testid="qty-batch-apply-gate-hint"' in html
+    assert "Preview required before Apply" in html
+    assert 'data-testid="qty-schema-insight-freeze-reminder"' in html
+    assert "Fresh mappings need a new freeze" in html
+    # Apply button markup includes disabled attribute in initial HTML
+    apply_idx = html.find('data-testid="qty-batch-apply-btn"')
+    apply_chunk = html[apply_idx : apply_idx + 400]
+    assert "disabled" in apply_chunk

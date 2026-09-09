@@ -529,8 +529,8 @@ class QuantityPrepRowMappingBatchView(ProjectAccessMixin, View):
                 return toast_response(result["error"], level="error", status=400)
             applied = (result.get("result") or {}).get("applied_row_count", 0)
             toast_msg = (
-                f"Session mapping applied to {applied} row"
-                f"{'' if applied == 1 else 's'}. "
+                f"Session mapping updated ({applied} row"
+                f"{'' if applied == 1 else 's'}). "
                 "Freeze a new snapshot to review updated 5D coverage."
             )
             redirect_url = reverse("takeoff:qto", kwargs={"pk": project.pk})

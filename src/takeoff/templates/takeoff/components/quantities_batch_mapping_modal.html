@@ -1,4 +1,4 @@
-<!-- takeoff/components/quantities_batch_mapping_modal.html — MAP-BIG-1 batch schema mapping -->
+<!-- takeoff/components/quantities_batch_mapping_modal.html — MAP-BIG-1/2 batch schema mapping -->
 <div class="modal fade" id="qtyBatchMappingModal" tabindex="-1"
      aria-labelledby="qtyBatchMappingModalLabel" aria-hidden="true"
      data-testid="qty-batch-mapping-modal">
@@ -31,7 +31,7 @@
           <div class="mb-3" data-testid="qty-batch-field-{{ field.key }}">
             <label class="form-label" for="qty-batch-node-{{ field.key }}">{{ field.label }}</label>
             {% if field.has_schema_nodes %}
-            <select class="form-select form-select-sm"
+            <select class="form-select form-select-sm qty-batch-target-input"
                     name="{{ field.key }}__node_id"
                     id="qty-batch-node-{{ field.key }}"
                     data-testid="qty-batch-select-{{ field.key }}">
@@ -43,7 +43,7 @@
             <p class="qty-mapping-hint mt-1 mb-0">Empty = leave that field unchanged on selected rows.</p>
             {% else %}
             <input type="text"
-                   class="form-control form-control-sm"
+                   class="form-control form-control-sm qty-batch-target-input"
                    name="{{ field.key }}"
                    id="qty-batch-text-{{ field.key }}"
                    maxlength="120"
@@ -71,14 +71,20 @@
                     value="apply"
                     class="btn btn-sm btn-primary"
                     data-testid="qty-batch-apply-btn"
+                    data-qty-batch-apply-requires-preview="1"
                     hx-post="{{ qty_prep_row_mapping_batch_url }}"
-                    hx-swap="none">
+                    hx-swap="none"
+                    disabled
+                    title="Generate a preview before applying">
               Apply to session
             </button>
             <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">
               Cancel
             </button>
           </div>
+          <p class="qty-mapping-hint mb-0" data-testid="qty-batch-apply-gate-hint">
+            Preview required before Apply. Changing selections or targets clears the preview.
+          </p>
         </form>
 
         <div id="qty-batch-mapping-preview"

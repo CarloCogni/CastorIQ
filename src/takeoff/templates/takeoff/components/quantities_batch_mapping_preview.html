@@ -1,5 +1,5 @@
-<!-- takeoff/components/quantities_batch_mapping_preview.html — MAP-BIG-1 preview panel -->
-<div data-testid="qty-batch-mapping-preview-result">
+<!-- takeoff/components/quantities_batch_mapping_preview.html — MAP-BIG batch preview -->
+<div data-testid="qty-batch-mapping-preview-result" data-qty-batch-preview-ready="1">
   <div class="alert alert-secondary py-2 small mb-2" data-testid="qty-batch-preview-summary">
     <strong>{{ preview.valid_row_count }}</strong> row{{ preview.valid_row_count|pluralize }} will be updated
     {% if preview.ignored_or_missing_row_count %}
@@ -23,6 +23,9 @@
     {% empty %}
       —
     {% endfor %}
+  </p>
+  <p class="qty-mapping-hint mb-2" data-testid="qty-batch-preview-unchanged-note">
+    Fields left as “Leave unchanged” are not listed above and keep their current session values.
   </p>
   <p class="qty-mapping-hint mb-2" data-testid="qty-batch-preview-affected">
     IFC classes: {{ preview.affected_ifc_classes|join:", "|default:"—" }}
@@ -53,12 +56,26 @@
           <td>{{ row.unit_display }}</td>
           <td class="small">
             {% for field, val in row.current_mapping.items %}
-              <div>{{ val }}</div>
+              {% if field in preview.fields_to_set %}
+              <div>
+                {% if field == "classification_code" %}Classification
+                {% elif field == "package_boq_mapping" %}Package
+                {% elif field == "work_package" %}Work package
+                {% else %}{{ field }}{% endif %}: {{ val }}
+              </div>
+              {% endif %}
             {% endfor %}
           </td>
           <td class="small">
             {% for field, val in row.new_mapping.items %}
-              <div>{{ val }}</div>
+              {% if field in preview.fields_to_set %}
+              <div>
+                {% if field == "classification_code" %}Classification
+                {% elif field == "package_boq_mapping" %}Package
+                {% elif field == "work_package" %}Work package
+                {% else %}{{ field }}{% endif %}: {{ val }}
+              </div>
+              {% endif %}
             {% endfor %}
           </td>
         </tr>
