@@ -356,6 +356,7 @@ def _scan_entities(
             "spatial_container__entity",
             "spatial_container__parent__entity",
         )
+        .defer("embedding", "description")
         .iterator(chunk_size=1000)
     )
     for entity in qs:
