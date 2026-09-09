@@ -327,12 +327,7 @@ def _scan_entities(
     spatial_selected = [
         k for k in (selected_spatial_keys or []) if is_spatial_column_key(_str_val(k))
     ]
-    # Always track curated structure/classification-like props for SEM-3 discovery.
-    curated_props = [
-        *[c["source_property"] for c in STRUCTURE_CURATED],
-        *[c["source_property"] for c in CLASSIFICATION_LIKE_CURATED],
-    ]
-    always = ["Other.Category", "Other.Family", *curated_props]
+    always = ["Other.Category", "Other.Family"]
     tracked = list(dict.fromkeys([*always, *selected]))
 
     key_nonempty: Counter[str] = Counter()
@@ -356,7 +351,17 @@ def _scan_entities(
             "spatial_container__entity",
             "spatial_container__parent__entity",
         )
-        .defer("embedding", "description")
+        .only(
+            "ifc_type",
+            "properties",
+            "element_type__name",
+            "spatial_container_id",
+            "spatial_container__spatial_type",
+            "spatial_container__entity__name",
+            "spatial_container__parent_id",
+            "spatial_container__parent__spatial_type",
+            "spatial_container__parent__entity__name",
+        )
         .iterator(chunk_size=1000)
     )
     for entity in qs:
@@ -390,9 +395,7 @@ def _scan_entities(
             samples = spatial_samples[SPATIAL_STOREY_KEY]
             if len(samples) < MAX_PROP_DISTINCT_SAMPLE:
                 samples[storey_name[:120]] += 1
-            if SPATIAL_STOREY_KEY in spatial_selected or True:
-                # Always fill grain so curated structure column can be added without
-                # a second scan; cost is counters only.
+            if SPATIAL_STOREY_KEY in spatial_selected:
                 grain_counters[SPATIAL_STOREY_KEY][grain][storey_name] += 1
                 class_counters[SPATIAL_STOREY_KEY][ifc_class][storey_name] += 1
         if container_name:
@@ -400,8 +403,9 @@ def _scan_entities(
             samples = spatial_samples[SPATIAL_CONTAINER_KEY]
             if len(samples) < MAX_PROP_DISTINCT_SAMPLE:
                 samples[container_name[:120]] += 1
-            grain_counters[SPATIAL_CONTAINER_KEY][grain][container_name] += 1
-            class_counters[SPATIAL_CONTAINER_KEY][ifc_class][container_name] += 1
+            if SPATIAL_CONTAINER_KEY in spatial_selected:
+                grain_counters[SPATIAL_CONTAINER_KEY][grain][container_name] += 1
+                class_counters[SPATIAL_CONTAINER_KEY][ifc_class][container_name] += 1
 
     return {
         "entity_count_scanned": scanned,
