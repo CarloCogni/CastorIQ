@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +48,12 @@ def build_semantic_source_readiness(
 
     No DB writes. Does not auto-map to Castor ClassificationNode.
     """
+    from ifc_processor.services.classification_ref_index import KEY_DISPLAY
     from takeoff.services.ifc_semantic_fields import (
         SPATIAL_STOREY_KEY,
         _latest_completed_ifc,
         _scan_entities,
     )
-    from ifc_processor.services.classification_ref_index import KEY_DISPLAY
 
     if scan is None:
         ifc = _latest_completed_ifc(project)

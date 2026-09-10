@@ -698,9 +698,7 @@ class IFCParser:
             container_map[element_gid] = space_gid
             overlaid += 1
         if overlaid:
-            logger.info(
-                "Space boundaries refined %d element containers to rooms", overlaid
-            )
+            logger.info("Space boundaries refined %d element containers to rooms", overlaid)
 
     def _assign_spatial_containers(
         self,
@@ -939,9 +937,7 @@ class IFCParser:
                 merge_classref_properties,
             )
 
-            properties = merge_classref_properties(
-                element, properties, element_type=element_type
-            )
+            properties = merge_classref_properties(element, properties, element_type=element_type)
 
         except Exception as e:
             logger.debug("Could not get properties: %s", e)
