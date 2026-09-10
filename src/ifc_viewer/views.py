@@ -7,7 +7,7 @@ import csv
 import io
 import logging
 import os
-from datetime import date, timedelta
+from datetime import date
 
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse, JsonResponse
@@ -512,144 +512,36 @@ class ElementPropertiesView(ProjectAccessMixin, View):
 
 
 class TimelineView(ProjectAccessMixin, View):
-    """JSON — weekly 4D timeline intervals with 3-state entity buckets and stats."""
+    """JSON — slim weekly timeline summary (stats only; GlobalIds via detail)."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
-        from collections import defaultdict
-
-        from ifc_processor.models import IFCEntity as IFCEntityModel
-        from scheduling.models import Task, TaskEntityBinding
+        from scheduling.services.timeline_payload import TimelinePayloadService
 
         project = self.get_project()
+        return JsonResponse(TimelinePayloadService(project).build_summary())
 
-        tasks = list(
-            Task.objects.filter(project=project, is_non_physical=False)
-            .exclude(start_date=None)
-            .exclude(end_date=None)
+
+class TimelineIntervalDetailView(ProjectAccessMixin, View):
+    """JSON — applied/confirmed GlobalId buckets for one timeline snapshot date."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.timeline_payload import (
+            TimelinePayloadService,
+            parse_snapshot_date,
         )
 
-        if not tasks:
-            return JsonResponse({"has_tasks": False, "intervals": []})
-
-        # Load all bindings for these tasks in one query, group by task_id in Python.
-        # TaskEntityBinding is the authoritative source — M2M ifc_entities may lag behind.
-        task_map = {t.pk: t for t in tasks}
-        binding_gids: dict[object, list[str]] = defaultdict(list)
-        for row in TaskEntityBinding.objects.filter(task_id__in=task_map).values(
-            "task_id", "entity_global_id"
-        ):
-            binding_gids[row["task_id"]].append(row["entity_global_id"])
-
-        # entity GID → [(start_date, end_date, actual_start, actual_end), ...]
-        entity_tasks: dict[str, list] = defaultdict(list)
-        for task_id, gids in binding_gids.items():
-            task = task_map[task_id]
-            for gid in gids:
-                entity_tasks[gid].append(
-                    (task.start_date, task.end_date, task.actual_start, task.actual_end)
-                )
-
-        # All entity GIDs across all completed IFC files for this project
-        ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-        all_gids: list[str] = list(
-            IFCEntityModel.objects.filter(ifc_file__in=ifc_files)
-            .values_list("global_id", flat=True)
-            .iterator(chunk_size=1000)
-        ) or list(entity_tasks.keys())
-
-        linked_set = set(entity_tasks.keys())
-        no_task_gids = [gid for gid in all_gids if gid not in linked_set]
-        task_gids = [gid for gid in all_gids if gid in linked_set]
-        total = len(all_gids)
-
-        min_date = min(t.start_date for t in tasks)
-        max_date = max(t.end_date for t in tasks)
-
-        def _task_state(start_date, end_date, actual_start, actual_end, snapshot):
-            """Return the display state of a single task at the given snapshot date."""
-            # Delayed: finished late — only visible once simulation reaches actual_start
-            if (
-                actual_start is not None
-                and actual_end is not None
-                and actual_end > end_date
-                and snapshot >= actual_start
-            ):
-                return "delayed"
-            # Delayed: still running past 120% of planned duration
-            if (
-                actual_start is not None
-                and actual_end is None
-                and snapshot >= actual_start
-                and snapshot > actual_start + (end_date - start_date) * 1.2
-            ):
-                return "delayed"
-            # Complete: has actual_end on or before planned end
-            if actual_end is not None and actual_end <= end_date:
-                return "complete"
-            # In progress: actually started, not yet ended
-            if actual_start is not None and actual_start <= snapshot and actual_end is None:
-                return "in_progress"
-            # No actual data — fall back to planned dates
-            if end_date <= snapshot:
-                return "complete"
-            if start_date <= snapshot < end_date:
-                return "in_progress"
-            return "not_started"
-
-        intervals = []
-        current = min_date
-        week_num = 1
-        while current <= max_date:
-            not_started: list[str] = []
-            in_progress: list[str] = []
-            complete: list[str] = []
-            delayed: list[str] = []
-
-            for gid in task_gids:
-                states = [
-                    _task_state(s, e, a_s, a_e, current) for s, e, a_s, a_e in entity_tasks[gid]
-                ]
-                if "delayed" in states:
-                    delayed.append(gid)
-                elif all(st == "complete" for st in states):
-                    complete.append(gid)
-                elif "in_progress" in states:
-                    in_progress.append(gid)
-                else:
-                    not_started.append(gid)
-
-            intervals.append(
-                {
-                    "date": current.isoformat(),
-                    "label": f"Week {week_num}",
-                    "entities": {
-                        "not_started": not_started,
-                        "in_progress": in_progress,
-                        "complete": complete,
-                        "delayed": delayed,
-                    },
-                    "stats": {
-                        "total": total,
-                        "complete": len(complete),
-                        "in_progress": len(in_progress),
-                        "delayed": len(delayed),
-                        "not_started": len(not_started) + len(no_task_gids),
-                    },
-                }
+        project = self.get_project()
+        snapshot = parse_snapshot_date(request.GET.get("date"))
+        if snapshot is None:
+            return JsonResponse(
+                {"error": "Query parameter date=YYYY-MM-DD is required."},
+                status=400,
             )
-
-            current += timedelta(weeks=1)
-            week_num += 1
-
-        return JsonResponse(
-            {
-                "has_tasks": True,
-                "project_start": min_date.isoformat(),
-                "project_end": max_date.isoformat(),
-                "no_task": no_task_gids,
-                "intervals": intervals,
-            }
+        include_no_task = request.GET.get("include_no_task", "1") != "0"
+        payload = TimelinePayloadService(project).build_interval_detail(
+            snapshot, include_no_task=include_no_task
         )
+        return JsonResponse(payload)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

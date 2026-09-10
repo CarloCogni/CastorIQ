@@ -10,20 +10,216 @@ from __future__ import annotations
 import io
 import logging
 
-from django.http import HttpResponse, JsonResponse
+from django.contrib import messages
+from django.http import HttpResponse, JsonResponse, QueryDict
+from django.shortcuts import redirect, render
+from django.urls import reverse
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView
 
-from core.http import toast_response
+from core.http import toast_response, trigger_toast
 from core.mixins import ProjectAccessMixin, ProjectTabMixin
+from fived.models import FiveDDataModel, FiveDModelVersion
+from fived.services.snapshot_service import FiveDPrepSnapshotService
 
-from .models import QTOCache
+from .models import QTOCache, QuantityPreparationConfig
+from .services.link_analysis import LinkAnalysisService
+from .services.model_inventory import ModelInventoryService
+from .services.model_quantities import ModelQuantitiesService
+from .services.quantity_mapping_safety import analyze_batch_selection_safety
+from .services.quantity_prep_config import (
+    PREP_CONFIG_QUERY_PARAM,
+    QuantityPrepConfigService,
+)
+from .services.quantity_prep_export import QuantityPrepExportService
+from .services.quantity_prep_row_mapping import (
+    QuantityPrepRowMappingService,
+    collect_posted_batch_mapping_values,
+    collect_posted_mapping_values,
+    eligible_mapping_fields,
+    parse_posted_row_keys,
+)
+from .services.quantity_prep_row_review import (
+    QuantityPrepRowReviewService,
+)
+from .services.quantity_prep_runtime import build_qty_prep_session_ui
+from .services.quantity_prep_session_state import detect_pending_quantity_review_changes
+from .services.quantity_preparation_ui import (
+    build_preparation_ui,
+    parse_basis_overrides_from_query,
+    parse_schema_includes_from_query,
+    parse_source_mappings_from_query,
+)
+from .services.quantity_unit_confirmation import (
+    FAMILIES,
+    QuantityUnitConfirmationService,
+)
 
 logger = logging.getLogger(__name__)
 
+_LINK_ANALYSIS_SESSION_KEY = "link_analysis_last_diagnostic_run"
+
+
+def _qty_prep_runtime_from_query(project, user, query):  # noqa: ANN001
+    """Resolve basis/schema/source from GET-like query for Quantities overlays."""
+    if QuantityPrepConfigService.query_has_session_overrides(query):
+        return (
+            parse_basis_overrides_from_query(query),
+            parse_schema_includes_from_query(query),
+            parse_source_mappings_from_query(query),
+        )
+    if query.get(PREP_CONFIG_QUERY_PARAM):
+        loaded = QuantityPrepConfigService(project, user).load_runtime(
+            query.get(PREP_CONFIG_QUERY_PARAM)
+        )
+        if loaded.get("error"):
+            return (
+                parse_basis_overrides_from_query({}),
+                parse_schema_includes_from_query({}),
+                parse_source_mappings_from_query({}),
+            )
+        return (
+            loaded["basis_overrides"],
+            loaded["schema_includes"],
+            loaded["source_mappings"],
+        )
+    return (
+        parse_basis_overrides_from_query(query),
+        parse_schema_includes_from_query(query),
+        parse_source_mappings_from_query(query),
+    )
+
+
+class ModelInventoryView(ProjectTabMixin, TemplateView):
+    """4D Link Analysis — schedule task ↔ model element link diagnostics (Model hub)."""
+
+    active_tab = "castor"
+
+    def get_context_data(self, **kwargs: object) -> dict:
+        ctx = super().get_context_data(**kwargs)
+        ctx["castor_subtab"] = "model_inventory"
+        project = ctx["project"]
+        last_run = self.request.session.get(_LINK_ANALYSIS_SESSION_KEY)
+        try:
+            task_page = int(self.request.GET.get("task_page") or 1)
+        except (TypeError, ValueError):
+            task_page = 1
+        try:
+            element_page = int(self.request.GET.get("element_page") or 1)
+        except (TypeError, ValueError):
+            element_page = 1
+        analysis = LinkAnalysisService(project).build(
+            task_page=task_page,
+            element_page=element_page,
+            search=self.request.GET.get("q") or "",
+            last_diagnostic_run=last_run,
+        )
+        ctx["analysis"] = analysis
+        # Legacy alias kept for any template that still expects inventory.
+        ctx["inventory"] = analysis
+        ctx["viewer_url"] = reverse("ifc_viewer:viewer", kwargs={"pk": project.pk})
+        schedule_url = reverse("scheduling:schedule", kwargs={"pk": project.pk})
+        ctx["apply_url"] = f"{schedule_url}?tab=fourD_link"
+        ctx["time_view_url"] = f"{schedule_url}?tab=lookahead"
+        ctx["schedule_url"] = f"{schedule_url}?tab=data_sources"
+        ctx["quantities_url"] = reverse("takeoff:qto", kwargs={"pk": project.pk})
+        ctx["entities_url"] = reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk})
+        ctx["refresh_url"] = reverse("takeoff:link_analysis_refresh", kwargs={"pk": project.pk})
+        return ctx
+
+
+@method_decorator(require_POST, name="dispatch")
+class LinkAnalysisRefreshView(ProjectAccessMixin, View):
+    """Refresh analysis aggregates only — no apply/approve/unlink mutations."""
+
+    def post(self, request, pk):  # type: ignore[override]
+        project = self.get_project()
+        result = LinkAnalysisService(project).run_diagnostics()
+        request.session[_LINK_ANALYSIS_SESSION_KEY] = result["last_run"]
+        response = redirect("takeoff:model_inventory", pk=project.pk)
+        kpis = result.get("kpis") or {}
+        checked = int(kpis.get("tasks_total") or result.get("tasks_total") or 0)
+        linked = int(kpis.get("linked_tasks") or 0)
+        return trigger_toast(
+            response,
+            f"Analysis refreshed — {checked} tasks checked · {linked} linked",
+            level="success",
+        )
+
+
+class ModelInventoryEntitiesView(ProjectTabMixin, TemplateView):
+    """IFC Elements list — HTMX partial on Model page; full shell for browser GET."""
+
+    active_tab = "castor"
+
+    def get(self, request, *args, **kwargs):  # type: ignore[override]
+        project = self.get_project()
+        svc = ModelInventoryService(project)
+        self._entities_result = svc.list_entities(
+            ifc_class=request.GET.get("ifc_class"),
+            level=request.GET.get("level"),
+            linked_status=request.GET.get("linked_status"),
+            has_qto=request.GET.get("has_qto"),
+            page=request.GET.get("page"),
+            page_size=request.GET.get("page_size"),
+        )
+        self._entities_url = reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk})
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "takeoff/components/model_inventory_entities.html",
+                {
+                    "project": project,
+                    "entities": self._entities_result,
+                    "entities_url": self._entities_url,
+                },
+            )
+        inventory = svc.build()
+        self._filter_options = inventory.get("filter_options") or {
+            "ifc_classes": [],
+            "levels": [],
+        }
+        self._inventory_source_name = inventory.get("ifc_file_name") or ""
+        return super().get(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs: object) -> dict:
+        ctx = super().get_context_data(**kwargs)
+        ctx["castor_subtab"] = "model_inventory_entities"
+        project = ctx["project"]
+        svc = ModelInventoryService(project)
+        if getattr(self, "_entities_result", None) is None:
+            self._entities_result = svc.list_entities(
+                ifc_class=self.request.GET.get("ifc_class"),
+                level=self.request.GET.get("level"),
+                linked_status=self.request.GET.get("linked_status"),
+                has_qto=self.request.GET.get("has_qto"),
+                page=self.request.GET.get("page"),
+                page_size=self.request.GET.get("page_size"),
+            )
+            self._entities_url = reverse(
+                "takeoff:model_inventory_entities", kwargs={"pk": project.pk}
+            )
+        if getattr(self, "_filter_options", None) is None:
+            inventory = svc.build()
+            self._filter_options = inventory.get("filter_options") or {
+                "ifc_classes": [],
+                "levels": [],
+            }
+            self._inventory_source_name = inventory.get("ifc_file_name") or ""
+        ctx["entities"] = self._entities_result
+        ctx["entities_url"] = getattr(self, "_entities_url", None) or reverse(
+            "takeoff:model_inventory_entities", kwargs={"pk": project.pk}
+        )
+        ctx["model_inventory_url"] = reverse("takeoff:model_inventory", kwargs={"pk": project.pk})
+        ctx["filter_options"] = self._filter_options
+        ctx["inventory_source_name"] = getattr(self, "_inventory_source_name", "") or ""
+        return ctx
+
 
 class QTOView(ProjectTabMixin, TemplateView):
-    """QTO tab — Quantity Take-Off dashboard."""
+    """Quantities tab — builder-led quantity preparation + model quantity reference."""
 
     active_tab = "castor"
 
@@ -31,8 +227,464 @@ class QTOView(ProjectTabMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         ctx["castor_subtab"] = "qto"
         project = ctx["project"]
+        query = self.request.GET
+        runtime = build_qty_prep_session_ui(
+            project=project,
+            user=self.request.user,
+            session=self.request.session,
+            query=query,
+        )
+        quantities = runtime["quantities"]
+        ctx["quantities"] = quantities
+
+        config_svc = QuantityPrepConfigService(project, self.request.user)
+        ctx["qty_prep_config_drafts"] = config_svc.list_drafts()
+        ctx["qty_prep_config_save_url"] = reverse(
+            "takeoff:qty_prep_config_save", kwargs={"pk": project.pk}
+        )
+        ctx["qty_prep_loaded_config"] = runtime.get("loaded_config")
+        ctx["qty_prep_config_load_error"] = runtime.get("load_error")
+        ctx["qty_prep"] = runtime["qty_prep"]
+        ctx["qty_prep_row_review_url"] = reverse(
+            "takeoff:qty_prep_row_review", kwargs={"pk": project.pk}
+        )
+        ctx["qty_prep_row_mapping_url"] = reverse(
+            "takeoff:qty_prep_row_mapping", kwargs={"pk": project.pk}
+        )
+        ctx["qty_prep_row_mapping_batch_url"] = reverse(
+            "takeoff:qty_prep_row_mapping_batch", kwargs={"pk": project.pk}
+        )
+        ctx["qty_unit_confirm_url"] = reverse("takeoff:qty_unit_confirm", kwargs={"pk": project.pk})
+        ctx["qty_prep_export_url"] = reverse("takeoff:qty_prep_export", kwargs={"pk": project.pk})
+        ctx["qty_prep_freeze_url"] = reverse("takeoff:qty_prep_freeze", kwargs={"pk": project.pk})
+        ctx["qty_prep_return_query"] = self.request.GET.urlencode()
+        ctx["qty_prep_pending"] = detect_pending_quantity_review_changes(
+            project=project,
+            user=self.request.user,
+            session=self.request.session,
+        )
+        # Read-only S3b entry: latest F2 version link (never auto-creates snapshots).
+        latest_version = (
+            FiveDModelVersion.objects.filter(data_model__project_id=project.pk)
+            .select_related("data_model")
+            .order_by("-created_at")
+            .first()
+        )
+        ctx["fived_latest_version"] = latest_version
+        ctx["fived_schema_insight_url"] = (
+            reverse(
+                "fived:schema_quantity_insight_report",
+                kwargs={"pk": project.pk, "version_id": latest_version.pk},
+            )
+            if latest_version is not None
+            else None
+        )
+        ctx["missing_qto_entities_url"] = (
+            reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk}) + "?has_qto=no"
+        )
+        ctx["model_inventory_url"] = reverse("takeoff:model_inventory", kwargs={"pk": project.pk})
+        ctx["entities_url"] = reverse("takeoff:model_inventory_entities", kwargs={"pk": project.pk})
+        # Presentation-only flags from existing summary rows (no re-aggregation).
+        class_rows = quantities.get("by_ifc_class") or []
+        ctx["quantity_classes_with_qto"] = sum(
+            1 for row in class_rows if (row.get("has_ifc_qto") or 0) > 0
+        )
+        ctx["quantity_measure_families"] = {
+            "volume": any(
+                row.get("net_volume") is not None or row.get("gross_volume") is not None
+                for row in class_rows
+            ),
+            "area": any(
+                row.get("net_area") is not None or row.get("net_side_area") is not None
+                for row in class_rows
+            ),
+            "length": any(row.get("length") is not None for row in class_rows),
+        }
+        # Legacy cache kept only for demoted optional tooling on main.
         ctx["qto_cache"] = QTOCache.objects.filter(project=project).first()
         return ctx
+
+
+class QuantityPrepExportView(ProjectAccessMixin, View):
+    """GET — download current preparation model as CSV+JSON ZIP (Slice 5e-1)."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        project = self.get_project()
+        runtime = build_qty_prep_session_ui(
+            project=project,
+            user=request.user,
+            session=request.session,
+            query=request.GET,
+        )
+        built = QuantityPrepExportService(project, request.user).build_zip_from_runtime(runtime)
+        if built.get("error") or not built.get("result"):
+            return HttpResponse(
+                built.get("error") or "Preparation export failed.",
+                status=500,
+                content_type="text/plain; charset=utf-8",
+            )
+        result = built["result"]
+        response = HttpResponse(result["content"], content_type="application/zip")
+        response["Content-Disposition"] = f'attachment; filename="{result["filename"]}"'
+        return response
+
+
+class QuantityPrepConfigSaveView(ProjectAccessMixin, View):
+    """POST — save current session preparation settings as a named draft (Slice 4a)."""
+
+    def post(self, request, pk):  # noqa: ANN001
+        project = self.get_project()
+        name = (request.POST.get("name") or "").strip()
+        description = (request.POST.get("description") or "").strip()
+        result = QuantityPrepConfigService(project, request.user).save_draft(
+            name=name,
+            description=description,
+            query=request.POST,
+        )
+        if result.get("error"):
+            return toast_response(result["error"], level="error", status=400)
+        config = result["result"]
+        assert isinstance(config, QuantityPreparationConfig)
+        load_url = (
+            reverse("takeoff:qto", kwargs={"pk": project.pk})
+            + f"?{PREP_CONFIG_QUERY_PARAM}={config.id}"
+        )
+        response = HttpResponse(status=204)
+        response["HX-Redirect"] = load_url
+        return trigger_toast(
+            response,
+            f"Saved preparation configuration draft “{config.name}”. "
+            "Settings only — not generated quantities.",
+        )
+
+
+class QuantityUnitConfirmView(ProjectAccessMixin, View):
+    """POST — confirm / clear / override session quantity unit labels (UNIT-2)."""
+
+    def post(self, request, pk):  # noqa: ANN001
+        project = self.get_project()
+        action = (request.POST.get("action") or "confirm").strip().lower()
+        return_query = (request.POST.get("return_query") or "").strip()
+        raw_families = (request.POST.get("families") or "").strip()
+        families = [f.strip() for f in raw_families.split(",") if f.strip()]
+        if not families:
+            families = [f for f in FAMILIES if request.POST.get(f"family_{f}") == "1"]
+        if not families and action in {"confirm", "clear"}:
+            families = list(FAMILIES)
+
+        svc = QuantityUnitConfirmationService(project, request.user, request.session)
+        if action == "clear":
+            result = svc.clear_families(families or None)
+            toast_msg = "Quantity unit confirmation cleared — labels unresolved."
+        elif action == "override":
+            family = (request.POST.get("family") or "").strip()
+            token = (request.POST.get("override_token") or "").strip()
+            result = svc.override_family(family, token)
+            toast_msg = (
+                "Quantity unit override saved for this session. "
+                "Freeze updated 5D snapshot to review in 5D Quantity Review."
+            )
+        else:
+            result = svc.confirm_families(families)
+            toast_msg = (
+                "Quantity units confirmed for this session. "
+                "Freeze updated 5D snapshot to review in 5D Quantity Review."
+            )
+
+        if result.get("error"):
+            return toast_response(result["error"], level="error", status=400)
+
+        redirect_url = reverse("takeoff:qto", kwargs={"pk": project.pk})
+        if return_query:
+            redirect_url = f"{redirect_url}?{return_query}"
+        if request.headers.get("HX-Request"):
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = redirect_url
+            return trigger_toast(response, toast_msg)
+        messages.success(request, toast_msg)
+        return redirect(redirect_url)
+
+
+class QuantityPrepFreezeView(ProjectAccessMixin, View):
+    """POST — freeze current prep session into a new F2 snapshot (FREEZE-UX-1).
+
+    Wraps FiveDPrepSnapshotService only. Does not mutate old versions or IFC.
+    """
+
+    def post(self, request, pk):  # noqa: ANN001
+        from datetime import UTC, datetime
+
+        project = self.get_project()
+        return_query = (request.POST.get("return_query") or "").strip()
+        effective = QueryDict(return_query, mutable=False) if return_query else request.GET
+        version_label = (request.POST.get("version_label") or "").strip()
+        if not version_label:
+            version_label = "Quantity Prep Snapshot — " + datetime.now(UTC).strftime(
+                "%Y-%m-%d %H:%M"
+            )
+        notes = (request.POST.get("notes") or "").strip()
+        latest_model = (
+            FiveDDataModel.objects.filter(project_id=project.pk).order_by("-created_at").first()
+        )
+        if latest_model is not None:
+            data_model = latest_model
+            model_name = latest_model.name
+        else:
+            data_model = None
+            model_name = (request.POST.get("model_name") or "").strip() or "Quantity Preparation"
+
+        out = FiveDPrepSnapshotService(project, request.user).create_snapshot(
+            session=request.session,
+            query=effective,
+            model_name=model_name,
+            version_label=version_label,
+            notes=notes or "Guided freeze from Quantities (session mapping/units).",
+            data_model=data_model,
+        )
+        if out.get("error"):
+            return toast_response(out["error"], level="error", status=400)
+
+        version = out["result"]["version"]
+        review_url = reverse(
+            "fived:schema_quantity_insight_report",
+            kwargs={"pk": project.pk, "version_id": version.pk},
+        )
+        toast_msg = "Snapshot created. Opening 5D Quantity Review."
+        if request.headers.get("HX-Request"):
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = review_url
+            return trigger_toast(response, toast_msg)
+        messages.success(request, toast_msg)
+        return redirect(review_url)
+
+
+class QuantityPrepRowReviewView(ProjectAccessMixin, View):
+    """POST — apply or clear a session-only preparation row review (Slice 5a)."""
+
+    def post(self, request, pk):  # noqa: ANN001
+        project = self.get_project()
+        action = (request.POST.get("action") or "apply").strip().lower()
+        row_key = (request.POST.get("row_key") or "").strip()
+        return_query = (request.POST.get("return_query") or "").strip()
+        quantities = ModelQuantitiesService(project).build()
+        effective = QueryDict(return_query, mutable=False) if return_query else request.GET
+        basis_overrides, schema_includes, source_mappings = _qty_prep_runtime_from_query(
+            project, request.user, effective
+        )
+        qty_prep = build_preparation_ui(
+            quantities,
+            basis_overrides=basis_overrides,
+            schema_includes=schema_includes,
+            source_mappings=source_mappings,
+        )
+        known_keys = {
+            str(row.get("row_key") or "")
+            for row in (qty_prep.get("prep_rows") or [])
+            if row.get("row_key")
+        }
+
+        svc = QuantityPrepRowReviewService(project, request.user, request.session)
+        if action == "clear":
+            result = svc.clear_review(row_key=row_key)
+            toast_msg = "Session row review cleared."
+        else:
+            result = svc.apply_review(
+                row_key=row_key,
+                review_status=(request.POST.get("review_status") or "").strip(),
+                note=request.POST.get("note") or "",
+                known_row_keys=known_keys,
+            )
+            toast_msg = "Session row review applied — not saved to configuration drafts."
+
+        if result.get("error"):
+            return toast_response(result["error"], level="error", status=400)
+
+        redirect_url = reverse("takeoff:qto", kwargs={"pk": project.pk})
+        if return_query:
+            redirect_url = f"{redirect_url}?{return_query}"
+        if request.headers.get("HX-Request"):
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = redirect_url
+            return trigger_toast(response, toast_msg)
+        messages.success(request, toast_msg)
+        return redirect(redirect_url)
+
+
+class QuantityPrepRowMappingView(ProjectAccessMixin, View):
+    """POST — apply or clear session-only manual mapping values (Slice 5b)."""
+
+    def post(self, request, pk):  # noqa: ANN001
+        project = self.get_project()
+        action = (request.POST.get("action") or "apply").strip().lower()
+        row_key = (request.POST.get("row_key") or "").strip()
+        return_query = (request.POST.get("return_query") or "").strip()
+        quantities = ModelQuantitiesService(project).build()
+        effective = QueryDict(return_query, mutable=False) if return_query else request.GET
+        basis_overrides, schema_includes, source_mappings = _qty_prep_runtime_from_query(
+            project, request.user, effective
+        )
+        qty_prep = build_preparation_ui(
+            quantities,
+            basis_overrides=basis_overrides,
+            schema_includes=schema_includes,
+            source_mappings=source_mappings,
+        )
+        known_keys = {
+            str(row.get("row_key") or "")
+            for row in (qty_prep.get("prep_rows") or [])
+            if row.get("row_key")
+        }
+        eligible = {
+            item["key"]
+            for item in eligible_mapping_fields(
+                show=qty_prep.get("show") or {},
+                source_intents=qty_prep.get("source_mapping_intents") or {},
+            )
+        }
+
+        svc = QuantityPrepRowMappingService(project, request.user, request.session)
+        if action == "clear":
+            result = svc.clear_values(row_key=row_key)
+            toast_msg = "Session mapping values cleared."
+        else:
+            if not eligible:
+                return toast_response(
+                    "Manual mapping values are available only for fields "
+                    "configured as Manual field.",
+                    level="error",
+                    status=400,
+                )
+            values = collect_posted_mapping_values(
+                project=project,
+                post=request.POST,
+                eligible_keys=eligible,
+            )
+            result = svc.apply_values(
+                row_key=row_key,
+                values=values,
+                eligible_keys=eligible,
+                known_row_keys=known_keys,
+            )
+            toast_msg = "Session mapping values applied — not saved to configuration drafts."
+
+        if result.get("error"):
+            return toast_response(result["error"], level="error", status=400)
+
+        redirect_url = reverse("takeoff:qto", kwargs={"pk": project.pk})
+        if return_query:
+            redirect_url = f"{redirect_url}?{return_query}"
+        if request.headers.get("HX-Request"):
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = redirect_url
+            return trigger_toast(response, toast_msg)
+        messages.success(request, toast_msg)
+        return redirect(redirect_url)
+
+
+class QuantityPrepRowMappingBatchView(ProjectAccessMixin, View):
+    """POST — preview or apply batch session schema mapping (MAP-BIG-1).
+
+    Does not create F2 snapshots. Empty target fields leave existing values
+    unchanged (unlike single-row apply which clears omitted fields).
+    """
+
+    def post(self, request, pk):  # noqa: ANN001
+        project = self.get_project()
+        action = (request.POST.get("action") or "preview").strip().lower()
+        return_query = (request.POST.get("return_query") or "").strip()
+        effective = QueryDict(return_query, mutable=False) if return_query else request.GET
+        # Session UI so Unit confirmation + SEM fields are available for safety.
+        runtime = build_qty_prep_session_ui(
+            project=project,
+            user=request.user,
+            session=request.session,
+            query=effective,
+        )
+        qty_prep = runtime["qty_prep"]
+        known_keys = {
+            str(row.get("row_key") or "")
+            for row in (qty_prep.get("prep_rows") or [])
+            if row.get("row_key")
+        }
+        eligible = {
+            item["key"]
+            for item in eligible_mapping_fields(
+                show=qty_prep.get("show") or {},
+                source_intents=qty_prep.get("source_mapping_intents") or {},
+            )
+        }
+        row_keys = parse_posted_row_keys(request.POST)
+        if not row_keys:
+            return toast_response("Select at least one preparation row.", level="error", status=400)
+        if not eligible:
+            return toast_response(
+                "Manual mapping values are available only for fields configured as Manual field.",
+                level="error",
+                status=400,
+            )
+
+        values = collect_posted_batch_mapping_values(
+            project=project,
+            post=request.POST,
+            eligible_keys=eligible,
+        )
+        svc = QuantityPrepRowMappingService(project, request.user, request.session)
+
+        if action == "apply":
+            result = svc.apply_batch_mapping(
+                row_keys=row_keys,
+                values=values,
+                eligible_keys=eligible,
+                known_row_keys=known_keys,
+            )
+            if result.get("error"):
+                return toast_response(result["error"], level="error", status=400)
+            applied = (result.get("result") or {}).get("applied_row_count", 0)
+            toast_msg = (
+                f"Session mapping updated ({applied} row"
+                f"{'' if applied == 1 else 's'}). "
+                "Freeze updated 5D snapshot to review in 5D Quantity Review."
+            )
+            redirect_url = reverse("takeoff:qto", kwargs={"pk": project.pk})
+            if return_query:
+                redirect_url = f"{redirect_url}?{return_query}"
+            if request.headers.get("HX-Request"):
+                response = HttpResponse(status=204)
+                response["HX-Redirect"] = redirect_url
+                return trigger_toast(response, toast_msg)
+            messages.success(request, toast_msg)
+            return redirect(redirect_url)
+
+        # Default: preview (no session write)
+        prep_rows = list(qty_prep.get("prep_rows") or [])
+        preview = svc.preview_batch_mapping(
+            row_keys=row_keys,
+            values=values,
+            eligible_keys=eligible,
+            prep_rows=prep_rows,
+        )
+        if preview.get("error"):
+            return toast_response(preview["error"], level="error", status=400)
+        result = preview["result"] or {}
+        by_key = {str(row.get("row_key") or ""): row for row in prep_rows if row.get("row_key")}
+        selected_rows = [
+            by_key[key] for key in (result.get("valid_row_keys") or []) if key in by_key
+        ]
+        selection_safety = analyze_batch_selection_safety(selected_rows)
+        result["selection_safety"] = selection_safety
+        return render(
+            request,
+            "takeoff/components/quantities_batch_mapping_preview.html",
+            {
+                "preview": result,
+                "selection_safety": selection_safety,
+                "mapping_field_labels": {
+                    "classification_code": "Classification",
+                    "package_boq_mapping": "Package",
+                    "work_package": "Work package",
+                },
+            },
+        )
 
 
 class QTODataView(ProjectAccessMixin, View):

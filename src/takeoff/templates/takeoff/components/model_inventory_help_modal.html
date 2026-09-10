@@ -1,0 +1,72 @@
+<!-- takeoff/components/model_inventory_help_modal.html — How Model works -->
+
+<div class="modal fade" id="modelInventoryHelpModal" tabindex="-1"
+     aria-labelledby="modelInventoryHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="modelInventoryHelpLabel">
+                    <i class="bi bi-box-seam me-2 text-primary"></i>
+                    How Model Works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <p class="fw-semibold fs-7 mb-2">What is it?</p>
+                <p class="text-secondary fs-7 mb-4">
+                    Model is the 4D/5D <strong class="text-body">Model Readiness</strong> dashboard:
+                    overall status, filters, visual charts (element links, task links,
+                    floor/zone sequencing, QTO, granularity, playback), then next actions,
+                    then inventory evidence tables.
+                    Element link coverage uses applied / confirmed schedule-model links only.
+                    QTO readiness uses IFC model quantities (<code>Qto_*</code>), not BOQ.
+                    This page does not replace Explore, Viewer, Quantities, or Time View playback.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">Lifecycle</p>
+                <p class="text-secondary fs-7 mb-4">
+                    After an IFC file is indexed, this page reads the IFC index and existing links.
+                    Parameter Match still happens under Links. Playback lives under Time View.
+                    Classification not indexed until classifications exist.
+                    Task Legend Groups need a later saved appearance profile — not an active feature.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">How to use it</p>
+                <ul class="text-secondary fs-7 mb-4">
+                    <li>Read overall status and the four headline metrics first.</li>
+                    <li>Use filters to focus class/level and the element list. Task, playback, and granularity charts stay project-wide.</li>
+                    <li>Follow a next action: Open Links, Open Quantities, or Open Time View.</li>
+                    <li>Scroll to Inventory evidence to inspect the class, level, and element tables.</li>
+                    <li>Viewer is a secondary shortcut — this page does not embed the viewer.</li>
+                </ul>
+
+                <p class="fw-semibold fs-7 mb-2">Who can do what</p>
+                <p class="text-secondary fs-7 mb-4">
+                    BIM coordinators, planners, and 4D/5D reviewers use this page read-only.
+                    Rule-based linking happens under Links. Programme playback happens under Time View.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">Caveats</p>
+                <ul class="text-secondary fs-7 mb-4">
+                    <li>Element link coverage and task link coverage use different denominators.</li>
+                    <li>Has IFC Qto depends on IFC <code>Qto_*</code> data in the indexed model.</li>
+                    <li>Classification not indexed (not scraped from properties).</li>
+                    <li>Playback chart does not run Time View and does not colour the model here.</li>
+                    <li>IFC Elements is a paginated inspection list, not Explore.</li>
+                </ul>
+
+                <p class="fw-semibold fs-7 mb-2">Not claimed</p>
+                <p class="text-secondary fs-7 mb-0" data-testid="model-inventory-not-claims">
+                    Not BOQ. Not QS valuation. Not ERP. Not company actual cost.
+                    Not commercial 5D / cost control. Not a Synchro replacement.
+                    Not Explore. Not Viewer. Not Time View playback.
+                    Not Task Legend Groups. Not an IFC-class custom 4D legend.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>

@@ -8,7 +8,57 @@ from . import views
 app_name = "takeoff"
 
 urlpatterns = [
+    path(
+        "projects/<uuid:pk>/inventory/",
+        views.ModelInventoryView.as_view(),
+        name="model_inventory",
+    ),
+    path(
+        "projects/<uuid:pk>/inventory/refresh/",
+        views.LinkAnalysisRefreshView.as_view(),
+        name="link_analysis_refresh",
+    ),
+    path(
+        "projects/<uuid:pk>/inventory/entities/",
+        views.ModelInventoryEntitiesView.as_view(),
+        name="model_inventory_entities",
+    ),
     path("projects/<uuid:pk>/", views.QTOView.as_view(), name="qto"),
+    path(
+        "projects/<uuid:pk>/unit-confirm/",
+        views.QuantityUnitConfirmView.as_view(),
+        name="qty_unit_confirm",
+    ),
+    path(
+        "projects/<uuid:pk>/prep-configs/save/",
+        views.QuantityPrepConfigSaveView.as_view(),
+        name="qty_prep_config_save",
+    ),
+    path(
+        "projects/<uuid:pk>/prep-row-reviews/",
+        views.QuantityPrepRowReviewView.as_view(),
+        name="qty_prep_row_review",
+    ),
+    path(
+        "projects/<uuid:pk>/prep-row-mapping-values/",
+        views.QuantityPrepRowMappingView.as_view(),
+        name="qty_prep_row_mapping",
+    ),
+    path(
+        "projects/<uuid:pk>/prep-row-mapping-batch/",
+        views.QuantityPrepRowMappingBatchView.as_view(),
+        name="qty_prep_row_mapping_batch",
+    ),
+    path(
+        "projects/<uuid:pk>/prep-freeze/",
+        views.QuantityPrepFreezeView.as_view(),
+        name="qty_prep_freeze",
+    ),
+    path(
+        "projects/<uuid:pk>/prep-export/",
+        views.QuantityPrepExportView.as_view(),
+        name="qty_prep_export",
+    ),
     path("projects/<uuid:pk>/data/", views.QTODataView.as_view(), name="qto_data"),
     path(
         "projects/<uuid:pk>/recompute/",

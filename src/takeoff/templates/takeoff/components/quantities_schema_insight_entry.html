@@ -1,0 +1,64 @@
+<!-- takeoff/components/quantities_schema_insight_entry.html — 5D Quantity Review entry -->
+<section class="qty-builder-section border rounded p-3 mb-3"
+         data-testid="qty-schema-insight-entry">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+    <div style="min-width:0; max-width:42rem;">
+      <h6 class="mb-1" data-testid="qty-schema-insight-title">5D Quantity Review</h6>
+      <p class="small text-secondary mb-2" data-testid="qty-schema-insight-description">
+        Review IFC quantities grouped by the latest frozen 5D snapshot.
+      </p>
+      <div class="d-flex flex-wrap gap-1 mb-2" data-testid="qty-schema-insight-badges">
+        <span class="badge text-bg-secondary">Read-only</span>
+        <span class="badge text-bg-secondary">Snapshot-based</span>
+      </div>
+      <details class="small text-secondary" data-testid="qty-schema-insight-why-snapshot">
+        <summary class="fw-semibold" style="cursor:pointer;">Why a snapshot is needed</summary>
+        <ul class="mb-0 mt-2 ps-3">
+          <li>Live quantity prep is editable and session-based.</li>
+          <li>A snapshot freezes the row state and mapping provenance.</li>
+          <li>5D Quantity Review reads that frozen state — not the live table alone.</li>
+          <li>If a snapshot was created without mappings, the review may show unmapped rows only.</li>
+        </ul>
+      </details>
+    </div>
+    <div class="text-end" style="max-width:22rem;">
+      {% if fived_schema_insight_url and fived_latest_version %}
+      <a href="{{ fived_schema_insight_url }}"
+         class="btn btn-sm btn-outline-primary"
+         data-testid="qty-schema-insight-open"
+         title="Open 5D Quantity Review for the latest frozen snapshot">
+        <i class="bi bi-bar-chart-steps me-1"></i>Open latest 5D Review
+      </a>
+      <div class="mi-footnote mt-1" data-testid="qty-schema-insight-version-meta">
+        Latest snapshot: {{ fived_latest_version.data_model.name }}
+        · {{ fived_latest_version.version_label }}
+        {% if fived_latest_version.created_at %}
+        · {{ fived_latest_version.created_at|date:"Y-m-d H:i" }}
+        {% endif %}
+      </div>
+      <p class="mi-footnote mt-1 text-secondary mb-0" data-testid="qty-schema-insight-demo-note">
+        Review uses the frozen snapshot. Freeze a new snapshot after mapping changes.
+      </p>
+      {% else %}
+      <button type="button"
+              class="btn btn-sm btn-outline-secondary"
+              disabled
+              data-testid="qty-schema-insight-disabled"
+              aria-disabled="true">
+        Open latest 5D Review
+      </button>
+      <div class="mi-footnote mt-2 text-secondary text-start"
+           data-testid="qty-schema-insight-empty">
+        <p class="mb-0" data-testid="qty-schema-insight-empty-lead">
+          No frozen 5D snapshot is available yet. Prepare mappings and freeze a snapshot to open
+          5D Quantity Review.
+        </p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  <p class="mi-footnote mt-2 mb-0" data-testid="qty-schema-insight-freeze-reminder">
+    Mappings or units changed? Use <strong>Freeze updated 5D snapshot</strong> above when the
+    unsaved banner appears. Fresh session changes need a new freeze before they appear in 5D Review.
+  </p>
+</section>

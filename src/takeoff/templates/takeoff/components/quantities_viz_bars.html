@@ -1,0 +1,16 @@
+<!-- takeoff/components/quantities_viz_bars.html — compact count bars -->
+<ul class="qty-viz-bars mb-0" role="list">
+  {% for item in items %}
+  <li class="qty-viz-bar-row">
+    <div class="qty-viz-bar-meta">
+      <span class="qty-viz-bar-label">{{ item.label }}</span>
+      <span class="qty-viz-bar-count">{{ item.count }}</span>
+    </div>
+    <div class="qty-viz-bar-track" aria-hidden="true">
+      <span class="qty-viz-bar-fill" style="width: {{ item.bar_pct }}%;"></span>
+    </div>
+  </li>
+  {% empty %}
+  <li class="qty-viz-bar-empty text-secondary">No generated rows yet.</li>
+  {% endfor %}
+</ul>

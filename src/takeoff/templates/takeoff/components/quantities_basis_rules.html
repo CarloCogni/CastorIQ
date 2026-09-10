@@ -1,0 +1,104 @@
+<!-- takeoff/components/quantities_basis_rules.html — User-defined Measurement Rules (Slice 3a) -->
+<section class="qty-builder-section" data-testid="quantities-measurement-rules">
+  <div class="qty-builder-h">
+    <h6 class="mb-0">User-defined Measurement Rules</h6>
+    <span class="mi-footnote">User-owned — not auto-detected</span>
+  </div>
+  <p class="qty-builder-note mb-2" data-testid="qty-basis-rules-banner">
+    {{ qty_prep.basis_rules_banner }}
+  </p>
+  <p class="qty-builder-note mb-2" data-testid="qty-source-vs-basis-note">
+    {{ qty_prep.source_vs_basis_note }}
+  </p>
+  <p class="qty-builder-note mb-2" data-testid="qty-unit-basis-derivation-note">
+    {{ qty_prep.unit_basis_derivation_note }}
+  </p>
+  <p class="qty-builder-note mb-2" data-testid="qty-user-selected-basis-note">
+    {{ qty_prep.user_selected_basis_note }}
+  </p>
+  <p class="qty-builder-note mb-2" data-testid="qty-session-only-note">
+    {{ qty_prep.session_only_note }}
+  </p>
+
+  <div class="table-responsive">
+      <table class="table table-sm qty-config-table qty-rules-table mb-0" data-testid="qty-basis-rules-table">
+        <thead>
+          <tr>
+            <th>Model group</th>
+            <th>Measurement Basis</th>
+            <th>Unit</th>
+            <th>Available indexed measures</th>
+            <th>Status</th>
+            <th>Select basis</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rule in qty_prep.basis_rules %}
+          <tr data-testid="qty-basis-rule-row"
+              data-qty-needs-basis="{% if rule.needs_basis_action %}1{% else %}0{% endif %}"
+              data-qty-model-group="{{ rule.model_group }}">
+            <td class="qty-col-primary">{{ rule.model_group }}</td>
+            <td>
+              {% if rule.quantity_basis == "Unresolved" %}
+              <span class="qty-pill qty-pill-unresolved">Unresolved</span>
+              {% else %}
+              <span class="qty-pill qty-pill-source">{{ rule.quantity_basis }}</span>
+              {% endif %}
+            </td>
+            <td class="text-secondary" data-testid="qty-rule-unit-{{ rule.model_group }}">
+              {{ rule.unit_basis_display|default:rule.unit_basis }}
+            </td>
+            <td class="qty-available-measures"
+                data-testid="qty-available-measures-{{ rule.model_group }}">
+              Available indexed measures:
+              {% if rule.available_indexed_measures %}
+              {{ rule.available_measures_label }}
+              {% else %}
+              None indexed
+              {% endif %}
+            </td>
+            <td>
+              {% if rule.needs_basis_action %}
+              <span class="qty-pill qty-pill-unresolved">{{ rule.status }}</span>
+              {% elif "Missing" in rule.status %}
+              <span class="qty-pill qty-pill-review">{{ rule.status }}</span>
+              {% else %}
+              <span class="qty-pill qty-pill-muted">{{ rule.status }}</span>
+              {% endif %}
+            </td>
+            <td>
+              <label class="visually-hidden" for="{{ rule.param_name }}">
+                Basis for {{ rule.model_group }}
+              </label>
+              <select name="{{ rule.param_name }}"
+                      id="{{ rule.param_name }}"
+                      class="form-select form-select-sm qty-basis-select"
+                      data-testid="qty-select-basis-{{ rule.model_group }}">
+                {% for opt in rule.basis_options %}
+                <option value="{{ opt.value }}"
+                        {% if rule.quantity_basis == opt.value %}selected{% endif %}
+                        {% if opt.disabled %}disabled{% endif %}>
+                  {{ opt.label }}
+                </option>
+                {% endfor %}
+              </select>
+              <span class="qty-action-hint d-block mt-1">{{ rule.note }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-flex flex-wrap align-items-center gap-2 mt-3"
+         data-testid="qty-generate-actions">
+      <button type="submit"
+              class="btn btn-sm btn-primary"
+              data-testid="qty-generate-prep-model">
+        Generate Preparation Data Model
+      </button>
+      <span class="mi-footnote" data-testid="qty-generate-session-hint">
+        Session GET until saved as a preparation configuration draft.
+      </span>
+    </div>
+</section>

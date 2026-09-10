@@ -89,11 +89,25 @@
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end bg-surface shadow border" style="z-index: 1030;">
                         <li><a class="dropdown-item fs-8" href="{% url 'projects:ifc_edit' ifc.pk %}">Edit</a></li>
+                        {% if user_permission == "owner" %}
                         <li>
-                            <a class="dropdown-item fs-8 text-warning" href="{% url 'projects:ifc_reparse' ifc.pk %}">
+                            <a class="dropdown-item fs-8 text-warning"
+                               href="{% url 'projects:ifc_reparse' ifc.pk %}"
+                               data-testid="ifc-reparse-action">
                                 <i class="bi bi-arrow-clockwise me-2"></i>Reparse
                             </a>
                         </li>
+                        {% else %}
+                        <li>
+                            <span class="dropdown-item fs-8 text-secondary disabled"
+                                  aria-disabled="true"
+                                  title="Only the project owner can reparse IFC models"
+                                  data-testid="ifc-reparse-owner-only">
+                                <i class="bi bi-arrow-clockwise me-2"></i>Reparse
+                                <span class="ms-1" style="font-size:0.7rem;">(owner only)</span>
+                            </span>
+                        </li>
+                        {% endif %}
                         <li><hr class="dropdown-divider my-1"></li>
                         <li><a class="dropdown-item fs-8 text-danger" href="{% url 'projects:ifc_delete' ifc.pk %}">Delete</a></li>
                     </ul>

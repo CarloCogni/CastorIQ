@@ -1,0 +1,47 @@
+<!-- takeoff/components/quantities_prep_pagination.html — SCALE-1A filtered pagination -->
+{% with p=qty_prep.pagination %}
+{% if p %}
+<nav class="qty-prep-pagination d-flex flex-wrap align-items-center gap-2 mb-2"
+     data-testid="qty-prep-pagination"
+     aria-label="Preparation row pagination">
+  <span class="small" data-testid="qty-prep-pagination-range">
+    {% if p.filtered_rows %}
+    Showing {{ p.start_index }}–{{ p.end_index }} of {{ p.filtered_rows }} filtered preparation row{{ p.filtered_rows|pluralize }}
+    {% else %}
+    Showing 0 of 0 filtered preparation rows
+    {% endif %}
+  </span>
+  <span class="small text-secondary" data-testid="qty-prep-pagination-page">
+    Page {{ p.page }} of {{ p.total_pages }}
+  </span>
+  <div class="btn-group btn-group-sm" role="group" aria-label="Page navigation">
+    {% if p.has_previous %}
+    <a class="btn btn-outline-secondary"
+       data-testid="qty-prep-pagination-prev"
+       href="?{{ p.previous_query }}">Previous</a>
+    {% else %}
+    <button type="button" class="btn btn-outline-secondary" disabled
+            data-testid="qty-prep-pagination-prev">Previous</button>
+    {% endif %}
+    {% if p.has_next %}
+    <a class="btn btn-outline-secondary"
+       data-testid="qty-prep-pagination-next"
+       href="?{{ p.next_query }}">Next</a>
+    {% else %}
+    <button type="button" class="btn btn-outline-secondary" disabled
+            data-testid="qty-prep-pagination-next">Next</button>
+    {% endif %}
+  </div>
+  <label class="small mb-0 text-secondary" for="qty-prep-page-size">Page size</label>
+  <select id="qty-prep-page-size"
+          class="form-select form-select-sm"
+          style="width:auto;max-width:5.5rem;"
+          data-testid="qty-prep-page-size"
+          onchange="if(this.value){window.location.search=this.value;}">
+    {% for opt in p.page_size_options %}
+    <option value="?{{ opt.query }}" {% if opt.selected %}selected{% endif %}>{{ opt.size }}</option>
+    {% endfor %}
+  </select>
+</nav>
+{% endif %}
+{% endwith %}

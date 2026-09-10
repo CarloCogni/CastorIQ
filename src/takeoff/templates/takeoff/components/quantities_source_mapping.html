@@ -1,0 +1,57 @@
+<!-- takeoff/components/quantities_source_mapping.html — Source Mapping (Slice 3c-2a) -->
+<section class="qty-builder-section" data-testid="quantities-source-mapping">
+  <div class="qty-builder-h">
+    <h6 class="mb-0">Source Mapping</h6>
+    <span class="mi-footnote">Mapping intent — save via drafts panel</span>
+  </div>
+  <p class="qty-builder-note mb-2" data-testid="qty-source-mapping-session-note">
+    {{ qty_prep.source_mapping_session_note }}
+  </p>
+  <p class="qty-builder-note mb-2" data-testid="qty-source-mapping-option-note">
+    {{ qty_prep.source_mapping_option_note }}
+  </p>
+  <p class="qty-builder-note mb-2">
+    Editable rows: Classification Code, Package Mapping, and Work Package only.
+    Source type defines intent — not values. Exact property picking and free-text values
+    remain out of scope. No AI/ML suggestions, and no Modify send in this slice.
+  </p>
+  <div class="table-responsive">
+    <table class="table table-sm qty-config-table mb-0" data-testid="qty-source-mapping-table">
+      <thead>
+        <tr>
+          <th>Schema field</th>
+          <th>Source</th>
+          <th>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in qty_prep.source_mappings %}
+        <tr data-testid="qty-source-mapping-row"
+            data-qty-source-key="{{ row.key }}"
+            data-qty-source-editable="{% if row.editable %}1{% else %}0{% endif %}">
+          <td class="qty-col-primary">{{ row.field }}</td>
+          <td>
+            {% if row.editable %}
+            <select name="{{ row.param_name }}"
+                    id="{{ row.param_name }}"
+                    class="form-select form-select-sm qty-source-select"
+                    data-testid="qty-source-select-{{ row.key }}">
+              {% for opt in row.options %}
+              <option value="{{ opt.value }}"
+                      {% if row.source == opt.value %}selected{% endif %}>
+                {{ opt.label }}
+              </option>
+              {% endfor %}
+            </select>
+            {% else %}
+            <span class="qty-pill qty-pill-source"
+                  data-testid="qty-source-locked-{{ row.key }}">{{ row.source_label }}</span>
+            {% endif %}
+          </td>
+          <td class="text-secondary">{{ row.detail }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>

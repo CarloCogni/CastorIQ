@@ -1,0 +1,112 @@
+<!-- takeoff/model_inventory_entities_page.html — IFC Elements full grid (reference V2) -->
+{% include "takeoff/components/model_inventory_grid_styles.html" %}
+
+<div class="d-flex flex-column h-100 overflow-hidden mi-ws" id="mi-entities-page-root"
+     data-testid="mi-entities-full-page">
+
+  <div class="mi-cmd" data-testid="mi-entities-toolbar">
+    <div class="d-flex align-items-baseline gap-2" style="min-width:0;">
+      <h5 class="mb-0">IFC Elements</h5>
+      <span class="mi-sub">Model Readiness evidence</span>
+      {% if inventory_source_name %}
+      <span class="mi-source" title="{{ inventory_source_name }}">{{ inventory_source_name }}</span>
+      {% endif %}
+    </div>
+    <span class="mi-badge-quiet">Applied / Confirmed</span>
+    <div class="ms-auto">
+      <a href="{{ model_inventory_url }}"
+         class="btn btn-sm btn-outline-secondary"
+         data-testid="mi-entities-back-to-model">
+        Back to Model
+      </a>
+    </div>
+  </div>
+
+  <div class="mi-entities-shell" data-testid="mi-entities-workspace">
+    <p class="mi-footnote px-2 py-1 mb-0 border-bottom" style="border-color:var(--mi-border)!important;"
+       data-testid="mi-entities-honesty">
+      Link status uses applied / confirmed schedule-model links only.
+      This grid does not dump properties or GlobalIds.
+    </p>
+
+    <form class="mi-filter-bar"
+          data-testid="mi-entities-page-filters"
+          method="get"
+          action="{{ entities_url }}">
+      <div>
+        <label for="mi-page-filter-ifc-class">IFC Class</label>
+        <select class="form-select form-select-sm" id="mi-page-filter-ifc-class" name="ifc_class">
+          <option value="">All</option>
+          {% for cls in filter_options.ifc_classes %}
+          <option value="{{ cls }}" {% if entities.filters.ifc_class == cls %}selected{% endif %}>{{ cls }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="mi-page-filter-level">Level / Storey</label>
+        <select class="form-select form-select-sm" id="mi-page-filter-level" name="level">
+          <option value="">All</option>
+          {% for lvl in filter_options.levels %}
+          <option value="{{ lvl.key }}" {% if entities.filters.level == lvl.key %}selected{% endif %}>{{ lvl.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="mi-page-filter-linked">Link status</label>
+        <select class="form-select form-select-sm" id="mi-page-filter-linked" name="linked_status">
+          <option value="all" {% if entities.filters.linked_status == "all" %}selected{% endif %}>All</option>
+          <option value="linked" {% if entities.filters.linked_status == "linked" %}selected{% endif %}>Applied/Confirmed</option>
+          <option value="unlinked" {% if entities.filters.linked_status == "unlinked" %}selected{% endif %}>Unlinked</option>
+        </select>
+      </div>
+      <div>
+        <label for="mi-page-filter-qto">Has IFC Qto</label>
+        <select class="form-select form-select-sm" id="mi-page-filter-qto" name="has_qto">
+          <option value="all" {% if entities.filters.has_qto == "all" %}selected{% endif %}>All</option>
+          <option value="yes" {% if entities.filters.has_qto == "yes" %}selected{% endif %}>Yes</option>
+          <option value="no" {% if entities.filters.has_qto == "no" %}selected{% endif %}>No</option>
+        </select>
+      </div>
+      <div>
+        <label for="mi-page-filter-page-size">Page size</label>
+        <select class="form-select form-select-sm" id="mi-page-filter-page-size" name="page_size">
+          <option value="50" {% if entities.page_size == 50 %}selected{% endif %}>50</option>
+          <option value="100" {% if entities.page_size == 100 %}selected{% endif %}>100</option>
+        </select>
+      </div>
+      <div>
+        <label class="opacity-0">Apply</label>
+        <button type="submit" class="btn btn-sm btn-primary" data-testid="mi-entities-apply-filters">
+          Apply
+        </button>
+      </div>
+      <div>
+        <label for="mi-entities-page-quick-filter">Filter visible page</label>
+        <input type="search" id="mi-entities-page-quick-filter" class="form-control form-control-sm"
+               placeholder="Filter this page…"
+               data-testid="mi-entities-page-quick-filter"
+               autocomplete="off">
+      </div>
+    </form>
+
+    <div class="flex-grow-1 d-flex flex-column" style="min-height:0; overflow:hidden;"
+         data-testid="mi-entities-grid-host">
+      {% include "takeoff/components/model_inventory_entities.html" %}
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var input = document.getElementById("mi-entities-page-quick-filter");
+  var host = document.getElementById("mi-entities-page-root");
+  if (!input || !host) return;
+  input.addEventListener("input", function () {
+    var q = (input.value || "").trim().toLowerCase();
+    host.querySelectorAll("#mi-entities-results tbody tr").forEach(function (row) {
+      var text = (row.innerText || "").toLowerCase();
+      row.classList.toggle("mi-row-hidden", !!(q && text.indexOf(q) === -1));
+    });
+  });
+}());
+</script>

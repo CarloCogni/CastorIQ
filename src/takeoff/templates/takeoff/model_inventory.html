@@ -1,0 +1,643 @@
+<!-- takeoff/model_inventory.html — Model Workspace Reference V2 + interactions -->
+{% include "takeoff/components/model_inventory_grid_styles.html" %}
+
+<div class="d-flex flex-column h-100 overflow-hidden mi-ws" id="model-inventory-root"
+     data-testid="model-inventory-page">
+
+  <div class="mi-cmd" data-testid="model-workspace-toolbar">
+    <div class="d-flex align-items-baseline gap-2" style="min-width:0;">
+      <h5 data-testid="model-workspace-title">
+        <i class="bi bi-box-seam me-1" style="opacity:.7;"></i>Model Readiness
+      </h5>
+      <span class="mi-sub d-none d-md-inline" data-testid="model-workspace-subtitle">
+        IFC inventory, linkability, and QTO readiness for 4D/5D
+      </span>
+    </div>
+    <button type="button"
+            class="help-pill"
+            data-bs-toggle="modal"
+            data-bs-target="#modelInventoryHelpModal"
+            title="How Model works"
+            aria-label="How Model works">
+      <i class="bi bi-question-circle"></i>
+    </button>
+    {% if inventory.ifc_file_name %}
+    <span class="mi-source" title="{{ inventory.ifc_file_name }}" data-testid="model-workspace-source">
+      {{ inventory.ifc_file_name }}
+    </span>
+    {% endif %}
+    <span class="mi-badge-quiet" data-testid="model-inventory-not-boq-badge"
+          title="IFC model quantities only — not commercial BOQ">Not BOQ</span>
+    <div class="ms-auto d-flex gap-1 flex-wrap">
+      <a href="{{ apply_url }}" class="btn btn-sm btn-primary"
+         data-testid="model-inventory-open-apply">Links</a>
+      <a href="{{ time_view_url }}" class="btn btn-sm btn-outline-secondary"
+         data-testid="model-inventory-open-time-view">Time View</a>
+      <a href="{{ quantities_url }}" class="btn btn-sm btn-outline-secondary"
+         data-testid="model-inventory-open-quantities">Quantities</a>
+      <a href="{{ entities_url }}" class="btn btn-sm btn-outline-secondary"
+         data-testid="model-open-ifc-elements">IFC Elements</a>
+      <a href="{{ viewer_url }}" class="btn btn-sm btn-outline-secondary"
+         data-testid="model-inventory-open-viewer">Viewer</a>
+    </div>
+  </div>
+
+  <div class="mi-dash" data-testid="model-readiness-band">
+  {% include "takeoff/components/model_readiness_cards.html" %}
+
+  {% if not inventory.has_ifc %}
+  <div class="p-3">
+    <div class="alert alert-secondary py-3 mb-0" data-testid="model-inventory-empty-no-ifc">
+      <i class="bi bi-info-circle me-1"></i>
+      No IFC model indexed yet. Upload and process an IFC file under Data Sources / Explore first.
+    </div>
+  </div>
+  {% else %}
+
+  <div class="mi-evidence-wrap" data-testid="model-inventory-evidence">
+    <div class="mi-evidence-intro">
+      <h6>Inventory evidence</h6>
+      <p>Use these tables to investigate readiness findings.</p>
+    </div>
+
+  <div class="mi-shell" data-testid="model-workspace-main">
+
+    <aside class="mi-rail" data-testid="model-breakdown-rail">
+      <div class="mi-zone-h"><span class="mi-zone-title">Model Breakdown</span></div>
+      <div class="mi-zone-body">
+
+        <div class="mi-nav-section" data-testid="model-inventory-by-class" data-mi-collapse="class">
+          <button type="button" class="mi-nav-section-h" data-testid="mi-collapse-class"
+                  aria-expanded="true" aria-controls="mi-class-nav-body">
+            <span class="mi-chevron" aria-hidden="true">▼</span>
+            <span>By IFC Class</span>
+          </button>
+          <div class="mi-nav-body" id="mi-class-nav-body">
+            <ul class="mi-nav-list" data-testid="mi-class-nav">
+              {% for row in inventory.by_class %}
+              {% if row.element_count %}
+                {% widthratio row.trusted_linked row.element_count 100 as nav_cov %}
+              {% else %}
+                {% widthratio 0 1 100 as nav_cov %}
+              {% endif %}
+              <li class="mi-nav-item" data-testid="mi-class-nav-item"
+                  data-mi-focus="class"
+                  data-mi-key="{{ row.ifc_type }}"
+                  data-mi-name="{{ row.ifc_type }}"
+                  data-mi-elements="{{ row.element_count }}"
+                  data-mi-linked="{{ row.trusted_linked }}"
+                  data-mi-unlinked="{{ row.unlinked }}"
+                  data-mi-qto="{{ row.quantity_available }}"
+                  data-mi-coverage="{{ nav_cov }}">
+                <span class="mi-nav-label" title="{{ row.ifc_type }}">{{ row.ifc_type }}</span>
+                <span class="mi-nav-count">{{ row.element_count }}</span>
+              </li>
+              {% empty %}
+              <li class="mi-nav-item text-secondary" data-testid="mi-no-classes">No classes</li>
+              {% endfor %}
+            </ul>
+            {% if inventory.by_class_truncated %}
+            <div class="px-2 py-1 mi-footnote">Top {{ inventory.by_class|length }} of {{ inventory.by_class_total_types }}</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="mi-nav-section" data-testid="model-inventory-by-level" data-mi-collapse="level">
+          <button type="button" class="mi-nav-section-h" data-testid="mi-collapse-level"
+                  aria-expanded="true" aria-controls="mi-level-nav-body">
+            <span class="mi-chevron" aria-hidden="true">▼</span>
+            <span>By Level / Storey</span>
+          </button>
+          <div class="mi-nav-body" id="mi-level-nav-body">
+            <ul class="mi-nav-list" data-testid="mi-level-nav">
+              {% for row in inventory.by_level %}
+              {% if row.entity_count %}
+                {% widthratio row.linked_count row.entity_count 100 as lvl_nav_cov %}
+              {% else %}
+                {% widthratio 0 1 100 as lvl_nav_cov %}
+              {% endif %}
+              <li class="mi-nav-item" data-testid="mi-level-nav-item"
+                  data-mi-focus="level"
+                  data-mi-key="{{ row.level_key }}"
+                  data-mi-name="{{ row.level_label }}"
+                  data-mi-elements="{{ row.entity_count }}"
+                  data-mi-linked="{{ row.linked_count }}"
+                  data-mi-unlinked="{{ row.unlinked_count }}"
+                  data-mi-qto="{{ row.has_ifc_qto_count }}"
+                  data-mi-coverage="{{ lvl_nav_cov }}"
+                  data-mi-classes="{{ row.ifc_class_count }}">
+                <span class="mi-nav-label" title="{{ row.level_label }}">{{ row.level_label }}</span>
+                <span class="mi-nav-count">{{ row.entity_count }}</span>
+              </li>
+              {% empty %}
+              <li class="mi-nav-item text-secondary" data-testid="mi-no-levels">No levels</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+
+        <div class="mi-nav-section" data-testid="model-inventory-missing-data" data-mi-collapse="missing">
+          <button type="button" class="mi-nav-section-h" data-testid="mi-collapse-missing"
+                  aria-expanded="true" aria-controls="mi-missing-body">
+            <span class="mi-chevron" aria-hidden="true">▼</span>
+            <span>Missing Model Data</span>
+          </button>
+          <div class="mi-nav-body" id="mi-missing-body">
+            <div class="mi-missing-mini">
+              <span class="k">Spatial gaps</span>
+              <span class="v" data-testid="mi-missing-level">{{ inventory.missing_model_data.missing_level_count }}</span>
+              <span class="k">QTO gaps</span>
+              <span class="v" data-testid="mi-missing-qto">{{ inventory.missing_model_data.missing_ifc_qto_count }}</span>
+              <span class="k">Classification breakdown</span>
+              <span class="v text-secondary">Unavailable</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <section class="mi-center" data-testid="model-main-grid">
+      <div class="mi-zone-h" data-testid="model-inventory-drilldown">
+        <span class="mi-zone-title">By IFC Class</span>
+        <a href="{{ entities_url }}" class="btn btn-sm btn-outline-secondary"
+           data-testid="model-open-full-grid" style="text-transform:none; letter-spacing:0; font-weight:500;">
+          Open Full Grid
+        </a>
+      </div>
+
+      <div class="mi-grid-tools" data-testid="mi-quick-filter-bar">
+        <span class="mi-tools-label">Filter visible rows</span>
+        <input type="search" id="mi-quick-filter" class="form-control form-control-sm"
+               placeholder="Filter class / level…"
+               data-testid="mi-quick-filter"
+               autocomplete="off">
+      </div>
+
+      <div class="mi-grid-wrap" data-testid="mi-class-grid" style="flex:1 1 55%;">
+        <table class="mi-grid" data-testid="mi-class-table" id="mi-class-table">
+          <thead>
+            <tr>
+              <th class="mi-sortable" data-mi-sort="name" data-testid="mi-sort-class-name">IFC Class</th>
+              <th class="mi-num mi-sortable" data-mi-sort="elements" data-testid="mi-sort-class-elements">Elements</th>
+              <th class="mi-num mi-sortable" data-mi-sort="linked" data-testid="mi-sort-class-linked">Applied / Confirmed</th>
+              <th class="mi-num mi-sortable" data-mi-sort="unlinked">Unlinked</th>
+              <th class="mi-num mi-sortable" data-mi-sort="qto">Has IFC Qto</th>
+              <th class="mi-num mi-sortable" data-mi-sort="coverage">Element link coverage %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in inventory.by_class %}
+            {% if row.element_count %}
+              {% widthratio row.trusted_linked row.element_count 100 as cov_pct %}
+            {% else %}
+              {% widthratio 0 1 100 as cov_pct %}
+            {% endif %}
+            <tr data-testid="mi-class-row" tabindex="0"
+                data-mi-focus="class"
+                data-mi-key="{{ row.ifc_type }}"
+                data-mi-name="{{ row.ifc_type }}"
+                data-mi-elements="{{ row.element_count }}"
+                data-mi-linked="{{ row.trusted_linked }}"
+                data-mi-unlinked="{{ row.unlinked }}"
+                data-mi-qto="{{ row.quantity_available }}"
+                data-mi-coverage="{{ cov_pct }}">
+              <td><span class="mi-class-chip">{{ row.ifc_type }}</span></td>
+              <td class="mi-num">{{ row.element_count }}</td>
+              <td class="mi-num">{{ row.trusted_linked }}</td>
+              <td class="mi-num">
+                {{ row.unlinked }}
+                {% if row.unlinked > 0 %}<span class="mi-chip mi-chip-warn ms-1">Unlinked</span>{% endif %}
+              </td>
+              <td class="mi-num">{{ row.quantity_available }}</td>
+              <td class="mi-num">
+                <span class="mi-bar">
+                  <span class="mi-bar-track" aria-hidden="true"><span class="mi-bar-fill" style="width:{{ cov_pct }}%;"></span></span>
+                  <span class="mi-bar-pct">{{ cov_pct }}%</span>
+                </span>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="mi-empty-cell">No IFC classes in the indexed model.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mi-zone-h" style="border-top:1px solid var(--mi-border);">
+        <span class="mi-zone-title">By Level / Storey</span>
+      </div>
+      <div class="mi-grid-wrap" data-testid="mi-level-grid" style="flex:0 0 28%; min-height:90px;">
+        <table class="mi-grid" data-testid="mi-level-table" id="mi-level-table">
+          <thead>
+            <tr>
+              <th>Level / Storey</th>
+              <th class="mi-num">Elements</th>
+              <th class="mi-num">Applied / Confirmed</th>
+              <th class="mi-num">Unlinked Model Elements</th>
+              <th class="mi-num">Has IFC Qto</th>
+              <th class="mi-num">IFC Classes</th>
+              <th class="mi-num">Element link coverage %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in inventory.by_level %}
+            {% if row.entity_count %}
+              {% widthratio row.linked_count row.entity_count 100 as lvl_cov %}
+            {% else %}
+              {% widthratio 0 1 100 as lvl_cov %}
+            {% endif %}
+            <tr data-testid="mi-level-row" tabindex="0"
+                data-mi-focus="level"
+                data-mi-key="{{ row.level_key }}"
+                data-mi-name="{{ row.level_label }}"
+                data-mi-elements="{{ row.entity_count }}"
+                data-mi-linked="{{ row.linked_count }}"
+                data-mi-unlinked="{{ row.unlinked_count }}"
+                data-mi-qto="{{ row.has_ifc_qto_count }}"
+                data-mi-coverage="{{ lvl_cov }}"
+                data-mi-classes="{{ row.ifc_class_count }}">
+              <td>{{ row.level_label }}</td>
+              <td class="mi-num">{{ row.entity_count }}</td>
+              <td class="mi-num">{{ row.linked_count }}</td>
+              <td class="mi-num">
+                {{ row.unlinked_count }}
+                {% if row.unlinked_count > 0 %}<span class="mi-chip mi-chip-warn ms-1">Unlinked</span>{% endif %}
+              </td>
+              <td class="mi-num">{{ row.has_ifc_qto_count }}</td>
+              <td class="mi-num">{{ row.ifc_class_count }}</td>
+              <td class="mi-num">
+                <span class="mi-bar">
+                  <span class="mi-bar-track" aria-hidden="true"><span class="mi-bar-fill" style="width:{{ lvl_cov }}%;"></span></span>
+                  <span class="mi-bar-pct">{{ lvl_cov }}%</span>
+                </span>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="mi-empty-cell">No level / storey rows for this model.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="border-top" style="border-color:var(--mi-border)!important; flex:0 0 auto; max-height:26%; min-height:110px; display:flex; flex-direction:column;"
+           data-testid="model-inventory-entities">
+        <div class="mi-zone-h">
+          <span class="mi-zone-title">IFC Elements</span>
+          <a href="{{ entities_url }}" class="btn btn-sm btn-outline-secondary"
+             style="text-transform:none; letter-spacing:0; font-weight:500;">Full list</a>
+        </div>
+        <form class="mi-filter-bar"
+              data-testid="mi-entities-filters"
+              hx-get="{{ entities_url }}"
+              hx-target="#mi-entities-results"
+              hx-swap="outerHTML"
+              hx-trigger="change, submit">
+          <div>
+            <label for="mi-filter-ifc-class">IFC Class</label>
+            <select class="form-select form-select-sm" id="mi-filter-ifc-class" name="ifc_class">
+              <option value="">All</option>
+              {% for cls in inventory.filter_options.ifc_classes %}
+              <option value="{{ cls }}">{{ cls }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="mi-filter-level">Level / Storey</label>
+            <select class="form-select form-select-sm" id="mi-filter-level" name="level">
+              <option value="">All</option>
+              {% for lvl in inventory.filter_options.levels %}
+              <option value="{{ lvl.key }}">{{ lvl.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="mi-filter-linked">Link status</label>
+            <select class="form-select form-select-sm" id="mi-filter-linked" name="linked_status">
+              <option value="all">All</option>
+              <option value="linked">Applied/Confirmed</option>
+              <option value="unlinked">Unlinked</option>
+            </select>
+          </div>
+          <div>
+            <label for="mi-filter-qto">Has IFC Qto</label>
+            <select class="form-select form-select-sm" id="mi-filter-qto" name="has_qto">
+              <option value="all">All</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <div>
+            <label for="mi-filter-page-size">Page size</label>
+            <select class="form-select form-select-sm" id="mi-filter-page-size" name="page_size">
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          <input type="hidden" name="page" value="1">
+        </form>
+        <div id="mi-entities-results"
+             data-testid="mi-entities-results"
+             style="flex:1; min-height:0; overflow:hidden; display:flex; flex-direction:column;"
+             hx-get="{{ entities_url }}?page_size=50"
+             hx-trigger="load"
+             hx-swap="outerHTML">
+          <div class="text-secondary small py-2 px-2">
+            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+            Loading IFC Elements…
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="mi-inspector" data-testid="model-readiness-inspector">
+      <div class="mi-zone-h"><span class="mi-zone-title">Readiness inspector</span></div>
+      <div class="mi-zone-body">
+        <div class="mi-prop" id="mi-selection-inspector" data-testid="mi-selection-inspector"
+             data-mi-selection-ready="1">
+          <span class="mi-prop-k">Selection</span>
+          <div class="mi-prop-v" style="font-weight:500;" id="mi-selection-label"
+               data-testid="mi-selection-label">None — select a class or level row</div>
+          <div class="mi-sel-grid" id="mi-selection-fields" data-testid="mi-selection-fields" hidden>
+            <span class="k">Type</span><span class="v" id="mi-sel-type" data-testid="mi-sel-type">—</span>
+            <span class="k">Name</span><span class="v" id="mi-sel-name" data-testid="mi-sel-name">—</span>
+            <span class="k">Elements</span><span class="v" id="mi-sel-elements" data-testid="mi-sel-elements">—</span>
+            <span class="k">Applied / Confirmed</span><span class="v" id="mi-sel-linked" data-testid="mi-sel-linked">—</span>
+            <span class="k">Unlinked</span><span class="v" id="mi-sel-unlinked" data-testid="mi-sel-unlinked">—</span>
+            <span class="k">Has IFC Qto</span><span class="v" id="mi-sel-qto" data-testid="mi-sel-qto">—</span>
+            <span class="k">Element link coverage %</span><span class="v" id="mi-sel-coverage" data-testid="mi-sel-coverage">—</span>
+          </div>
+          <p class="mi-prop-note" id="mi-selection-detail" data-testid="mi-selection-detail"></p>
+        </div>
+        <p class="mi-prop-note px-2 pb-2">Global totals are in the charts above. This panel shows the selected class or level only.</p>
+      </div>
+    </aside>
+  </div>
+  </div>
+  {% endif %}
+  </div>
+</div>
+
+{% include "takeoff/components/model_inventory_help_modal.html" %}
+
+<script>
+(function () {
+  var root = document.getElementById("model-inventory-root");
+  if (!root) return;
+
+  function escAttr(v) {
+    if (window.CSS && typeof CSS.escape === "function") return CSS.escape(v);
+    return String(v).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  }
+
+  function clearSelected() {
+    root.querySelectorAll(".mi-row-selected, .mi-nav-item.is-active").forEach(function (el) {
+      el.classList.remove("mi-row-selected", "is-active");
+    });
+  }
+
+  function applySelection(el) {
+    if (!el) return;
+    clearSelected();
+    el.classList.add(el.tagName === "TR" ? "mi-row-selected" : "is-active");
+
+    var focus = el.getAttribute("data-mi-focus") || "class";
+    var name = el.getAttribute("data-mi-name") || el.getAttribute("data-mi-key") || "—";
+    var key = el.getAttribute("data-mi-key") || "";
+    var elements = el.getAttribute("data-mi-elements") || "—";
+    var linked = el.getAttribute("data-mi-linked") || "—";
+    var unlinked = el.getAttribute("data-mi-unlinked") || "—";
+    var qto = el.getAttribute("data-mi-qto") || "—";
+    var coverage = el.getAttribute("data-mi-coverage");
+    var typeLabel = focus === "level" ? "Level / Storey" : "IFC Class";
+
+    var label = document.getElementById("mi-selection-label");
+    var fields = document.getElementById("mi-selection-fields");
+    var detail = document.getElementById("mi-selection-detail");
+    if (label) label.textContent = typeLabel + ": " + name;
+    if (fields) fields.hidden = false;
+    var set = function (id, val) {
+      var n = document.getElementById(id);
+      if (n) n.textContent = val;
+    };
+    set("mi-sel-type", typeLabel);
+    set("mi-sel-name", name);
+    set("mi-sel-elements", elements);
+    set("mi-sel-linked", linked);
+    set("mi-sel-unlinked", unlinked);
+    set("mi-sel-qto", qto);
+    set("mi-sel-coverage", coverage != null && coverage !== "" ? coverage + "%" : "—");
+    if (detail) {
+      var note = "Values from indexed Model Readiness (Applied / Confirmed links only).";
+      if (parseInt(unlinked, 10) > 0) {
+        note += " Unlinked elements remain for this selection.";
+      }
+      detail.textContent = note;
+    }
+
+    // Sync highlight across nav + class/level tables
+    if (focus === "class" && key) {
+      var nav = root.querySelector('.mi-nav-item[data-mi-focus="class"][data-mi-key="' + escAttr(key) + '"]');
+      if (nav) nav.classList.add("is-active");
+      var row = root.querySelector('tr[data-testid="mi-class-row"][data-mi-key="' + escAttr(key) + '"]');
+      if (row) row.classList.add("mi-row-selected");
+    }
+    if (focus === "level" && key) {
+      var navL = root.querySelector('.mi-nav-item[data-mi-focus="level"][data-mi-key="' + escAttr(key) + '"]');
+      if (navL) navL.classList.add("is-active");
+      var rowL = root.querySelector('tr[data-testid="mi-level-row"][data-mi-key="' + escAttr(key) + '"]');
+      if (rowL) rowL.classList.add("mi-row-selected");
+    }
+  }
+
+  // Collapse groups
+  root.querySelectorAll("[data-mi-collapse]").forEach(function (section) {
+    var btn = section.querySelector(".mi-nav-section-h");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      var collapsed = section.classList.toggle("is-collapsed");
+      btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    });
+  });
+
+  // Selection
+  root.addEventListener("click", function (e) {
+    var hit = e.target.closest(
+      'tr[data-testid="mi-class-row"], tr[data-testid="mi-level-row"], .mi-nav-item[data-mi-key]'
+    );
+    if (!hit || !root.contains(hit)) return;
+    if (e.target.closest(".mi-nav-section-h")) return;
+    applySelection(hit);
+  });
+
+  // Quick filter (visible rows in class + level grids)
+  var filterInput = document.getElementById("mi-quick-filter");
+  if (filterInput) {
+    filterInput.addEventListener("input", function () {
+      var q = (filterInput.value || "").trim().toLowerCase();
+      root.querySelectorAll(
+        'tr[data-testid="mi-class-row"], tr[data-testid="mi-level-row"]'
+      ).forEach(function (row) {
+        var name = (row.getAttribute("data-mi-name") || row.getAttribute("data-mi-key") || "").toLowerCase();
+        var text = (row.innerText || "").toLowerCase();
+        var show = !q || name.indexOf(q) !== -1 || text.indexOf(q) !== -1;
+        row.classList.toggle("mi-row-hidden", !show);
+      });
+    });
+  }
+
+  // Client-side sort for By IFC Class grid
+  var classTable = document.getElementById("mi-class-table");
+  var sortState = { key: null, dir: 1 };
+  if (classTable) {
+    classTable.querySelectorAll("th.mi-sortable").forEach(function (th) {
+      th.addEventListener("click", function () {
+        var key = th.getAttribute("data-mi-sort");
+        if (!key) return;
+        if (sortState.key === key) sortState.dir *= -1;
+        else { sortState.key = key; sortState.dir = key === "name" ? 1 : -1; }
+        classTable.querySelectorAll("th.mi-sortable").forEach(function (h) {
+          h.classList.remove("mi-sort-asc", "mi-sort-desc");
+        });
+        th.classList.add(sortState.dir === 1 ? "mi-sort-asc" : "mi-sort-desc");
+        var tbody = classTable.tBodies[0];
+        if (!tbody) return;
+        var rows = Array.prototype.slice.call(
+          tbody.querySelectorAll('tr[data-testid="mi-class-row"]')
+        );
+        rows.sort(function (a, b) {
+          var av = a.getAttribute("data-mi-" + (key === "name" ? "name" : key)) || "";
+          var bv = b.getAttribute("data-mi-" + (key === "name" ? "name" : key)) || "";
+          if (key === "name") {
+            return av.localeCompare(bv) * sortState.dir;
+          }
+          var an = parseFloat(av) || 0;
+          var bn = parseFloat(bv) || 0;
+          return (an - bn) * sortState.dir;
+        });
+        rows.forEach(function (r) { tbody.appendChild(r); });
+      });
+    });
+  }
+
+  // Dashboard filters: class/level update element+QTO charts; tables; entities GET.
+  // Task, spatial, granularity, playback charts stay project-wide.
+  var dashForm = document.getElementById("mi-dash-filters");
+  var dashDataEl = document.getElementById("mi-dash-data");
+  var dashData = null;
+  if (dashDataEl) {
+    try { dashData = JSON.parse(dashDataEl.textContent || "{}"); } catch (err) { dashData = null; }
+  }
+
+  function pct(part, total) {
+    if (!total) return 0;
+    return Math.round((1000 * part) / total) / 10;
+  }
+
+  function setBar(okId, gapId, okN, gapN, total) {
+    var okEl = document.getElementById(okId);
+    var gapEl = document.getElementById(gapId);
+    if (okEl) okEl.style.width = pct(okN, total) + "%";
+    if (gapEl) gapEl.style.width = pct(gapN, total) + "%";
+  }
+
+  function applyDashFilters() {
+    if (!dashForm) return;
+    var cls = (document.getElementById("mi-dash-class") || {}).value || "";
+    var lvl = (document.getElementById("mi-dash-level") || {}).value || "";
+    var linked = (document.getElementById("mi-dash-linked") || {}).value || "all";
+    var qto = (document.getElementById("mi-dash-qto") || {}).value || "all";
+    var issue = (document.getElementById("mi-dash-issue") || {}).value || "all";
+
+    root.querySelectorAll('tr[data-testid="mi-class-row"]').forEach(function (row) {
+      var show = !cls || row.getAttribute("data-mi-key") === cls;
+      row.classList.toggle("mi-row-hidden", !show);
+    });
+    root.querySelectorAll('tr[data-testid="mi-level-row"]').forEach(function (row) {
+      var show = !lvl || row.getAttribute("data-mi-key") === lvl;
+      row.classList.toggle("mi-row-hidden", !show);
+    });
+
+    root.querySelectorAll("[data-issue-type]").forEach(function (card) {
+      var t = card.getAttribute("data-issue-type") || "";
+      card.classList.toggle("is-hidden", issue !== "all" && t !== issue);
+    });
+    root.querySelectorAll("[data-chart]").forEach(function (chart) {
+      var t = chart.getAttribute("data-chart") || "";
+      chart.classList.toggle("is-dim", issue !== "all" && t !== issue);
+    });
+
+    var slice = dashData && dashData.project ? dashData.project : null;
+    var scopeLabel = "Project-wide";
+    if (dashData && cls) {
+      var classRow = (dashData.by_class || []).find(function (r) { return r.key === cls; });
+      if (classRow) {
+        slice = {
+          elements_total: classRow.elements,
+          elements_linked: classRow.linked,
+          elements_unlinked: classRow.unlinked,
+          qto_yes: classRow.qto,
+          qto_no: Math.max(0, classRow.elements - classRow.qto)
+        };
+        scopeLabel = "Selected class";
+      }
+    } else if (dashData && lvl) {
+      var levelRow = (dashData.by_level || []).find(function (r) { return r.key === lvl; });
+      if (levelRow) {
+        slice = {
+          elements_total: levelRow.elements,
+          elements_linked: levelRow.linked,
+          elements_unlinked: levelRow.unlinked,
+          qto_yes: levelRow.qto,
+          qto_no: Math.max(0, levelRow.elements - levelRow.qto)
+        };
+        scopeLabel = "Selected level";
+      }
+    }
+    if (cls && lvl) scopeLabel = "Selected class (level also filters the element list)";
+    if (!cls && !lvl) scopeLabel = "Project-wide";
+
+    if (slice) {
+      var total = slice.elements_total || 0;
+      var linkedN = slice.elements_linked || 0;
+      var unlinkedN = slice.elements_unlinked || 0;
+      var qYes = slice.qto_yes || 0;
+      var qNo = slice.qto_no || 0;
+      var em = document.getElementById("mi-chart-element-metric");
+      if (em) em.textContent = total ? pct(linkedN, total) + "%" : "—";
+      setBar("mi-chart-element-ok", "mi-chart-element-gap", linkedN, unlinkedN, total);
+      var elL = document.getElementById("mi-chart-element-linked");
+      var elU = document.getElementById("mi-chart-element-unlinked");
+      if (elL) elL.textContent = "Linked " + linkedN;
+      if (elU) elU.textContent = "Unlinked " + unlinkedN;
+      var qm = document.getElementById("mi-chart-qto-metric");
+      if (qm) qm.textContent = total ? pct(qYes, total) + "%" : "—";
+      setBar("mi-chart-qto-ok", "mi-chart-qto-gap", qYes, qNo, total);
+      var qY = document.getElementById("mi-chart-qto-yes");
+      var qN = document.getElementById("mi-chart-qto-no");
+      if (qY) qY.textContent = "Has QTO " + qYes;
+      if (qN) qN.textContent = "QTO gaps " + qNo;
+      var sc = document.getElementById("mi-chart-element-scope");
+      var sq = document.getElementById("mi-chart-qto-scope");
+      if (sc) sc.textContent = scopeLabel;
+      if (sq) sq.textContent = scopeLabel;
+    }
+
+    var entClass = document.getElementById("mi-filter-ifc-class");
+    var entLevel = document.getElementById("mi-filter-level");
+    var entLinked = document.getElementById("mi-filter-linked");
+    var entQto = document.getElementById("mi-filter-qto");
+    if (entClass) entClass.value = cls;
+    if (entLevel) entLevel.value = lvl;
+    if (entLinked) entLinked.value = linked;
+    if (entQto) entQto.value = qto;
+    var entForm = root.querySelector('[data-testid="mi-entities-filters"]');
+    if (entForm && window.htmx) {
+      window.htmx.trigger(entForm, "change");
+    }
+  }
+
+  if (dashForm) {
+    dashForm.addEventListener("change", applyDashFilters);
+  }
+}());
+</script>

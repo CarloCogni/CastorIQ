@@ -1,0 +1,415 @@
+<!-- takeoff/link_analysis.html — 4D Link Analysis (Model hub content) -->
+{% include "takeoff/components/link_analysis_styles.html" %}
+{% with a=analysis k=analysis.kpis c=analysis.charts d=analysis.diagnostics %}
+
+<div class="la-root" id="link-analysis-root" data-testid="link-analysis-page">
+  <div class="la-pad">
+
+    <div class="la-title-row">
+      <div class="d-flex align-items-center gap-2 flex-wrap" style="min-width:0;">
+        <h1 class="la-title" data-testid="link-analysis-title">4D Link Analysis</h1>
+        <button type="button"
+                class="help-pill"
+                data-bs-toggle="modal"
+                data-bs-target="#linkAnalysisHelpModal"
+                title="How 4D Link Analysis works"
+                aria-label="How 4D Link Analysis works">
+          <i class="bi bi-question-circle"></i>
+        </button>
+        {% if a.ifc_file_name %}
+        <span class="la-model-chip" title="{{ a.ifc_file_name }}" data-testid="link-analysis-model">
+          <span class="dot">●</span>{{ a.ifc_file_name }}
+        </span>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if not a.has_ifc %}
+    <div class="la-empty" data-testid="link-analysis-empty-no-ifc">
+      No IFC model indexed yet. Upload and process an IFC under Data Sources first.
+    </div>
+    {% else %}
+
+    <section class="la-kpi-strip" data-testid="link-analysis-kpis" aria-label="4D link coverage KPIs">
+      <article class="la-kpi" data-testid="la-kpi-schedule-coverage">
+        <div class="la-kpi-k">Schedule Link Coverage</div>
+        <div class="la-kpi-v">{{ k.linked_tasks }} / {{ k.tasks_total }} · {{ k.task_link_pct }}%</div>
+        <div class="la-kpi-d">{{ k.linked_tasks }} linked · {{ k.unlinked_tasks }} unlinked/non-model</div>
+      </article>
+      <article class="la-kpi" data-testid="la-kpi-model-coverage">
+        <div class="la-kpi-k">Model Link Coverage</div>
+        <div class="la-kpi-v">{{ k.linked_elements }} / {{ k.elements_total }} · {{ k.element_link_pct }}%</div>
+        <div class="la-kpi-d">Model elements used in current 4D links</div>
+      </article>
+      <article class="la-kpi" data-testid="la-kpi-actionable-review"
+               title="Unlinked/non-model tasks are shown for context in Schedule Coverage and Task Review Breakdown, but are excluded from Actionable Link Review.">
+        <div class="la-kpi-k">
+          Actionable Link Review
+          <button type="button"
+                  class="la-th-help"
+                  data-bs-toggle="modal"
+                  data-bs-target="#linkAnalysisHelpModal"
+                  title="Unlinked/non-model tasks are shown for context in Schedule Coverage and Task Review Breakdown, but are excluded from Actionable Link Review."
+                  aria-label="What Actionable Link Review includes">
+            <i class="bi bi-info-circle"></i>
+          </button>
+        </div>
+        <div class="la-kpi-v">{{ k.actionable_review }} tasks</div>
+        <div class="la-kpi-d">
+          Pending review {{ k.actionable_review_breakdown.review }}
+          · Broad {{ k.actionable_review_breakdown.broad_link }}
+          · Partial {{ k.actionable_review_breakdown.partial }}
+        </div>
+      </article>
+      <article class="la-kpi" data-testid="la-kpi-time-view">
+        <div class="la-kpi-k">Time View Readiness</div>
+        {% if k.time_view_available %}
+        <div class="la-kpi-v">{{ k.time_view_ready }} / {{ k.time_view_linked }} linked tasks</div>
+        <div class="la-kpi-d">Have dates for playback review</div>
+        {% else %}
+        <div class="la-kpi-v">Unavailable</div>
+        <div class="la-kpi-d">{{ k.time_view_reason }}</div>
+        {% endif %}
+      </article>
+    </section>
+
+    <section class="la-charts" data-testid="link-analysis-charts">
+      <article class="la-chart" data-testid="la-chart-review-breakdown">
+        <div class="la-chart-h">
+          <h6 class="la-chart-title">Task Review Breakdown</h6>
+        </div>
+        <p class="la-chart-sub">Attention categories behind schedule coverage and actionable review</p>
+        <div class="la-stack la-stack-multi" role="img"
+             aria-label="Task review breakdown across mutually exclusive attention categories"
+             data-testid="la-review-breakdown-stack">
+          {% for row in c.schedule_distribution.rows %}
+          {% if row.bar_pct > 0 %}
+          <span class="la-stack-seg {{ row.key }}" style="width:{{ row.bar_pct }}%;"
+                title="{{ row.label }}: {{ row.n }}"></span>
+          {% endif %}
+          {% endfor %}
+        </div>
+        <div class="la-legend" data-testid="la-review-breakdown-legend">
+          {% for row in c.schedule_distribution.rows %}
+          <div class="la-legend-row">
+            <span><span class="la-dot {{ row.key }}"></span>{{ row.label }}</span>
+            <span class="val">{{ row.n }} ({{ row.pct }}%)</span>
+          </div>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="la-chart" data-testid="la-chart-fanout">
+        <div class="la-chart-h">
+          <h6 class="la-chart-title">Elements per Task Range</h6>
+        </div>
+        <p class="la-chart-sub">Linked model elements per schedule task</p>
+        <div class="la-hist">
+          {% for row in c.fanout_histogram %}
+          <div class="la-hist-col">
+            <div class="la-hist-bar {% if row.is_outlier_bucket and c.show_outlier %}is-outlier{% endif %}"
+                 style="height:{{ row.bar_pct }}%;" title="{{ row.n }} tasks"></div>
+            <div class="la-hist-label">{{ row.label }}</div>
+          </div>
+          {% empty %}
+          <p class="la-chart-sub mb-0">No linked tasks to plot.</p>
+          {% endfor %}
+        </div>
+        {% if c.show_outlier %}
+        <div class="la-outlier" data-testid="la-fanout-outlier">
+          Broad task link: {{ c.outlier_max }} elements on one task (threshold {{ c.outlier_threshold }}).
+        </div>
+        {% endif %}
+      </article>
+
+      <article class="la-chart" data-testid="la-chart-by-class">
+        <div class="la-chart-h">
+          <h6 class="la-chart-title">Linked Elements by IFC Class</h6>
+        </div>
+        <p class="la-chart-sub">How linked model elements distribute by IFC class</p>
+        <div class="la-hbar">
+          {% for row in c.by_ifc_class %}
+          <div class="la-hbar-row">
+            <span class="la-hbar-name" title="{{ row.ifc_class }}">{{ row.ifc_class }}</span>
+            <div class="la-hbar-track"><div class="la-hbar-fill" style="width:{{ row.bar_pct }}%;"></div></div>
+            <span class="la-hbar-n">{{ row.count }}</span>
+          </div>
+          {% empty %}
+          <p class="la-chart-sub mb-0">No linked elements by class.</p>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="la-table-card" data-testid="link-analysis-table">
+      <div class="la-table-h">
+        <h2 class="la-table-title">Link Review Table</h2>
+      </div>
+      <div class="la-tabs" role="tablist">
+        <button type="button" class="la-tab is-active" data-la-tab="tasks"
+                data-testid="la-tab-tasks">
+          Task Rows
+          <span class="la-tab-meta">Linked {{ a.task_table.linked_count }} · Total {{ a.task_table.total }}</span>
+        </button>
+        <button type="button" class="la-tab" data-la-tab="elements"
+                data-testid="la-tab-elements">
+          Element Rows ({{ a.element_table.total }})
+        </button>
+        <button type="button" class="la-tab" data-la-tab="grouped"
+                data-testid="la-tab-grouped">
+          Grouped Rows ({{ a.grouped_count }})
+        </button>
+      </div>
+      <div class="la-tools">
+        <input type="search" class="la-search" id="la-search"
+               placeholder="Search BIM tasks…"
+               value="{{ request.GET.q|default:'' }}"
+               data-testid="la-search"
+               autocomplete="off">
+        <span class="la-scope-hint" data-testid="la-task-scope-hint">All tasks · linked first</span>
+        <button type="button" class="la-btn" disabled title="Table export coming next">Export table</button>
+      </div>
+
+      <!-- Task rows -->
+      <div class="la-panel" data-la-panel="tasks" data-testid="la-panel-tasks">
+        <div class="la-table-wrap">
+          <table class="la-grid">
+            <thead>
+              <tr>
+                <th>Task Code</th>
+                <th>Task Description</th>
+                <th>Start Date</th>
+                <th>Finish Date</th>
+                <th>Linked Elements</th>
+                <th>IFC Class Mix</th>
+                <th>Level Mix</th>
+                <th>Status</th>
+                <th class="la-th-attention"
+                    data-testid="la-attention-header"
+                    title="Attention is derived from link-analysis counts only — not an issue tracker, schedule criticality, or QA/QC status. Unlinked: 0 confirmed + 0 pending review. Review: 0 confirmed + pending review exist. Broad link: confirmed ≥ 100. Partial: confirmed + pending review. OK: otherwise.">
+                  Attention
+                  <button type="button"
+                          class="la-th-help"
+                          data-bs-toggle="modal"
+                          data-bs-target="#linkAnalysisHelpModal"
+                          title="How Attention works"
+                          aria-label="How Attention works">
+                    <i class="bi bi-info-circle"></i>
+                  </button>
+                </th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in a.task_table.rows %}
+              <tr class="la-row" data-testid="la-task-row" data-la-expand="{{ row.id }}">
+                <td><span class="la-code" data-la-toggle="{{ row.id }}">{{ row.task_code }}</span></td>
+                <td>{{ row.description }}</td>
+                <td>{{ row.start_date }}</td>
+                <td>{{ row.finish_date }}</td>
+                <td>{{ row.linked_elements }}</td>
+                <td>{{ row.ifc_class_mix }}</td>
+                <td>{{ row.level_mix }}</td>
+                <td><span class="la-badge {{ row.status }}">{{ row.status_label }}</span></td>
+                <td><span class="la-attention {{ row.attention }}" data-testid="la-attention">{{ row.attention_label }}</span></td>
+                <td>
+                  <div class="la-actions">
+                    <a class="la-icon-btn" href="{{ time_view_url }}" title="Preview in Time View"
+                       data-testid="la-action-time-view"><i class="bi bi-eye"></i></a>
+                    <a class="la-icon-btn" href="{{ apply_url }}" title="Open in Links"
+                       data-testid="la-action-links"><i class="bi bi-box-arrow-up-right"></i></a>
+                  </div>
+                </td>
+              </tr>
+              <tr class="la-expand la-panel-hidden" data-la-detail="{{ row.id }}" data-testid="la-task-expand">
+                <td colspan="10">
+                  <div class="la-expand-inner">
+                    <div class="la-expand-title">Linked Elements Detail</div>
+                    {% if row.expansion %}
+                    <div class="la-el-cards">
+                      {% for el in row.expansion %}
+                      <div class="la-el-card">
+                        <div class="la-el-id" title="{{ el.global_id }}">{{ el.global_id }}</div>
+                        <div class="la-el-meta">
+                          <div>{{ el.ifc_class }}</div>
+                          <div>Level: {{ el.level_label }}</div>
+                          <div>Status: Linked</div>
+                        </div>
+                      </div>
+                      {% endfor %}
+                    </div>
+                    {% if row.expansion_more %}
+                    <p class="text-secondary mb-2" style="font-size:0.72rem;">
+                      +{{ row.expansion_more }} more linked elements — open Links for the full set.
+                    </p>
+                    {% endif %}
+                    {% else %}
+                    <p class="text-secondary mb-2" style="font-size:0.72rem;">No linked elements on this task.</p>
+                    {% endif %}
+                    <div class="la-expand-actions">
+                      <a class="la-btn-ghost" href="{{ apply_url }}" data-testid="la-open-in-links">+ Open in Links</a>
+                      <a class="la-btn la-btn-secondary" href="{{ apply_url }}"
+                         data-testid="la-review-link"
+                         title="Review links on the Links screen (no changes here)">Review Link</a>
+                      <a class="la-btn" href="{{ time_view_url }}" data-testid="la-preview-time-view">Preview in Time View</a>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="10" class="la-empty">No schedule tasks match this view.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Element rows -->
+      <div class="la-panel la-panel-hidden" data-la-panel="elements" data-testid="la-panel-elements">
+        <div class="la-table-wrap">
+          <table class="la-grid">
+            <thead>
+              <tr>
+                <th>Element ID</th>
+                <th>Element Name/Type</th>
+                <th>IFC Class</th>
+                <th>Level/Storey</th>
+                <th>Linked Task</th>
+                <th>Link Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in a.element_table.rows %}
+              <tr data-testid="la-element-row">
+                <td><span class="la-code" title="{{ row.element_id }}">{{ row.element_id|truncatechars:18 }}</span></td>
+                <td>{{ row.display_name }}</td>
+                <td>{{ row.ifc_class }}</td>
+                <td>{{ row.level_label }}</td>
+                <td>{{ row.linked_task }}</td>
+                <td><span class="la-badge {{ row.link_status }}">{{ row.link_status_label }}</span></td>
+                <td>
+                  <div class="la-actions">
+                    <a class="la-icon-btn" href="{{ time_view_url }}" title="Preview in Time View"><i class="bi bi-eye"></i></a>
+                    <a class="la-icon-btn" href="{{ apply_url }}" title="Open in Links"><i class="bi bi-box-arrow-up-right"></i></a>
+                  </div>
+                </td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="7" class="la-empty">No linked elements to list.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Grouped rows -->
+      <div class="la-panel la-panel-hidden" data-la-panel="grouped" data-testid="la-panel-grouped">
+        <div class="la-table-wrap">
+          <table class="la-grid">
+            <thead>
+              <tr>
+                <th>Group</th>
+                <th>Dimension</th>
+                <th>Linked Elements</th>
+                <th>Share of model</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in a.grouped_rows %}
+              <tr data-testid="la-grouped-row">
+                <td>{{ row.group_key }}</td>
+                <td>{{ row.group_dimension }}</td>
+                <td>{{ row.linked_elements }}</td>
+                <td>{{ row.share_pct }}%</td>
+                <td><span class="la-badge {{ row.status }}">{{ row.status_label }}</span></td>
+                <td>
+                  <a class="la-icon-btn" href="{{ apply_url }}" title="Open in Links"><i class="bi bi-box-arrow-up-right"></i></a>
+                </td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="6" class="la-empty">No grouped link dimensions available.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="la-footer" data-testid="link-analysis-footer">
+        <div>
+          {{ k.tasks_total }} tasks checked · {{ k.linked_tasks }} linked tasks found
+        </div>
+        <div data-testid="la-pagination">
+          Task page {{ a.task_table.page }} of {{ a.task_table.total_pages }}
+          {% if a.task_table.has_prev %}
+          · <a href="?task_page={{ a.task_table.page|add:'-1' }}{% if request.GET.q %}&amp;q={{ request.GET.q }}{% endif %}">Prev</a>
+          {% endif %}
+          {% if a.task_table.has_next %}
+          · <a href="?task_page={{ a.task_table.page|add:1 }}{% if request.GET.q %}&amp;q={{ request.GET.q }}{% endif %}">Next</a>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    {% endif %}
+  </div>
+</div>
+
+{% include "takeoff/components/link_analysis_help_modal.html" %}
+
+<script>
+(function () {
+  var root = document.getElementById("link-analysis-root");
+  if (!root) return;
+
+  root.querySelectorAll("[data-la-tab]").forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      var key = tab.getAttribute("data-la-tab");
+      root.querySelectorAll("[data-la-tab]").forEach(function (t) {
+        t.classList.toggle("is-active", t === tab);
+      });
+      root.querySelectorAll("[data-la-panel]").forEach(function (p) {
+        p.classList.toggle("la-panel-hidden", p.getAttribute("data-la-panel") !== key);
+      });
+    });
+  });
+
+  root.querySelectorAll("[data-la-toggle]").forEach(function (code) {
+    code.addEventListener("click", function (e) {
+      e.preventDefault();
+      var id = code.getAttribute("data-la-toggle");
+      var detail = root.querySelector('[data-la-detail="' + id + '"]');
+      var row = root.querySelector('tr.la-row[data-la-expand="' + id + '"]');
+      if (!detail) return;
+      var open = detail.classList.contains("la-panel-hidden");
+      root.querySelectorAll("[data-la-detail]").forEach(function (d) {
+        d.classList.add("la-panel-hidden");
+      });
+      root.querySelectorAll("tr.la-row").forEach(function (r) {
+        r.classList.remove("is-open");
+      });
+      if (open) {
+        detail.classList.remove("la-panel-hidden");
+        if (row) row.classList.add("is-open");
+      }
+    });
+  });
+
+  var search = document.getElementById("la-search");
+  if (search) {
+    search.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      var q = (search.value || "").trim();
+      var url = new URL(window.location.href);
+      if (q) url.searchParams.set("q", q);
+      else url.searchParams.delete("q");
+      url.searchParams.delete("task_page");
+      window.location.href = url.toString();
+    });
+  }
+}());
+</script>
+{% endwith %}

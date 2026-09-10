@@ -1,0 +1,637 @@
+<!-- takeoff/components/quantities_prep_table.html — Generated Preparation Data Model -->
+<section class="qty-builder-section" data-testid="quantities-prep-table" id="qty-prep-table-section">
+  <div class="qty-builder-h">
+    <h6 class="mb-0" data-testid="quantities-prep-table-title">Generated Preparation Data Model</h6>
+    <span class="mi-footnote" data-testid="qty-prep-row-count-footnote">
+      {% if qty_prep.prep_row_grain == "type" %}By Type{% else %}By IFC Class{% endif %}
+      {% if qty_prep.pagination %}
+      · {{ qty_prep.pagination.filtered_rows }} filtered preparation row{{ qty_prep.pagination.filtered_rows|pluralize }}
+      {% else %}
+      · {{ qty_prep.prep_rows|length }} preparation row{{ qty_prep.prep_rows|length|pluralize }}
+      {% endif %}
+    </span>
+    <div class="ms-auto d-flex flex-column align-items-end gap-1">
+      <a href="{% if qty_prep_return_query %}{{ qty_prep_export_url }}?{{ qty_prep_return_query }}{% else %}{{ qty_prep_export_url }}{% endif %}"
+         class="btn btn-sm btn-outline-primary"
+         data-testid="qty-prep-export"
+         title="Session preparation model ZIP — not legacy QTO cache">
+        <i class="bi bi-download me-1"></i>Export preparation model (session)
+      </a>
+      <span class="mi-footnote text-end" style="max-width:22rem;"
+            data-testid="qty-prep-export-note">
+        Downloads a session snapshot of the current generated preparation model,
+        including current settings and session annotations.
+        Not BOQ, not cost, not certified, not writeback.
+      </span>
+    </div>
+  </div>
+  <p class="qty-builder-note mb-2" data-testid="quantities-prep-helper-note">
+    {{ qty_prep.prep_helper_note }}
+  </p>
+  <p class="qty-builder-note mb-2" data-testid="qty-prep-unit-basis-note">
+    {{ qty_prep.prep_unit_basis_note }}
+  </p>
+  <p class="qty-builder-note mb-2" data-testid="qty-session-review-boundary">
+    {{ qty_prep.session_review_note }}
+  </p>
+  {% if qty_prep.session_mapping_note %}
+  <p class="qty-builder-note mb-2" data-testid="qty-session-mapping-boundary">
+    {{ qty_prep.session_mapping_note }}
+  </p>
+  {% endif %}
+  {% include "takeoff/components/quantities_unit_confirmation.html" %}
+  {% if qty_prep.semantic_filters %}
+  {% include "takeoff/components/quantities_semantic_filters.html" %}
+  {% endif %}
+  {% if qty_prep.manual_mapping_eligible_fields %}
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-2 p-2 border rounded"
+       data-testid="qty-batch-mapping-toolbar">
+    <span class="small fw-semibold">Batch schema mapping</span>
+    <span class="small text-secondary" data-testid="qty-batch-toolbar-count">0 selected</span>
+    <button type="button"
+            class="btn btn-sm btn-primary"
+            data-testid="qty-batch-map-selected"
+            id="qty-batch-map-selected"
+            data-bs-toggle="modal"
+            data-bs-target="#qtyBatchMappingModal"
+            disabled>
+      Map selected visible rows
+    </button>
+    <button type="button"
+            class="btn btn-sm btn-outline-secondary"
+            data-testid="qty-batch-clear-selection"
+            id="qty-batch-clear-selection">
+      Clear selection
+    </button>
+    <button type="button"
+            class="btn btn-sm btn-outline-secondary"
+            data-testid="qty-batch-map-all-filtered"
+            disabled
+            title="Map all filtered rows — coming in a later slice">
+      Map all filtered rows (future)
+    </button>
+    <div class="vr d-none d-md-block"></div>
+    <label class="small mb-0 text-secondary" for="qty-batch-ifc-filter">Map by IFC class</label>
+    <select id="qty-batch-ifc-filter"
+            class="form-select form-select-sm"
+            style="width:auto;max-width:12rem;"
+            data-testid="qty-batch-ifc-filter">
+      <option value="">— Choose class —</option>
+    </select>
+    <button type="button"
+            class="btn btn-sm btn-outline-primary"
+            data-testid="qty-batch-select-ifc-class"
+            id="qty-batch-select-ifc-class">
+      Select visible class rows
+    </button>
+  </div>
+  {% endif %}
+  {% if qty_prep.pagination %}
+  {% include "takeoff/components/quantities_prep_pagination.html" %}
+  {% endif %}
+  {% if qty_prep.session_review_stale_message %}
+  <p class="qty-builder-note mb-2 text-secondary" data-testid="qty-session-review-stale">
+    {{ qty_prep.session_review_stale_message }}
+  </p>
+  {% endif %}
+  {% if qty_prep.session_mapping_stale_message %}
+  <p class="qty-builder-note mb-2 text-secondary" data-testid="qty-session-mapping-stale">
+    {{ qty_prep.session_mapping_stale_message }}
+  </p>
+  {% endif %}
+  <div class="qty-prep-scroll-wrap" data-testid="qty-prep-scroll-wrap">
+    <div class="table-responsive qty-prep-scroll">
+      <table class="table table-sm qty-config-table qty-prep-table qty-prep-table-compact mb-0
+                   {% if qty_prep.show.type_name %}qty-prep-has-type{% else %}qty-prep-no-type{% endif %}"
+             data-testid="qty-prep-table">
+        <thead>
+          <tr>
+            {% if qty_prep.manual_mapping_eligible_fields %}
+            <th class="qty-col-key" style="width:2rem;" data-testid="qty-batch-select-col">
+              <input type="checkbox"
+                     id="qty-batch-select-all"
+                     data-testid="qty-batch-select-all"
+                     title="Select all visible rows on this page"
+                     aria-label="Select all rows">
+            </th>
+            {% endif %}
+            <th class="qty-col-key qty-sticky qty-sticky-1">Model Group</th>
+            {% if qty_prep.show.type_name %}
+            <th class="qty-col-key qty-sticky qty-sticky-2">Type Name</th>
+            {% endif %}
+            <th class="text-end qty-col-key qty-sticky qty-sticky-3" data-testid="qty-prep-col-total-quantity">Total Quantity</th>
+            <th class="qty-col-key qty-sticky qty-sticky-4" data-testid="qty-prep-col-unit">Unit</th>
+            <th class="qty-col-key qty-sticky qty-sticky-5" data-testid="qty-prep-col-measurement-basis">Measurement Basis</th>
+            <th class="qty-col-key">Review Status</th>
+            <th class="qty-col-key">Review</th>
+            <th class="qty-col-key">Handoff Status</th>
+            {% if qty_prep.show.ifc_class %}
+            <th class="qty-col-secondary">IFC Class</th>
+            {% endif %}
+            {% if qty_prep.semantic_filters.show_category_column %}
+            <th class="qty-col-secondary" data-testid="qty-prep-col-semantic-category">Category</th>
+            {% endif %}
+            {% if qty_prep.semantic_filters.show_family_column %}
+            <th class="qty-col-secondary" data-testid="qty-prep-col-semantic-family">Family</th>
+            {% endif %}
+            {% for col in qty_prep.semantic_filters.selected_prop_column_meta %}
+            <th class="qty-col-secondary" data-testid="qty-prep-col-prop"
+                title="{{ col.source_property }}">{{ col.label }}</th>
+            {% endfor %}
+            {% if qty_prep.show.quantity_source %}
+            <th class="qty-col-secondary">Selected Quantity Source</th>
+            {% endif %}
+            {% if qty_prep.show.level_storey %}
+            <th class="qty-col-secondary">Level / Storey</th>
+            {% endif %}
+            {% if qty_prep.show.zone %}
+            <th class="qty-col-secondary">Zone</th>
+            {% endif %}
+            {% if qty_prep.show.classification_code %}
+            <th class="qty-col-secondary">Classification Code</th>
+            {% endif %}
+            {% if qty_prep.show.package_boq_mapping %}
+            <th class="qty-col-secondary">Package Mapping</th>
+            {% endif %}
+            {% if qty_prep.show.work_package %}
+            <th class="qty-col-secondary">Work Package</th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% with display_rows=qty_prep.prep_page_rows|default:qty_prep.prep_rows %}
+          {% for row in display_rows %}
+          <tr data-testid="qty-prep-row"
+              data-qty-row-key="{{ row.row_key }}"
+              data-qty-basis-unresolved="{% if row.basis_unresolved %}1{% else %}0{% endif %}"
+              data-qty-ifc-class="{{ row.ifc_class }}"
+              data-qty-missing-source="{% if row.missing_quantity_source %}1{% else %}0{% endif %}"
+              data-qty-session-review="{% if row.session_review %}1{% else %}0{% endif %}"
+              class="{% if row.basis_unresolved %}qty-row-unresolved{% endif %}">
+            {% if qty_prep.manual_mapping_eligible_fields %}
+            <td>
+              <input type="checkbox"
+                     class="qty-batch-row-check form-check-input"
+                     data-testid="qty-batch-row-check"
+                     data-qty-row-key="{{ row.row_key }}"
+                     data-qty-ifc-class="{{ row.ifc_class }}"
+                     data-qty-type-name="{{ row.type_name }}"
+                     data-qty-basis="{{ row.quantity_basis }}"
+                     aria-label="Select row {{ row.model_group }}">
+            </td>
+            {% endif %}
+            <td class="qty-col-primary qty-sticky qty-sticky-1">{{ row.model_group|default:"—" }}</td>
+            {% if qty_prep.show.type_name %}
+            <td class="qty-col-type qty-sticky qty-sticky-2" title="{{ row.type_name }}">
+              {% if row.type_name %}{{ row.type_name }}{% else %}—{% endif %}
+            </td>
+            {% endif %}
+            <td class="text-end qty-col-total qty-sticky qty-sticky-3"
+                data-testid="qty-prep-total-cell">
+              {% if row.basis_unresolved %}
+              <span class="qty-pill qty-pill-unresolved">Unresolved</span>
+              {% elif row.total != None and row.total != "" %}
+              <span class="qty-total-value">{{ row.total }}</span>
+              {% else %}
+              —
+              {% endif %}
+            </td>
+            <td class="qty-sticky qty-sticky-4 text-secondary"
+                data-testid="qty-prep-unit-cell">
+              {% if row.unit_basis_display %}{{ row.unit_basis_display }}{% else %}—{% endif %}
+            </td>
+            <td class="qty-sticky qty-sticky-5" data-testid="qty-prep-basis-cell">
+              {% if row.quantity_basis %}
+              <span class="qty-pill qty-pill-source">{{ row.quantity_basis }}</span>
+              {% else %}
+              <span class="qty-pill qty-pill-unresolved">Unresolved</span>
+              {% endif %}
+            </td>
+            <td data-testid="qty-prep-review-status-cell">
+              {% if row.session_review %}
+              <span class="qty-pill qty-pill-ok"
+                    data-testid="qty-session-review-status">{{ row.review_status_display }}</span>
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-session-review-badge">Session review</span>
+              {% if row.session_review_note %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-session-review-note-indicator"
+                    title="{{ row.session_review_note }}">Note</span>
+              {% endif %}
+              <span class="qty-mapping-hint d-block text-secondary"
+                    data-testid="qty-computed-review-status">
+                Gap status: {{ row.computed_review_status }}
+              </span>
+              {% else %}
+              {% if row.review_status_display == "Resolved" %}
+              <span class="qty-pill qty-pill-ok">{{ row.review_status_display }}</span>
+              {% elif "Missing" in row.review_status_display %}
+              <span class="qty-pill qty-pill-review">{{ row.review_status_display }}</span>
+              {% else %}
+              <span class="qty-pill qty-pill-muted">{{ row.review_status_display }}</span>
+              {% endif %}
+              {% endif %}
+            </td>
+            <td>
+              <button type="button"
+                      class="btn btn-sm btn-outline-secondary"
+                      data-testid="qty-review-row-btn"
+                      data-bs-toggle="offcanvas"
+                      data-bs-target="#qtyRowReviewDrawer"
+                      data-qty-row-key="{{ row.row_key }}"
+                      data-qty-model-group="{{ row.model_group }}"
+                      data-qty-type-name="{{ row.type_name }}"
+                      data-qty-basis="{{ row.quantity_basis }}"
+                      data-qty-computed-status="{{ row.computed_review_status }}"
+                      data-qty-session-status="{{ row.session_review_status }}"
+                      data-qty-session-note="{{ row.session_review_note|escape }}"
+                      data-qty-map-classification="{{ row.classification_code|escape }}"
+                      data-qty-map-package="{{ row.package_boq_mapping|escape }}"
+                      data-qty-map-work="{{ row.work_package|escape }}"
+                      data-qty-map-classification-node="{{ row.classification_node_id|default:'' }}"
+                      data-qty-map-package-node="{{ row.package_mapping_node_id|default:'' }}"
+                      data-qty-map-work-node="{{ row.work_package_node_id|default:'' }}"
+                      data-qty-map-classification-backed="{% if row.classification_is_schema_backed %}1{% else %}0{% endif %}"
+                      data-qty-map-package-backed="{% if row.package_mapping_is_schema_backed %}1{% else %}0{% endif %}"
+                      data-qty-map-work-backed="{% if row.work_package_is_schema_backed %}1{% else %}0{% endif %}">
+                Review row
+              </button>
+            </td>
+            <td>
+              {% if row.eligible_for_handoff or "Eligible" in row.handoff_status %}
+              <span class="qty-pill qty-pill-eligible">{{ row.handoff_status }}</span>
+              {% else %}
+              <span class="qty-pill qty-pill-muted">{{ row.handoff_status }}</span>
+              {% endif %}
+            </td>
+            {% if qty_prep.show.ifc_class %}
+            <td class="qty-col-secondary">{{ row.ifc_class|default:"—" }}</td>
+            {% endif %}
+            {% if qty_prep.semantic_filters.show_category_column %}
+            <td class="qty-col-secondary" data-testid="qty-prep-semantic-category">
+              {{ row.semantic_category|default:"—" }}
+            </td>
+            {% endif %}
+            {% if qty_prep.semantic_filters.show_family_column %}
+            <td class="qty-col-secondary" data-testid="qty-prep-semantic-family">
+              {{ row.semantic_family|default:"—" }}
+            </td>
+            {% endif %}
+            {% for cell in row.prop_column_cells %}
+            <td class="qty-col-secondary"
+                data-testid="qty-prep-prop-cell"
+                data-prop-status="{{ cell.status }}"
+                title="{% if cell.distinct_count > 1 %}{{ cell.distinct_count }} values{% endif %}">
+              {{ cell.display }}
+            </td>
+            {% empty %}
+            {% endfor %}
+            {% if qty_prep.show.quantity_source %}
+            <td class="qty-col-secondary">
+              {% if row.quantity_source %}
+              {{ row.quantity_source }}
+              {% else %}
+              <span class="qty-pill qty-pill-unresolved">Unresolved</span>
+              {% endif %}
+            </td>
+            {% endif %}
+            {% if qty_prep.show.level_storey %}
+            <td class="qty-col-secondary text-secondary">—</td>
+            {% endif %}
+            {% if qty_prep.show.zone %}
+            <td class="qty-col-secondary text-secondary">—</td>
+            {% endif %}
+            {% if qty_prep.show.classification_code %}
+            <td class="qty-col-secondary text-secondary"
+                data-testid="qty-prep-classification-cell"
+                data-qty-mapping-source="{{ row.classification_source }}"
+                data-qty-manual-value="{% if row.classification_code %}1{% else %}0{% endif %}"
+                title="{{ row.classification_hint }}">
+              {% if row.classification_code %}
+              <span data-testid="qty-manual-mapping-value">{{ row.classification_code }}</span>
+              {% if row.classification_label %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-label">{{ row.classification_label }}</span>
+              {% endif %}
+              {% if row.classification_is_schema_backed %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-badge">Schema node (session)</span>
+              {% else %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-badge">Free text (session)</span>
+              {% endif %}
+              {% else %}
+              —
+              {% if row.classification_hint %}
+              <span class="qty-mapping-hint d-block">{{ row.classification_hint }}</span>
+              {% endif %}
+              {% endif %}
+            </td>
+            {% endif %}
+            {% if qty_prep.show.package_boq_mapping %}
+            <td class="qty-col-secondary text-secondary"
+                data-testid="qty-prep-package-cell"
+                data-qty-mapping-source="{{ row.package_boq_mapping_source }}"
+                data-qty-manual-value="{% if row.package_boq_mapping %}1{% else %}0{% endif %}"
+                title="{{ row.package_boq_mapping_hint }}">
+              {% if row.package_boq_mapping %}
+              <span data-testid="qty-manual-mapping-value">{{ row.package_boq_mapping }}</span>
+              {% if row.package_mapping_label %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-label">{{ row.package_mapping_label }}</span>
+              {% endif %}
+              {% if row.package_mapping_is_schema_backed %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-badge">Schema node (session)</span>
+              {% else %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-badge">Free text (session)</span>
+              {% endif %}
+              {% else %}
+              —
+              {% if row.package_boq_mapping_hint %}
+              <span class="qty-mapping-hint d-block">{{ row.package_boq_mapping_hint }}</span>
+              {% endif %}
+              {% endif %}
+            </td>
+            {% endif %}
+            {% if qty_prep.show.work_package %}
+            <td class="qty-col-secondary text-secondary"
+                data-testid="qty-prep-work-package-cell"
+                data-qty-mapping-source="{{ row.work_package_source }}"
+                data-qty-manual-value="{% if row.work_package %}1{% else %}0{% endif %}"
+                title="{{ row.work_package_hint }}">
+              {% if row.work_package %}
+              <span data-testid="qty-manual-mapping-value">{{ row.work_package }}</span>
+              {% if row.work_package_label %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-label">{{ row.work_package_label }}</span>
+              {% endif %}
+              {% if row.work_package_is_schema_backed %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-badge">Schema node (session)</span>
+              {% else %}
+              <span class="qty-mapping-hint d-block"
+                    data-testid="qty-manual-mapping-badge">Free text (session)</span>
+              {% endif %}
+              {% else %}
+              —
+              {% if row.work_package_hint %}
+              <span class="qty-mapping-hint d-block">{{ row.work_package_hint }}</span>
+              {% endif %}
+              {% endif %}
+            </td>
+            {% endif %}
+          </tr>
+          {% empty %}
+          <tr data-testid="qty-prep-empty-filtered">
+            <td colspan="15" class="text-secondary">
+              {% if qty_prep.pagination and qty_prep.prep_rows %}
+              No preparation rows match the current filters.
+              {% elif qty_prep.pagination %}
+              No filtered preparation rows on this page.
+              {% else %}
+              No preparation rows yet. Index an IFC model first.
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          {% endwith %}
+        </tbody>
+      </table>
+    </div>
+    <p class="qty-prep-scroll-hint mb-0" data-testid="qty-prep-scroll-hint">
+      Scroll horizontally for secondary fields. Key columns stay visible on the left.
+      Excluded schema fields are omitted from this table.
+      Quantity and mapping cells are review-only here. Use Review row to adjust session mapping.
+    </p>
+  </div>
+  {% if qty_prep.pagination %}
+  {% include "takeoff/components/quantities_prep_pagination.html" %}
+  {% endif %}
+  {% if qty_prep.prep_rows_capped %}
+  <p class="qty-builder-note mt-2 mb-0" data-testid="qty-prep-aggregate-cap-note">
+    Preparation aggregates are capped for safety. Use filters to focus the working set.
+  </p>
+  {% endif %}
+</section>
+{% include "takeoff/components/quantities_row_review_drawer.html" %}
+{% if qty_prep.manual_mapping_eligible_fields %}
+{% include "takeoff/components/quantities_batch_mapping_modal.html" %}
+<script>
+(function () {
+  var table = document.querySelector('[data-testid="qty-prep-table"]');
+  if (!table) return;
+  var countEl = document.querySelector('[data-testid="qty-batch-toolbar-count"]');
+  var mapBtn = document.getElementById("qty-batch-map-selected");
+  var clearBtn = document.getElementById("qty-batch-clear-selection");
+  var selectAll = document.getElementById("qty-batch-select-all");
+  var keysHost = document.getElementById("qty-batch-row-keys");
+  var modalEl = document.getElementById("qtyBatchMappingModal");
+  var formEl = document.getElementById("qty-batch-mapping-form");
+  var ifcFilter = document.getElementById("qty-batch-ifc-filter");
+  var ifcSelectBtn = document.getElementById("qty-batch-select-ifc-class");
+  var previewHost = document.getElementById("qty-batch-mapping-preview");
+  var applyBtn = document.querySelector('[data-testid="qty-batch-apply-btn"]');
+
+  function checks() {
+    return Array.prototype.slice.call(document.querySelectorAll(".qty-batch-row-check"));
+  }
+
+  function selectedChecks() {
+    return checks().filter(function (c) { return c.checked; });
+  }
+
+  function setApplyEnabled(enabled) {
+    if (!applyBtn) return;
+    applyBtn.disabled = !enabled;
+    if (enabled) {
+      applyBtn.removeAttribute("title");
+    } else {
+      applyBtn.setAttribute("title", "Generate a preview before applying");
+    }
+  }
+
+  function setApplyLabel(label) {
+    if (!applyBtn) return;
+    var text = label || "Apply to session";
+    applyBtn.textContent = text;
+  }
+
+  function invalidatePreview() {
+    setApplyEnabled(false);
+    setApplyLabel("Apply to session");
+    if (previewHost) {
+      previewHost.innerHTML = '<p class="text-secondary small mb-0">Preview appears here before Apply.</p>';
+    }
+  }
+
+  function refreshCount() {
+    var sel = selectedChecks();
+    if (countEl) countEl.textContent = sel.length + " selected visible";
+    if (mapBtn) mapBtn.disabled = sel.length === 0;
+    var classes = {};
+    sel.forEach(function (c) {
+      var ic = c.getAttribute("data-qty-ifc-class") || "";
+      if (ic) classes[ic] = true;
+    });
+    var classEl = document.getElementById("qty-batch-selected-classes");
+    if (classEl) {
+      var keys = Object.keys(classes);
+      classEl.textContent = keys.length ? "(" + keys.join(", ") + ")" : "";
+    }
+    var countModal = document.getElementById("qty-batch-selected-count");
+    if (countModal) countModal.textContent = String(sel.length);
+  }
+
+  function syncKeysIntoForm() {
+    if (!keysHost) return;
+    keysHost.innerHTML = "";
+    selectedChecks().forEach(function (c) {
+      var input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "row_keys";
+      input.value = c.getAttribute("data-qty-row-key") || "";
+      keysHost.appendChild(input);
+    });
+  }
+
+  function populateIfcFilter() {
+    if (!ifcFilter) return;
+    var seen = {};
+    checks().forEach(function (c) {
+      var ic = c.getAttribute("data-qty-ifc-class") || "";
+      if (ic) seen[ic] = true;
+    });
+    var current = ifcFilter.value;
+    ifcFilter.innerHTML = '<option value="">— Choose class —</option>';
+    Object.keys(seen).sort().forEach(function (ic) {
+      var opt = document.createElement("option");
+      opt.value = ic;
+      opt.textContent = ic;
+      ifcFilter.appendChild(opt);
+    });
+    if (current && seen[current]) ifcFilter.value = current;
+  }
+
+  table.addEventListener("change", function (ev) {
+    if (ev.target && ev.target.classList.contains("qty-batch-row-check")) {
+      refreshCount();
+      invalidatePreview();
+      syncKeysIntoForm();
+    }
+  });
+
+  if (selectAll) {
+    selectAll.addEventListener("change", function () {
+      checks().forEach(function (c) { c.checked = selectAll.checked; });
+      refreshCount();
+      invalidatePreview();
+      syncKeysIntoForm();
+    });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener("click", function () {
+      checks().forEach(function (c) { c.checked = false; });
+      if (selectAll) selectAll.checked = false;
+      refreshCount();
+      invalidatePreview();
+      syncKeysIntoForm();
+    });
+  }
+
+  if (mapBtn && modalEl) {
+    modalEl.addEventListener("show.bs.modal", function () {
+      syncKeysIntoForm();
+      refreshCount();
+      invalidatePreview();
+    });
+  }
+
+  if (formEl) {
+    formEl.addEventListener("change", function (ev) {
+      if (ev.target && ev.target.classList.contains("qty-batch-target-input")) {
+        invalidatePreview();
+      }
+    });
+    formEl.addEventListener("input", function (ev) {
+      if (ev.target && ev.target.classList.contains("qty-batch-target-input")) {
+        invalidatePreview();
+      }
+    });
+  }
+
+  if (previewHost) {
+    previewHost.addEventListener("htmx:afterSwap", function () {
+      var ready = previewHost.querySelector('[data-qty-batch-preview-ready="1"]');
+      setApplyEnabled(!!ready);
+      if (ready) {
+        setApplyLabel(ready.getAttribute("data-qty-batch-apply-label") || "Apply to session");
+      } else {
+        setApplyLabel("Apply to session");
+      }
+    });
+  }
+
+  if (ifcSelectBtn && ifcFilter) {
+    ifcSelectBtn.addEventListener("click", function () {
+      var target = ifcFilter.value;
+      if (!target) return;
+      checks().forEach(function (c) {
+        c.checked = (c.getAttribute("data-qty-ifc-class") || "") === target;
+      });
+      refreshCount();
+      invalidatePreview();
+      syncKeysIntoForm();
+    });
+  }
+
+  populateIfcFilter();
+  refreshCount();
+  setApplyEnabled(false);
+
+  // Mode B — apply to similar rows from review drawer
+  var similarBtn = document.getElementById("qty-map-similar-rows");
+  if (similarBtn) {
+    similarBtn.addEventListener("click", function () {
+      var seedKey = (document.getElementById("qty-row-mapping-key") || {}).value || "";
+      var matchClass = document.getElementById("qty-similar-ifc");
+      var matchType = document.getElementById("qty-similar-type");
+      var matchBasis = document.getElementById("qty-similar-basis");
+      var seed = checks().find(function (c) {
+        return (c.getAttribute("data-qty-row-key") || "") === seedKey;
+      });
+      if (!seed) return;
+      var sc = seed.getAttribute("data-qty-ifc-class") || "";
+      var st = seed.getAttribute("data-qty-type-name") || "";
+      var sb = seed.getAttribute("data-qty-basis") || "";
+      checks().forEach(function (c) {
+        var ok = true;
+        if (matchClass && matchClass.checked && (c.getAttribute("data-qty-ifc-class") || "") !== sc) ok = false;
+        if (matchType && matchType.checked && (c.getAttribute("data-qty-type-name") || "") !== st) ok = false;
+        if (matchBasis && matchBasis.checked && (c.getAttribute("data-qty-basis") || "") !== sb) ok = false;
+        if (!(matchClass && matchClass.checked) && !(matchType && matchType.checked) && !(matchBasis && matchBasis.checked)) {
+          ok = false;
+        }
+        c.checked = ok;
+      });
+      refreshCount();
+      invalidatePreview();
+      syncKeysIntoForm();
+      var drawer = document.getElementById("qtyRowReviewDrawer");
+      if (drawer && window.bootstrap) {
+        var inst = bootstrap.Offcanvas.getInstance(drawer);
+        if (inst) inst.hide();
+      }
+      if (modalEl && window.bootstrap && selectedChecks().length) {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      } else if (mapBtn && selectedChecks().length) {
+        mapBtn.disabled = false;
+        mapBtn.click();
+      }
+    });
+  }
+})();
+</script>
+{% endif %}
