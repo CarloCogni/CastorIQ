@@ -131,6 +131,15 @@ def build_qty_prep_session_ui(
         qty_prep, project=project, user=user, session=session
     )
 
+    # SEM-4A: 5D semantic source readiness (read-only; no profile persistence).
+    from takeoff.services.quantity_semantic_profile import apply_semantic_profile_to_qty_prep
+
+    apply_semantic_profile_to_qty_prep(
+        qty_prep,
+        project=project,
+        unit_confirmation=qty_prep.get("unit_confirmation") or {},
+    )
+
     return {
         "quantities": quantities,
         "qty_prep": qty_prep,
