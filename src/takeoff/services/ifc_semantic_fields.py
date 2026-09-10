@@ -1,11 +1,13 @@
 # takeoff/services/ifc_semantic_fields.py
-"""IFC-SEM-1/2/3 — semantic field discovery, property columns, prep enrichment.
+"""IFC-SEM-1/2/3/4A — semantic field discovery, property columns, prep enrichment.
 
 SEM-1: prep-native filters + Category/Family hints.
 SEM-2: discover indexed IFC property keys, add selected columns, aggregate
 single/Mixed/— values onto grouped prep rows, filter before batch mapping.
 SEM-3: Level/Storey (spatial), Project Level, classification-like properties;
-honest unavailable states for Zone and true IFC classification references.
+honest unavailable states for Zone.
+SEM-4A: true IFC classification references via ClassRef.* keys; separate from
+authoring properties and Castor schema mapping.
 
 Read-only. Not writeback, Modify, BOQ/cost. No migrations. No S2 contract change.
 """
@@ -51,22 +53,48 @@ CLASSIFICATION_LIKE_CURATED: tuple[dict[str, str], ...] = (
     {
         "key": "prop:Identity Data.OmniClass Title",
         "label": "OmniClass Title",
-        "group": "Existing classification",
+        "group": "Authoring classification properties",
         "source_property": "Identity Data.OmniClass Title",
     },
     {
         "key": "prop:Identity Data.OmniClass Number",
         "label": "OmniClass Number",
-        "group": "Existing classification",
+        "group": "Authoring classification properties",
         "source_property": "Identity Data.OmniClass Number",
     },
     {
         "key": "prop:Identity Data.Assembly Code",
         "label": "Assembly Code",
-        "group": "Existing classification",
+        "group": "Authoring classification properties",
         "source_property": "Identity Data.Assembly Code",
     },
 )
+
+# SEM-4A true IFC classification reference columns (indexed ClassRef.*).
+CLASSREF_CURATED: tuple[dict[str, str], ...] = (
+    {
+        "key": "classref:ifc",
+        "label": "IFC Classification Reference",
+        "group": "Existing IFC classification",
+        "source_property": "ClassRef.Display",
+    },
+    {
+        "key": "classref:system",
+        "label": "Classification System",
+        "group": "Existing IFC classification",
+        "source_property": "ClassRef.System",
+    },
+    {
+        "key": "classref:code",
+        "label": "Classification Code",
+        "group": "Existing IFC classification",
+        "source_property": "ClassRef.Identification",
+    },
+)
+
+CLASSREF_KEY_TO_PROP: dict[str, str] = {
+    item["key"]: item["source_property"] for item in CLASSREF_CURATED
+}
 
 _NOISY_PROP_RE = re.compile(
     r"(^|\.)(id|type id|uniqueid|guid|ifcguid)(\.|$)",
@@ -191,6 +219,24 @@ def is_spatial_column_key(column_key: str) -> bool:
     return key in {SPATIAL_STOREY_KEY, SPATIAL_CONTAINER_KEY}
 
 
+def is_classref_column_key(column_key: str) -> bool:
+    """Return True for SEM-4A classref:* semantic column keys."""
+    return _str_val(column_key) in CLASSREF_KEY_TO_PROP
+
+
+def classref_source_property(column_key: str) -> str:
+    """Map classref:* column key to ClassRef.* property path."""
+    return CLASSREF_KEY_TO_PROP.get(_str_val(column_key), "")
+
+
+def resolve_column_source_property(column_key: str) -> str:
+    """Resolve prop:/classref: column keys to IFCEntity.properties paths."""
+    key = _str_val(column_key)
+    if is_classref_column_key(key):
+        return classref_source_property(key)
+    return source_property_from_column_key(key)
+
+
 def _resolve_spatial_names(entity: Any) -> tuple[str, str]:
     """Return ``(storey_name, container_name)`` from spatial_container chain."""
     node = getattr(entity, "spatial_container", None)
@@ -238,8 +284,8 @@ def _latest_completed_ifc(project: Any) -> Any | None:
 def parse_sem_cols(query: Mapping[str, Any]) -> list[str]:
     """Parse ``sem_cols`` into unique validated column keys (capped).
 
-    Accepts ``prop:…`` property columns and SEM-3 ``spatial:storey`` /
-    ``spatial:container`` keys.
+    Accepts ``prop:…`` property columns, SEM-3 ``spatial:*`` keys, and
+    SEM-4A ``classref:*`` keys.
     """
     raw = query.get(SEM_COLS_PARAM)
     if raw is None:
@@ -256,7 +302,7 @@ def parse_sem_cols(query: Mapping[str, Any]) -> list[str]:
         key = _str_val(part)
         if not key or key in seen:
             continue
-        if is_spatial_column_key(key):
+        if is_spatial_column_key(key) or is_classref_column_key(key):
             seen.add(key)
             out.append(key)
         else:
@@ -562,6 +608,28 @@ def discover_sem3_structure_fields(scan: Mapping[str, Any]) -> dict[str, Any]:
             }
         )
 
+    classref_available: list[dict[str, Any]] = []
+    for curated in CLASSREF_CURATED:
+        src = curated["source_property"]
+        cov = int(key_nonempty.get(src) or 0)
+        if cov <= 0:
+            continue
+        samples = [s for s, _ in (key_samples.get(src) or Counter()).most_common(SAMPLE_VALUE_CAP)]
+        classref_available.append(
+            {
+                "key": curated["key"],
+                "label": curated["label"],
+                "group": curated["group"],
+                "source": "ifc_classification_reference",
+                "source_property": src,
+                "coverage": cov,
+                "sample_values": samples,
+                "is_filterable": True,
+                "is_sortable": False,
+                "available": True,
+            }
+        )
+
     unavailable = {
         "zone": {
             "key": "struct:zone",
@@ -569,24 +637,27 @@ def discover_sem3_structure_fields(scan: Mapping[str, Any]) -> dict[str, Any]:
             "group": "Model structure",
             "available": False,
             "message": (
-                "No indexed Zone data found for this project yet. "
-                "Zone filters need SEM-4 relationship indexing."
-            ),
-        },
-        "ifc_classification_ref": {
-            "key": "classref:ifc",
-            "label": "IFC Classification Reference",
-            "group": "Existing classification",
-            "available": False,
-            "message": (
-                "No indexed IFC classification references "
-                "(IfcRelAssociatesClassification) found for this project yet."
+                "No zone evidence found in this IFC export. "
+                "Zone is not unsupported — choose a property source later or "
+                "resolve through Ask/Modify/writeback when available."
             ),
         },
     }
+    if not classref_available:
+        unavailable["ifc_classification_ref"] = {
+            "key": "classref:ifc",
+            "label": "IFC Classification Reference",
+            "group": "Existing IFC classification",
+            "available": False,
+            "message": (
+                "No indexed IFC classification references found in this IFC export "
+                "(or not re-indexed yet after SEM-4A)."
+            ),
+        }
     return {
         "structure_columns_available": structure_available,
         "classification_like_available": classification_like,
+        "classref_available": classref_available,
         "unavailable": unavailable,
     }
 
@@ -617,9 +688,9 @@ def enrich_prep_rows_with_entity_semantics(
     rows = list(prep_rows)
     selected_cols = list(selected_prop_columns or [])
     selected_sources = [
-        source_property_from_column_key(k)
+        resolve_column_source_property(k)
         for k in selected_cols
-        if source_property_from_column_key(k)
+        if resolve_column_source_property(k)
     ]
     selected_spatial = [k for k in selected_cols if is_spatial_column_key(k)]
     meta: dict[str, Any] = {
@@ -632,6 +703,7 @@ def enrich_prep_rows_with_entity_semantics(
         "property_sets_indexed_on_prep": False,
         "structure_columns_available": [],
         "classification_like_available": [],
+        "classref_available": [],
         "unavailable": {},
         "helper": (
             "No indexed IFC property columns are available yet. "
@@ -658,6 +730,7 @@ def enrich_prep_rows_with_entity_semantics(
     sem3 = discover_sem3_structure_fields(scan)
     meta["structure_columns_available"] = sem3["structure_columns_available"]
     meta["classification_like_available"] = sem3["classification_like_available"]
+    meta["classref_available"] = sem3.get("classref_available") or []
     meta["unavailable"] = sem3["unavailable"]
 
     curated_by_key = {
@@ -665,13 +738,17 @@ def enrich_prep_rows_with_entity_semantics(
         for d in (
             *sem3["structure_columns_available"],
             *sem3["classification_like_available"],
+            *(sem3.get("classref_available") or []),
         )
     }
     allowed_prop_keys = {d["key"] for d in available} | set(curated_by_key)
     selected_valid = [
         k
         for k in selected_cols
-        if k in allowed_prop_keys or is_spatial_column_key(k) or source_property_from_column_key(k)
+        if k in allowed_prop_keys
+        or is_spatial_column_key(k)
+        or is_classref_column_key(k)
+        or source_property_from_column_key(k)
     ]
     selected_valid = selected_valid[:MAX_SELECTED_PROP_COLS]
     meta["selected_prop_columns"] = selected_valid
@@ -718,7 +795,7 @@ def enrich_prep_rows_with_entity_semantics(
                     type_name,
                 )
             else:
-                src = source_property_from_column_key(col_key)
+                src = resolve_column_source_property(col_key)
                 counter = _resolve_grain_counter(
                     grain_counters.get(src) or {},
                     class_counters.get(src) or {},
@@ -750,14 +827,25 @@ def enrich_prep_rows_with_entity_semantics(
         "semantic_family": fam_cov,
     }
     meta["property_column_coverage"] = prop_cov
-    meta["property_sets_indexed_on_prep"] = bool(available) or bool(
-        sem3["structure_columns_available"]
+    meta["property_sets_indexed_on_prep"] = (
+        bool(available)
+        or bool(sem3["structure_columns_available"])
+        or bool(sem3.get("classref_available"))
     )
-    if sem3["structure_columns_available"] or sem3["classification_like_available"]:
+    meta["scan_summary"] = {
+        "key_nonempty": dict(scan.get("key_nonempty") or {}),
+        "spatial_nonempty": dict(scan.get("spatial_nonempty") or {}),
+    }
+    if (
+        sem3["structure_columns_available"]
+        or sem3["classification_like_available"]
+        or (sem3.get("classref_available"))
+    ):
         meta["helper"] = (
-            "Model structure and existing classification evidence can be added as columns. "
+            "Model structure, IFC classification references, and authoring "
+            "classification properties can be added as columns. "
             "Grouped preparation rows show a single value, Mixed values, or —. "
-            "Castor schema mapping stays separate from model classification evidence."
+            "Castor schema mapping stays separate from model evidence."
         )
     elif available:
         meta["helper"] = (
@@ -847,8 +935,11 @@ def discover_semantic_fields(
     property_columns = list(meta.get("property_columns_available") or [])
     structure_columns = list(meta.get("structure_columns_available") or [])
     classification_like = list(meta.get("classification_like_available") or [])
+    classref_cols = list(meta.get("classref_available") or [])
     selected = list(meta.get("selected_prop_columns") or [])
-    curated_all = {str(d.get("key")): d for d in (*structure_columns, *classification_like)}
+    curated_all = {
+        str(d.get("key")): d for d in (*structure_columns, *classification_like, *classref_cols)
+    }
     selected_seen: set[str] = set()
     for desc in property_columns:
         key = str(desc.get("key") or "")
@@ -869,7 +960,7 @@ def discover_semantic_fields(
                 "is_sortable": False,
             }
         )
-    for desc in (*structure_columns, *classification_like):
+    for desc in (*structure_columns, *classification_like, *classref_cols):
         key = str(desc.get("key") or "")
         if key not in selected:
             continue
@@ -946,6 +1037,7 @@ def discover_semantic_fields(
             "entity_count_scanned": int(meta.get("entity_count_scanned") or 0),
             "hint_coverage": dict(meta.get("hint_coverage") or {}),
             "property_column_coverage": dict(meta.get("property_column_coverage") or {}),
+            "scan_summary": dict(meta.get("scan_summary") or {}),
         },
     }
 
@@ -971,6 +1063,8 @@ def filter_prep_rows_by_semantic(
     if key.startswith(PROP_KEY_PREFIX):
         allowed.add(key)
     if is_spatial_column_key(key):
+        allowed.add(key)
+    if is_classref_column_key(key):
         allowed.add(key)
     if key not in allowed:
         return [dict(r) for r in prep_rows]
@@ -1015,7 +1109,7 @@ def parse_semantic_query(query: Mapping[str, Any]) -> dict[str, Any]:
     cols = parse_sem_cols(query)
     add = _str_val(query.get("sem_cols_add"))
     if add and add not in cols and len(cols) < MAX_SELECTED_PROP_COLS:
-        if is_spatial_column_key(add):
+        if is_spatial_column_key(add) or is_classref_column_key(add):
             cols = [*cols, add]
         elif add.startswith(PROP_KEY_PREFIX):
             src = source_property_from_column_key(add)
@@ -1052,6 +1146,7 @@ def apply_semantic_filters_to_qty_prep(
         + [d["key"] for d in (enrichment.get("property_columns_available") or [])]
         + [d["key"] for d in (enrichment.get("structure_columns_available") or [])]
         + [d["key"] for d in (enrichment.get("classification_like_available") or [])]
+        + [d["key"] for d in (enrichment.get("classref_available") or [])]
     )
     if params["field"] and params["value"]:
         filtered = filter_prep_rows_by_semantic(
@@ -1077,6 +1172,8 @@ def apply_semantic_filters_to_qty_prep(
             *(enrichment.get("property_columns_available") or []),
             *(enrichment.get("structure_columns_available") or []),
             *(enrichment.get("classification_like_available") or []),
+            *(enrichment.get("classref_available") or []),
+            *CLASSREF_CURATED,
         )
     }
     for key in selected_cols:
@@ -1117,10 +1214,12 @@ def apply_semantic_filters_to_qty_prep(
         "classification_like_available": list(
             enrichment.get("classification_like_available") or []
         ),
+        "classref_available": list(enrichment.get("classref_available") or []),
         "unavailable": dict(enrichment.get("unavailable") or {}),
         "mapping_distinction_note": (
-            "Existing model classification evidence (OmniClass / Assembly Code) is not "
-            "the same as Castor schema mapping (classification / package / work package)."
+            "Three layers stay separate: (1) IFC classification references from this "
+            "export, (2) authoring properties such as OmniClass / Assembly Code, "
+            "(3) Castor schema mapping targets for this 5D model."
         ),
     }
     qty_prep["semantic_filters"] = panel
