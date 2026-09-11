@@ -29,7 +29,14 @@
     {% endfor %}
   </div>
 
-  <ul class="nav nav-tabs c5d-filter-tabs mb-0" role="tablist" data-testid="qty-filter-source-tabs">
+  <details class="c5d-advanced mb-2" data-testid="qty-add-evidence-columns"
+           {% if not sem.selected_prop_columns %}open{% endif %}>
+    <summary class="c5d-helper" style="cursor:pointer;">
+      Add evidence columns
+      <span class="text-secondary">(IFC properties, structure, classification)</span>
+    </summary>
+
+  <ul class="nav nav-tabs c5d-filter-tabs mb-0 mt-2" role="tablist" data-testid="qty-filter-source-tabs">
     <li class="nav-item" role="presentation">
       <button class="nav-link active" id="qty-tab-props" data-bs-toggle="tab"
               data-bs-target="#qty-pane-props" type="button" role="tab"
@@ -264,6 +271,7 @@
       </form>
     </div>
   </div>
+  </details>
 
   <hr class="my-2">
 
