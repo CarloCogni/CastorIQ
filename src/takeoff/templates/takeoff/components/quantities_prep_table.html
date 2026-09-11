@@ -1,25 +1,72 @@
 <!-- takeoff/components/quantities_prep_table.html — Generated Preparation Data Model -->
 <section class="qty-builder-section c5d-card" data-testid="quantities-prep-table" id="qty-prep-table-section">
-  <div class="c5d-card-header qty-builder-h">
+  <div class="c5d-toolbar mb-1" data-testid="qty-prep-primary-toolbar">
     <h2 class="c5d-section-title mb-0" data-testid="quantities-prep-table-title">Preparation table</h2>
     <span class="c5d-helper" data-testid="qty-prep-row-count-footnote">
       {% if qty_prep.prep_row_grain == "type" %}By Type{% else %}By IFC Class{% endif %}
       {% if qty_prep.pagination %}
-      · {{ qty_prep.pagination.filtered_rows }} filtered row{{ qty_prep.pagination.filtered_rows|pluralize }}
+      · {{ qty_prep.pagination.filtered_rows }} filtered
       {% else %}
-      · {{ qty_prep.prep_rows|length }} preparation row{{ qty_prep.prep_rows|length|pluralize }}
+      · {{ qty_prep.prep_rows|length }} rows
       {% endif %}
     </span>
-    <div class="ms-auto">
-      <a href="{% if qty_prep_return_query %}{{ qty_prep_export_url }}?{{ qty_prep_return_query }}{% else %}{{ qty_prep_export_url }}{% endif %}"
-         class="btn btn-sm btn-outline-secondary c5d-action-secondary"
-         data-testid="qty-prep-export"
-         title="Session preparation model ZIP — not legacy QTO cache">
-        <i class="bi bi-download me-1"></i>Export session
-      </a>
-    </div>
+    {% if qty_prep.manual_mapping_eligible_fields %}
+    <span class="c5d-helper" data-testid="qty-batch-toolbar-count">0 selected</span>
+    <button type="button"
+            class="btn btn-sm btn-primary c5d-action-primary"
+            data-testid="qty-batch-map-selected"
+            id="qty-batch-map-selected"
+            data-bs-toggle="modal"
+            data-bs-target="#qtyBatchMappingModal"
+            disabled>
+      Map selected visible rows
+    </button>
+    <button type="button"
+            class="btn btn-sm btn-outline-secondary c5d-action-subtle py-0"
+            data-testid="qty-batch-clear-selection"
+            id="qty-batch-clear-selection">
+      Clear
+    </button>
+    {% endif %}
+    <a href="{% if qty_prep_return_query %}{{ qty_prep_export_url }}?{{ qty_prep_return_query }}{% else %}{{ qty_prep_export_url }}{% endif %}"
+       class="btn btn-sm btn-outline-secondary c5d-action-subtle py-0 ms-auto"
+       data-testid="qty-prep-export"
+       title="Session preparation model ZIP — not legacy QTO cache">
+      Export session
+    </a>
   </div>
-  <details class="c5d-more-about mb-2">
+  {% if qty_prep.manual_mapping_eligible_fields %}
+  <div class="visually-hidden" data-testid="qty-batch-mapping-toolbar" aria-hidden="true">
+    <!-- Keep legacy toolbar testid for smoke; primary controls live above. -->
+    Map rows
+  </div>
+  <details class="c5d-batch-secondary mb-1">
+    <summary class="c5d-helper" style="cursor:pointer;">More mapping tools</summary>
+    <div class="c5d-toolbar mt-1">
+      <button type="button"
+              class="btn btn-sm btn-outline-secondary c5d-action-subtle"
+              data-testid="qty-batch-map-all-filtered"
+              disabled
+              title="Map all filtered rows — coming in a later slice">
+        Map all filtered rows (future)
+      </button>
+      <label class="small mb-0 text-secondary" for="qty-batch-ifc-filter">Map by IFC class</label>
+      <select id="qty-batch-ifc-filter"
+              class="form-select form-select-sm"
+              style="width:auto;max-width:12rem;"
+              data-testid="qty-batch-ifc-filter">
+        <option value="">— Choose class —</option>
+      </select>
+      <button type="button"
+              class="btn btn-sm btn-outline-secondary c5d-action-secondary"
+              data-testid="qty-batch-select-ifc-class"
+              id="qty-batch-select-ifc-class">
+        Select visible class rows
+      </button>
+    </div>
+  </details>
+  {% endif %}
+  <details class="c5d-more-about mb-1">
     <summary class="c5d-helper" style="cursor:pointer;">More about this table</summary>
     <p class="qty-builder-note mb-1" data-testid="quantities-prep-helper-note">
       {{ qty_prep.prep_helper_note }}
@@ -39,59 +86,16 @@
       Session export includes current settings and annotations. Not BOQ, not cost, not writeback.
     </p>
   </details>
-  {% if qty_prep.manual_mapping_eligible_fields %}
-  <div class="c5d-toolbar mb-2"
-       data-testid="qty-batch-mapping-toolbar">
-    <span class="small fw-semibold">Map rows</span>
-    <span class="small text-secondary" data-testid="qty-batch-toolbar-count">0 selected</span>
-    <button type="button"
-            class="btn btn-sm btn-primary c5d-action-primary"
-            data-testid="qty-batch-map-selected"
-            id="qty-batch-map-selected"
-            data-bs-toggle="modal"
-            data-bs-target="#qtyBatchMappingModal"
-            disabled>
-      Map selected visible rows
-    </button>
-    <button type="button"
-            class="btn btn-sm btn-outline-secondary c5d-action-secondary"
-            data-testid="qty-batch-clear-selection"
-            id="qty-batch-clear-selection">
-      Clear selection
-    </button>
-    <button type="button"
-            class="btn btn-sm btn-outline-secondary c5d-action-subtle"
-            data-testid="qty-batch-map-all-filtered"
-            disabled
-            title="Map all filtered rows — coming in a later slice">
-      Map all filtered rows (future)
-    </button>
-    <div class="vr d-none d-md-block"></div>
-    <label class="small mb-0 text-secondary" for="qty-batch-ifc-filter">Map by IFC class</label>
-    <select id="qty-batch-ifc-filter"
-            class="form-select form-select-sm"
-            style="width:auto;max-width:12rem;"
-            data-testid="qty-batch-ifc-filter">
-      <option value="">— Choose class —</option>
-    </select>
-    <button type="button"
-            class="btn btn-sm btn-outline-secondary c5d-action-secondary"
-            data-testid="qty-batch-select-ifc-class"
-            id="qty-batch-select-ifc-class">
-      Select visible class rows
-    </button>
-  </div>
-  {% endif %}
   {% if qty_prep.pagination %}
   {% include "takeoff/components/quantities_prep_pagination.html" %}
   {% endif %}
   {% if qty_prep.session_review_stale_message %}
-  <p class="c5d-helper mb-2 text-secondary" data-testid="qty-session-review-stale">
+  <p class="c5d-helper mb-1 text-secondary" data-testid="qty-session-review-stale">
     {{ qty_prep.session_review_stale_message }}
   </p>
   {% endif %}
   {% if qty_prep.session_mapping_stale_message %}
-  <p class="c5d-helper mb-2 text-secondary" data-testid="qty-session-mapping-stale">
+  <p class="c5d-helper mb-1 text-secondary" data-testid="qty-session-mapping-stale">
     {{ qty_prep.session_mapping_stale_message }}
   </p>
   {% endif %}

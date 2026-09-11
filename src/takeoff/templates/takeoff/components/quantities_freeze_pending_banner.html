@@ -1,13 +1,13 @@
 <!-- takeoff/components/quantities_freeze_pending_banner.html — FREEZE-UX-1 -->
 {% if qty_prep_pending.has_pending_review_changes %}
-<section class="c5d-card c5d-warning mb-0"
+<section class="c5d-card c5d-warning mb-0 py-1"
          data-testid="qty-freeze-pending-banner"
          id="qty-freeze-pending-banner">
-  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
     <div style="min-width:0; max-width:36rem;">
-      <h2 class="c5d-section-title mb-1" data-testid="qty-freeze-pending-title">Unsaved 5D review changes</h2>
-      <p class="c5d-helper mb-2" data-testid="qty-freeze-pending-body">
-        Mapping or unit changes are active in this session. Freeze a new snapshot to review them.
+      <h2 class="c5d-section-title mb-0" data-testid="qty-freeze-pending-title">Unsaved 5D review changes</h2>
+      <p class="c5d-helper mb-0" data-testid="qty-freeze-pending-body">
+        Mapping or unit changes are active. Freeze a new snapshot to review them.
         Existing snapshots stay unchanged.
       </p>
       <p class="c5d-helper mb-0" data-testid="qty-freeze-pending-types">

@@ -1,18 +1,42 @@
-<!-- takeoff/components/quantities_semantic_filters.html — compact Discover filters (5D-UX-1A) -->
+<!-- takeoff/components/quantities_semantic_filters.html — Discover compact bar (5D-UX-1B) -->
 {% with sem=qty_prep.semantic_filters %}
-<section class="c5d-card mb-0"
+<section class="c5d-card c5d-discover mb-0"
          data-testid="qty-semantic-filters">
-  <div class="c5d-card-header">
+  <div class="c5d-discover-bar" data-testid="qty-discover-bar">
     <h2 class="c5d-section-title" data-testid="qty-semantic-filters-title">
-      Discover &amp; filter
+      Discover
     </h2>
-    <p class="c5d-helper mb-0" data-testid="qty-semantic-filters-subtitle">
-      Add evidence columns, then filter before mapping.
-    </p>
-    <p class="c5d-helper ms-auto mb-0" data-testid="qty-semantic-filters-count">
+    <span class="c5d-helper" data-testid="qty-semantic-filters-count">
       Showing {{ sem.showing_count }} of {{ sem.total_count }} rows
-    </p>
+    </span>
+    {% if sem.active_field %}
+    <span class="badge text-bg-secondary" data-testid="qty-discover-active-filter"
+          title="{{ sem.active_field }}{% if sem.active_value %}: {{ sem.active_value }}{% endif %}">
+      {{ sem.active_field }}{% if sem.active_value %}: {{ sem.active_value|truncatechars:24 }}{% endif %}
+    </span>
+    {% endif %}
+    {% if sem.selected_prop_column_meta %}
+    <span class="c5d-helper" data-testid="qty-discover-columns-summary">
+      {{ sem.selected_prop_column_meta|length }} column{{ sem.selected_prop_column_meta|length|pluralize }}
+    </span>
+    {% endif %}
+    <a class="btn btn-sm btn-outline-secondary c5d-action-subtle py-0"
+       data-testid="qty-semantic-clear-filter"
+       href="?{% for key, values in request.GET.lists %}{% if key != 'semantic_field' and key != 'semantic_value' and key != 'semantic_sort' and key != 'semantic_sort_dir' and key != 'sem_cols_add' %}{% for value in values %}{{ key }}={{ value|urlencode }}&amp;{% endfor %}{% endif %}{% endfor %}">
+      Clear filters
+    </a>
+    <span class="visually-hidden" data-testid="qty-semantic-filters-subtitle">
+      Add evidence columns, then filter before mapping.
+    </span>
   </div>
+
+  <details class="c5d-discover-details mt-1"
+           data-testid="qty-discover-panel"
+           {% if sem.active_field %}open{% endif %}>
+    <summary class="c5d-discover-toggle" data-testid="qty-discover-toggle">
+      Filters &amp; evidence columns
+    </summary>
+    <div class="c5d-discover-panel">
 
   <div class="d-flex flex-wrap gap-1 mb-2" data-testid="qty-property-column-chips">
     {% for col in sem.selected_prop_column_meta %}
@@ -332,11 +356,6 @@
             data-testid="qty-semantic-apply-filter">
       Apply filter
     </button>
-    <a class="btn btn-sm btn-outline-secondary c5d-action-subtle"
-       data-testid="qty-semantic-clear-filter"
-       href="?{% for key, values in request.GET.lists %}{% if key != 'semantic_field' and key != 'semantic_value' and key != 'semantic_sort' and key != 'semantic_sort_dir' and key != 'sem_cols_add' %}{% for value in values %}{{ key }}={{ value|urlencode }}&amp;{% endfor %}{% endif %}{% endfor %}">
-      Clear filters
-    </a>
     <button type="button"
             class="btn btn-sm btn-outline-secondary c5d-action-secondary"
             data-testid="qty-semantic-select-filtered"
@@ -350,6 +369,8 @@
     <p class="c5d-helper mb-0" data-testid="qty-semantic-filters-helper">
       {{ sem.helper }}
     </p>
+  </details>
+    </div>
   </details>
 </section>
 
