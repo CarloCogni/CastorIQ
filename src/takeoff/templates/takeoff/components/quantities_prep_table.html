@@ -1,56 +1,51 @@
 <!-- takeoff/components/quantities_prep_table.html — Generated Preparation Data Model -->
-<section class="qty-builder-section" data-testid="quantities-prep-table" id="qty-prep-table-section">
-  <div class="qty-builder-h">
-    <h6 class="mb-0" data-testid="quantities-prep-table-title">Generated Preparation Data Model</h6>
-    <span class="mi-footnote" data-testid="qty-prep-row-count-footnote">
+<section class="qty-builder-section c5d-card" data-testid="quantities-prep-table" id="qty-prep-table-section">
+  <div class="c5d-card-header qty-builder-h">
+    <h2 class="c5d-section-title mb-0" data-testid="quantities-prep-table-title">Preparation table</h2>
+    <span class="c5d-helper" data-testid="qty-prep-row-count-footnote">
       {% if qty_prep.prep_row_grain == "type" %}By Type{% else %}By IFC Class{% endif %}
       {% if qty_prep.pagination %}
-      · {{ qty_prep.pagination.filtered_rows }} filtered preparation row{{ qty_prep.pagination.filtered_rows|pluralize }}
+      · {{ qty_prep.pagination.filtered_rows }} filtered row{{ qty_prep.pagination.filtered_rows|pluralize }}
       {% else %}
       · {{ qty_prep.prep_rows|length }} preparation row{{ qty_prep.prep_rows|length|pluralize }}
       {% endif %}
     </span>
-    <div class="ms-auto d-flex flex-column align-items-end gap-1">
+    <div class="ms-auto">
       <a href="{% if qty_prep_return_query %}{{ qty_prep_export_url }}?{{ qty_prep_return_query }}{% else %}{{ qty_prep_export_url }}{% endif %}"
-         class="btn btn-sm btn-outline-primary"
+         class="btn btn-sm btn-outline-secondary c5d-action-secondary"
          data-testid="qty-prep-export"
          title="Session preparation model ZIP — not legacy QTO cache">
-        <i class="bi bi-download me-1"></i>Export preparation model (session)
+        <i class="bi bi-download me-1"></i>Export session
       </a>
-      <span class="mi-footnote text-end" style="max-width:22rem;"
-            data-testid="qty-prep-export-note">
-        Downloads a session snapshot of the current generated preparation model,
-        including current settings and session annotations.
-        Not BOQ, not cost, not certified, not writeback.
-      </span>
     </div>
   </div>
-  <p class="qty-builder-note mb-2" data-testid="quantities-prep-helper-note">
-    {{ qty_prep.prep_helper_note }}
-  </p>
-  <p class="qty-builder-note mb-2" data-testid="qty-prep-unit-basis-note">
-    {{ qty_prep.prep_unit_basis_note }}
-  </p>
-  <p class="qty-builder-note mb-2" data-testid="qty-session-review-boundary">
-    {{ qty_prep.session_review_note }}
-  </p>
-  {% if qty_prep.session_mapping_note %}
-  <p class="qty-builder-note mb-2" data-testid="qty-session-mapping-boundary">
-    {{ qty_prep.session_mapping_note }}
-  </p>
-  {% endif %}
-  {% include "takeoff/components/quantities_unit_confirmation.html" %}
-  {% include "takeoff/components/quantities_semantic_source_readiness.html" %}
-  {% if qty_prep.semantic_filters %}
-  {% include "takeoff/components/quantities_semantic_filters.html" %}
-  {% endif %}
+  <details class="c5d-more-about mb-2">
+    <summary class="c5d-helper" style="cursor:pointer;">More about this table</summary>
+    <p class="qty-builder-note mb-1" data-testid="quantities-prep-helper-note">
+      {{ qty_prep.prep_helper_note }}
+    </p>
+    <p class="qty-builder-note mb-1" data-testid="qty-prep-unit-basis-note">
+      {{ qty_prep.prep_unit_basis_note }}
+    </p>
+    <p class="qty-builder-note mb-1" data-testid="qty-session-review-boundary">
+      {{ qty_prep.session_review_note }}
+    </p>
+    {% if qty_prep.session_mapping_note %}
+    <p class="qty-builder-note mb-1" data-testid="qty-session-mapping-boundary">
+      {{ qty_prep.session_mapping_note }}
+    </p>
+    {% endif %}
+    <p class="mi-footnote mb-0" data-testid="qty-prep-export-note">
+      Session export includes current settings and annotations. Not BOQ, not cost, not writeback.
+    </p>
+  </details>
   {% if qty_prep.manual_mapping_eligible_fields %}
-  <div class="d-flex flex-wrap align-items-center gap-2 mb-2 p-2 border rounded"
+  <div class="c5d-toolbar mb-2"
        data-testid="qty-batch-mapping-toolbar">
-    <span class="small fw-semibold">Batch schema mapping</span>
+    <span class="small fw-semibold">Map rows</span>
     <span class="small text-secondary" data-testid="qty-batch-toolbar-count">0 selected</span>
     <button type="button"
-            class="btn btn-sm btn-primary"
+            class="btn btn-sm btn-primary c5d-action-primary"
             data-testid="qty-batch-map-selected"
             id="qty-batch-map-selected"
             data-bs-toggle="modal"
@@ -59,13 +54,13 @@
       Map selected visible rows
     </button>
     <button type="button"
-            class="btn btn-sm btn-outline-secondary"
+            class="btn btn-sm btn-outline-secondary c5d-action-secondary"
             data-testid="qty-batch-clear-selection"
             id="qty-batch-clear-selection">
       Clear selection
     </button>
     <button type="button"
-            class="btn btn-sm btn-outline-secondary"
+            class="btn btn-sm btn-outline-secondary c5d-action-subtle"
             data-testid="qty-batch-map-all-filtered"
             disabled
             title="Map all filtered rows — coming in a later slice">
@@ -80,7 +75,7 @@
       <option value="">— Choose class —</option>
     </select>
     <button type="button"
-            class="btn btn-sm btn-outline-primary"
+            class="btn btn-sm btn-outline-secondary c5d-action-secondary"
             data-testid="qty-batch-select-ifc-class"
             id="qty-batch-select-ifc-class">
       Select visible class rows
@@ -91,12 +86,12 @@
   {% include "takeoff/components/quantities_prep_pagination.html" %}
   {% endif %}
   {% if qty_prep.session_review_stale_message %}
-  <p class="qty-builder-note mb-2 text-secondary" data-testid="qty-session-review-stale">
+  <p class="c5d-helper mb-2 text-secondary" data-testid="qty-session-review-stale">
     {{ qty_prep.session_review_stale_message }}
   </p>
   {% endif %}
   {% if qty_prep.session_mapping_stale_message %}
-  <p class="qty-builder-note mb-2 text-secondary" data-testid="qty-session-mapping-stale">
+  <p class="c5d-helper mb-2 text-secondary" data-testid="qty-session-mapping-stale">
     {{ qty_prep.session_mapping_stale_message }}
   </p>
   {% endif %}

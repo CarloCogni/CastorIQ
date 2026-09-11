@@ -1,17 +1,16 @@
 <!-- takeoff/components/quantities_freeze_pending_banner.html — FREEZE-UX-1 -->
 {% if qty_prep_pending.has_pending_review_changes %}
-<section class="qty-builder-section border rounded p-3 mb-3 border-warning"
+<section class="c5d-card c5d-warning mb-0"
          data-testid="qty-freeze-pending-banner"
          id="qty-freeze-pending-banner">
   <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
-    <div style="min-width:0; max-width:40rem;">
-      <h6 class="mb-1" data-testid="qty-freeze-pending-title">Unsaved 5D review changes</h6>
-      <p class="small mb-2" data-testid="qty-freeze-pending-body">
-        Your mapping or unit changes are active in this preparation session.
-        Freeze a new 5D snapshot to review them in 5D Quantity Review.
-        Existing snapshots will not be changed.
+    <div style="min-width:0; max-width:36rem;">
+      <h2 class="c5d-section-title mb-1" data-testid="qty-freeze-pending-title">Unsaved 5D review changes</h2>
+      <p class="c5d-helper mb-2" data-testid="qty-freeze-pending-body">
+        Mapping or unit changes are active in this session. Freeze a new snapshot to review them.
+        Existing snapshots stay unchanged.
       </p>
-      <p class="mi-footnote mb-0" data-testid="qty-freeze-pending-types">
+      <p class="c5d-helper mb-0" data-testid="qty-freeze-pending-types">
         Pending:
         {% for kind in qty_prep_pending.pending_change_types %}
           <span class="badge text-bg-secondary me-1">{{ kind }}</span>
@@ -20,7 +19,7 @@
         {% endfor %}
       </p>
     </div>
-    <div class="text-end" style="max-width:18rem;">
+    <div class="text-end" style="max-width:16rem;">
       <form method="post"
             action="{{ qty_prep_freeze_url }}"
             data-testid="qty-freeze-form"
@@ -39,14 +38,14 @@
                data-testid="qty-freeze-version-label"
                autocomplete="off">
         <button type="submit"
-                class="btn btn-sm btn-primary"
+                class="btn btn-sm btn-primary c5d-action-primary"
                 data-testid="qty-freeze-cta">
           <i class="bi bi-snow me-1"></i>Freeze updated 5D snapshot
         </button>
       </form>
       <div class="mt-2">
         <a href="#qty-prep-table-section"
-           class="btn btn-sm btn-outline-secondary"
+           class="btn btn-sm btn-outline-secondary c5d-action-subtle"
            data-testid="qty-freeze-continue-editing">
           Continue editing
         </a>

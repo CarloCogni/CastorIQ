@@ -1,25 +1,26 @@
 <!-- takeoff/components/quantities_unit_confirmation.html — UNIT-2 unit confirmation -->
 {% with uc=qty_prep.unit_confirmation %}
-<section class="qty-builder-section border rounded p-2 mb-2"
-         data-testid="qty-unit-confirmation">
-  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
+<section class="c5d-card mb-0"
+         data-testid="qty-unit-confirmation"
+         id="qty-unit-confirmation">
+  <div class="c5d-card-header d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
     <div style="min-width:0;">
-      <h6 class="mb-0 small fw-semibold" data-testid="qty-unit-confirmation-title">
+      <h2 class="c5d-section-title" data-testid="qty-unit-confirmation-title">
         Quantity units
-      </h6>
-      <p class="mi-footnote mb-0" data-testid="qty-unit-confirmation-subtitle">
-        Confirm the IFC project units before using quantity totals for 5D review.
+      </h2>
+      <p class="c5d-helper mb-0" data-testid="qty-unit-confirmation-subtitle">
+        Confirm IFC project units before 5D review totals.
       </p>
     </div>
     {% if uc.any_confirmed %}
-    <span class="badge text-bg-success" data-testid="qty-unit-confirmation-badge">Confirmed</span>
+    <span class="c5d-status is-ok" data-testid="qty-unit-confirmation-badge">Confirmed</span>
     {% else %}
-    <span class="badge text-bg-secondary" data-testid="qty-unit-confirmation-badge">Unresolved</span>
+    <span class="c5d-status is-warn" data-testid="qty-unit-confirmation-badge">Unresolved</span>
     {% endif %}
   </div>
 
   {% if uc.conflict %}
-  <p class="mi-footnote text-warning mb-2" data-testid="qty-unit-confirmation-conflict">
+  <p class="c5d-helper text-warning mb-2" data-testid="qty-unit-confirmation-conflict">
     {{ uc.helper }}
   </p>
   {% endif %}
@@ -72,7 +73,7 @@
       <input type="hidden" name="families" value="volume,area,length,count">
       <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
       <button type="submit"
-              class="btn btn-sm btn-outline-primary"
+              class="btn btn-sm btn-primary c5d-action-primary"
               data-testid="qty-unit-confirm-submit"
               {% if uc.conflict %}disabled{% endif %}>
         Confirm declared units
@@ -87,7 +88,7 @@
       <input type="hidden" name="families" value="volume,area,length,count">
       <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
       <button type="submit"
-              class="btn btn-sm btn-outline-secondary"
+              class="btn btn-sm btn-outline-secondary c5d-action-secondary"
               data-testid="qty-unit-clear-submit">
         Leave unresolved
       </button>
@@ -118,15 +119,17 @@
              style="width:6rem;"
              data-testid="qty-unit-override-token">
       <button type="submit"
-              class="btn btn-sm btn-outline-secondary"
+              class="btn btn-sm btn-outline-secondary c5d-action-subtle"
               data-testid="qty-unit-override-submit">
         Override
       </button>
     </form>
   </div>
-  <p class="mi-footnote mt-2 mb-0" data-testid="qty-unit-confirmation-helper">
-    {{ uc.helper }} Session-only until you freeze a 5D snapshot. No unit conversion.
-    Unit stays in its own column — never merged into Total Quantity or Measurement Basis.
-  </p>
+  <details class="mt-2">
+    <summary class="c5d-helper" style="cursor:pointer;">More about units</summary>
+    <p class="c5d-helper mb-0" data-testid="qty-unit-confirmation-helper">
+      {{ uc.helper }} Labels only — no conversion. Unit stays separate from Total Quantity and Measurement Basis.
+    </p>
+  </details>
 </section>
 {% endwith %}

@@ -1,17 +1,16 @@
 <!-- takeoff/components/quantities_semantic_source_readiness.html — SEM-4A readiness -->
 {% with readiness=qty_prep.semantic_source_readiness %}
 {% if readiness %}
-<section class="qty-builder-section border rounded p-2 mb-2"
+<section class="c5d-card mb-0"
          data-testid="qty-semantic-source-readiness">
-  <div class="mb-1">
-    <h6 class="mb-0 small fw-semibold" data-testid="qty-semantic-source-readiness-title">
+  <div class="c5d-card-header mb-1">
+    <h2 class="c5d-section-title" data-testid="qty-semantic-source-readiness-title">
       5D semantic source readiness
-    </h6>
-    <p class="mi-footnote mb-0" data-testid="qty-semantic-source-readiness-purpose">
-      Choose and review which model fields can feed the 5D data model.
-      This is guidance only — not final approval, not cost readiness.
-    </p>
+    </h2>
   </div>
+  <p class="c5d-helper mb-2" data-testid="qty-semantic-source-readiness-purpose">
+    Which model fields can feed the 5D model — guidance only.
+  </p>
   <div class="table-responsive">
     <table class="table table-sm mb-1 align-middle"
            data-testid="qty-semantic-source-readiness-table">
@@ -19,8 +18,8 @@
         <tr class="small text-secondary">
           <th scope="col">Field</th>
           <th scope="col">Status</th>
-          <th scope="col">Detected / recommended</th>
-          <th scope="col">Note</th>
+          <th scope="col">Source</th>
+          <th scope="col" class="c5d-note-col">Note</th>
         </tr>
       </thead>
       <tbody>
@@ -51,16 +50,19 @@
               —
             {% endif %}
           </td>
-          <td class="mi-footnote mb-0">{{ field.message }}</td>
+          <td class="mi-footnote mb-0 c5d-note-col">{{ field.message }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% if readiness.helper %}
-  <p class="mi-footnote mb-0 text-secondary" data-testid="qty-semantic-source-readiness-helper">
-    {{ readiness.helper }}
-  </p>
+  <details class="mt-1">
+    <summary class="c5d-helper" style="cursor:pointer;">More about readiness</summary>
+    <p class="c5d-helper mb-0 text-secondary" data-testid="qty-semantic-source-readiness-helper">
+      {{ readiness.helper }}
+    </p>
+  </details>
   {% endif %}
 </section>
 {% endif %}
