@@ -129,6 +129,12 @@
 
       {% include "takeoff/components/quantities_freeze_pending_banner.html" %}
 
+      <div id="qty-discover-section">
+        {% if qty_prep.semantic_filters %}
+        {% include "takeoff/components/quantities_semantic_filters.html" %}
+        {% endif %}
+      </div>
+
       <details class="c5d-card" id="qty-configure-section" data-testid="qty-configure-details">
         <summary class="c5d-section-title" style="cursor:pointer;">
           Configure preparation
@@ -148,12 +154,6 @@
           </form>
         </div>
       </details>
-
-      <div id="qty-discover-section">
-        {% if qty_prep.semantic_filters %}
-        {% include "takeoff/components/quantities_semantic_filters.html" %}
-        {% endif %}
-      </div>
 
       {% include "takeoff/components/quantities_prep_table.html" %}
 
@@ -187,7 +187,10 @@
           Optional legacy QTO cache tools — not the primary preparation workspace.
         </p>
         <p class="c5d-helper mb-2" data-testid="qty-advanced-legacy-export-copy">
-          Legacy export uses the optional QTO cache and does not export the current generated preparation data model. Use Export preparation model (session) on the preparation table for the current generated model.
+          This legacy export uses the optional QTO cache and may include cost/cache fields if present.
+          It does not export the current generated preparation data model, schema configuration,
+          source intent, row reviews, or manual mapping values.
+          Use Export preparation model (session) on the preparation table for that snapshot.
         </p>
         <div class="d-flex flex-wrap gap-2">
           <a href="{% url 'takeoff:qto_export' project.pk %}"
