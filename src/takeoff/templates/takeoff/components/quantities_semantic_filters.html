@@ -1,252 +1,271 @@
-<!-- takeoff/components/quantities_semantic_filters.html — IFC-SEM-1/2/3 filters + property columns -->
+<!-- takeoff/components/quantities_semantic_filters.html — compact Discover filters (5D-UX-1A) -->
 {% with sem=qty_prep.semantic_filters %}
-<section class="qty-builder-section border rounded p-2 mb-2"
+<section class="c5d-card mb-0"
          data-testid="qty-semantic-filters">
-  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-1">
-    <div style="min-width:0;">
-      <h6 class="mb-0 small fw-semibold" data-testid="qty-semantic-filters-title">
-        IFC semantic filters
-      </h6>
-      <p class="mi-footnote mb-0" data-testid="qty-semantic-filters-subtitle">
-        Use available model data to find rows before batch mapping.
-      </p>
-    </div>
-    <p class="mi-footnote mb-0" data-testid="qty-semantic-filters-count">
-      Showing {{ sem.showing_count }} of {{ sem.total_count }} preparation rows
+  <div class="c5d-card-header">
+    <h2 class="c5d-section-title" data-testid="qty-semantic-filters-title">
+      Discover &amp; filter
+    </h2>
+    <p class="c5d-helper mb-0" data-testid="qty-semantic-filters-subtitle">
+      Add evidence columns, then filter before mapping.
+    </p>
+    <p class="c5d-helper ms-auto mb-0" data-testid="qty-semantic-filters-count">
+      Showing {{ sem.showing_count }} of {{ sem.total_count }} rows
     </p>
   </div>
 
-  <div class="border rounded p-2 mb-2 bg-body-tertiary"
-       data-testid="qty-property-columns">
-    <div class="mb-1">
-      <span class="small fw-semibold" data-testid="qty-property-columns-title">IFC property columns</span>
-      <p class="mi-footnote mb-0" data-testid="qty-property-columns-subtitle">
-        Add model properties to refine row selection before mapping.
-      </p>
-    </div>
-    <form method="get"
-          class="d-flex flex-wrap align-items-end gap-2 mb-2"
-          data-testid="qty-property-columns-add-form"
-          action="">
-      {% for key, values in request.GET.lists %}
-        {% if key != "sem_cols" %}
-          {% for value in values %}
-          <input type="hidden" name="{{ key }}" value="{{ value }}">
-          {% endfor %}
-        {% endif %}
-      {% endfor %}
-      <div>
-        <label class="form-label small mb-0" for="qty-property-add">Add property column</label>
-        <select class="form-select form-select-sm"
-                id="qty-property-add"
-                name="sem_cols_add"
-                style="min-width:14rem;"
-                data-testid="qty-property-add">
-          <option value="">— Choose property —</option>
-          {% for col in sem.property_columns_available %}
-            {% if col.key not in sem.selected_prop_columns %}
-            <option value="{{ col.key }}">{{ col.group }} / {{ col.label }}</option>
-            {% endif %}
-          {% empty %}
-          <option value="" disabled>No indexed property columns available</option>
-          {% endfor %}
-        </select>
-      </div>
-      <input type="hidden" name="sem_cols" id="qty-sem-cols-hidden"
-             value="{{ sem.sem_cols_param }}"
-             data-testid="qty-sem-cols-hidden">
-      <button type="submit"
-              class="btn btn-sm btn-outline-primary"
-              data-testid="qty-property-add-submit">
-        Add column
-      </button>
-    </form>
-    <div class="d-flex flex-wrap gap-1 mb-1" data-testid="qty-property-column-chips">
-      {% for col in sem.selected_prop_column_meta %}
-      <a class="badge text-bg-secondary text-decoration-none"
-         data-testid="qty-property-chip"
-         title="Remove {{ col.label }}"
-         href="?{% for key, values in request.GET.lists %}{% if key != 'sem_cols' %}{% for value in values %}{{ key }}={{ value|urlencode }}&amp;{% endfor %}{% endif %}{% endfor %}sem_cols={% for c in sem.selected_prop_columns %}{% if c != col.key %}{{ c }},{% endif %}{% endfor %}">
-        {{ col.label }} ×
-      </a>
-      {% empty %}
-      <span class="mi-footnote" data-testid="qty-property-columns-empty">
-        No property columns selected yet.
-      </span>
-      {% endfor %}
-    </div>
-    {% if not sem.property_columns_available %}
-    <p class="mi-footnote mb-0 text-secondary" data-testid="qty-property-gap-state">
-      No indexed IFC property-set columns are available for this project yet.
-    </p>
-    {% endif %}
+  <div class="d-flex flex-wrap gap-1 mb-2" data-testid="qty-property-column-chips">
+    {% for col in sem.selected_prop_column_meta %}
+    <a class="badge text-bg-secondary text-decoration-none"
+       data-testid="qty-property-chip"
+       title="Remove {{ col.label }}"
+       href="?{% for key, values in request.GET.lists %}{% if key != 'sem_cols' %}{% for value in values %}{{ key }}={{ value|urlencode }}&amp;{% endfor %}{% endif %}{% endfor %}sem_cols={% for c in sem.selected_prop_columns %}{% if c != col.key %}{{ c }},{% endif %}{% endfor %}">
+      {{ col.label }} ×
+    </a>
+    {% empty %}
+    <span class="c5d-helper" data-testid="qty-property-columns-empty">
+      No evidence columns selected yet.
+    </span>
+    {% endfor %}
   </div>
 
-  <div class="border rounded p-2 mb-2"
-       data-testid="qty-model-structure">
-    <div class="mb-1">
-      <span class="small fw-semibold" data-testid="qty-model-structure-title">Model structure</span>
-      <p class="mi-footnote mb-0" data-testid="qty-model-structure-subtitle">
-        Level / storey and spatial containment from the indexed IFC model.
+  <ul class="nav nav-tabs c5d-filter-tabs mb-0" role="tablist" data-testid="qty-filter-source-tabs">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="qty-tab-props" data-bs-toggle="tab"
+              data-bs-target="#qty-pane-props" type="button" role="tab"
+              data-testid="qty-tab-ifc-properties">IFC properties</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="qty-tab-structure" data-bs-toggle="tab"
+              data-bs-target="#qty-pane-structure" type="button" role="tab"
+              data-testid="qty-tab-model-structure">Model structure</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="qty-tab-classref" data-bs-toggle="tab"
+              data-bs-target="#qty-pane-classref" type="button" role="tab"
+              data-testid="qty-tab-ifc-classref">Existing IFC classification</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="qty-tab-authoring" data-bs-toggle="tab"
+              data-bs-target="#qty-pane-authoring" type="button" role="tab"
+              data-testid="qty-tab-authoring">Authoring properties</button>
+    </li>
+  </ul>
+
+  <div class="tab-content c5d-filter-pane">
+    <div class="tab-pane fade show active" id="qty-pane-props" role="tabpanel"
+         data-testid="qty-property-columns">
+      <span class="visually-hidden" data-testid="qty-property-columns-title">IFC property columns</span>
+      <p class="c5d-helper mb-2" data-testid="qty-property-columns-subtitle">
+        Indexed IFC property-set columns.
       </p>
-    </div>
-    <form method="get"
-          class="d-flex flex-wrap align-items-end gap-2 mb-2"
-          data-testid="qty-structure-add-form"
-          action="">
-      {% for key, values in request.GET.lists %}
-        {% if key != "sem_cols" and key != "sem_cols_add" %}
-          {% for value in values %}
-          <input type="hidden" name="{{ key }}" value="{{ value }}">
-          {% endfor %}
-        {% endif %}
-      {% endfor %}
-      {% if sem.sem_cols_param %}
-      <input type="hidden" name="sem_cols" value="{{ sem.sem_cols_param }}">
+      <form method="get"
+            class="d-flex flex-wrap align-items-end gap-2"
+            data-testid="qty-property-columns-add-form"
+            action="">
+        {% for key, values in request.GET.lists %}
+          {% if key != "sem_cols" %}
+            {% for value in values %}
+            <input type="hidden" name="{{ key }}" value="{{ value }}">
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+        <div>
+          <label class="form-label small mb-0" for="qty-property-add">Add property column</label>
+          <select class="form-select form-select-sm"
+                  id="qty-property-add"
+                  name="sem_cols_add"
+                  style="min-width:14rem;"
+                  data-testid="qty-property-add">
+            <option value="">— Choose property —</option>
+            {% for col in sem.property_columns_available %}
+              {% if col.key not in sem.selected_prop_columns %}
+              <option value="{{ col.key }}">{{ col.group }} / {{ col.label }}</option>
+              {% endif %}
+            {% empty %}
+            <option value="" disabled>No indexed property columns available</option>
+            {% endfor %}
+          </select>
+        </div>
+        <input type="hidden" name="sem_cols" id="qty-sem-cols-hidden"
+               value="{{ sem.sem_cols_param }}"
+               data-testid="qty-sem-cols-hidden">
+        <button type="submit"
+                class="btn btn-sm btn-outline-secondary c5d-action-secondary"
+                data-testid="qty-property-add-submit">
+          Add column
+        </button>
+      </form>
+      {% if not sem.property_columns_available %}
+      <p class="c5d-helper mb-0 mt-2 text-secondary" data-testid="qty-property-gap-state">
+        No indexed IFC property-set columns are available for this project yet.
+      </p>
       {% endif %}
-      <div>
-        <label class="form-label small mb-0" for="qty-structure-add">Add structure column</label>
-        <select class="form-select form-select-sm"
-                id="qty-structure-add"
-                name="sem_cols_add"
-                style="min-width:14rem;"
-                data-testid="qty-structure-add">
-          <option value="">— Choose field —</option>
-          {% for col in sem.structure_columns_available %}
-            {% if col.key not in sem.selected_prop_columns %}
-            <option value="{{ col.key }}">{{ col.label }}</option>
-            {% endif %}
-          {% empty %}
-          <option value="" disabled>No structure fields indexed</option>
-          {% endfor %}
-        </select>
-      </div>
-      <button type="submit"
-              class="btn btn-sm btn-outline-primary"
-              data-testid="qty-structure-add-submit">
-        Add column
-      </button>
-    </form>
-    {% if sem.unavailable.zone %}
-    <p class="mi-footnote mb-0 text-secondary" data-testid="qty-zone-unavailable">
-      {{ sem.unavailable.zone.message }}
-    </p>
-    {% endif %}
-  </div>
+    </div>
 
-  <div class="border rounded p-2 mb-2"
-       data-testid="qty-existing-ifc-classification">
-    <div class="mb-1">
-      <span class="small fw-semibold" data-testid="qty-existing-ifc-classification-title">
+    <div class="tab-pane fade" id="qty-pane-structure" role="tabpanel"
+         data-testid="qty-model-structure">
+      <span class="visually-hidden" data-testid="qty-model-structure-title">Model structure</span>
+      <p class="c5d-helper mb-2" data-testid="qty-model-structure-subtitle">
+        Level / storey and spatial containment.
+      </p>
+      <form method="get"
+            class="d-flex flex-wrap align-items-end gap-2"
+            data-testid="qty-structure-add-form"
+            action="">
+        {% for key, values in request.GET.lists %}
+          {% if key != "sem_cols" and key != "sem_cols_add" %}
+            {% for value in values %}
+            <input type="hidden" name="{{ key }}" value="{{ value }}">
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+        {% if sem.sem_cols_param %}
+        <input type="hidden" name="sem_cols" value="{{ sem.sem_cols_param }}">
+        {% endif %}
+        <div>
+          <label class="form-label small mb-0" for="qty-structure-add">Add structure column</label>
+          <select class="form-select form-select-sm"
+                  id="qty-structure-add"
+                  name="sem_cols_add"
+                  style="min-width:14rem;"
+                  data-testid="qty-structure-add">
+            <option value="">— Choose field —</option>
+            {% for col in sem.structure_columns_available %}
+              {% if col.key not in sem.selected_prop_columns %}
+              <option value="{{ col.key }}">{{ col.label }}</option>
+              {% endif %}
+            {% empty %}
+            <option value="" disabled>No structure fields indexed</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit"
+                class="btn btn-sm btn-outline-secondary c5d-action-secondary"
+                data-testid="qty-structure-add-submit">
+          Add column
+        </button>
+      </form>
+      {% if sem.unavailable.zone %}
+      <p class="c5d-helper mb-0 mt-2 text-secondary" data-testid="qty-zone-unavailable">
+        {{ sem.unavailable.zone.message }}
+      </p>
+      {% endif %}
+    </div>
+
+    <div class="tab-pane fade" id="qty-pane-classref" role="tabpanel"
+         data-testid="qty-existing-ifc-classification">
+      <span class="visually-hidden" data-testid="qty-existing-ifc-classification-title">
         Existing IFC classification
       </span>
-      <p class="mi-footnote mb-0" data-testid="qty-existing-ifc-classification-subtitle">
-        Classification references read from this IFC export. Separate from authoring
-        properties and Castor schema mapping.
+      <p class="c5d-helper mb-2" data-testid="qty-existing-ifc-classification-subtitle">
+        True IFC classification references from this export — not authoring properties or Castor mapping.
       </p>
-    </div>
-    {% if sem.mapping_distinction_note %}
-    <p class="mi-footnote mb-2" data-testid="qty-mapping-distinction-note">
-      {{ sem.mapping_distinction_note }}
-    </p>
-    {% endif %}
-    <form method="get"
-          class="d-flex flex-wrap align-items-end gap-2 mb-2"
-          data-testid="qty-classref-add-form"
-          action="">
-      {% for key, values in request.GET.lists %}
-        {% if key != "sem_cols" and key != "sem_cols_add" %}
-          {% for value in values %}
-          <input type="hidden" name="{{ key }}" value="{{ value }}">
-          {% endfor %}
-        {% endif %}
-      {% endfor %}
-      {% if sem.sem_cols_param %}
-      <input type="hidden" name="sem_cols" value="{{ sem.sem_cols_param }}">
+      {% if sem.mapping_distinction_note %}
+      <details class="mb-2">
+        <summary class="c5d-helper" style="cursor:pointer;">Layers explained</summary>
+        <p class="c5d-helper mb-0" data-testid="qty-mapping-distinction-note">
+          {{ sem.mapping_distinction_note }}
+        </p>
+      </details>
       {% endif %}
-      <div>
-        <label class="form-label small mb-0" for="qty-classref-add">Add IFC classification reference</label>
-        <select class="form-select form-select-sm"
-                id="qty-classref-add"
-                name="sem_cols_add"
-                style="min-width:14rem;"
-                data-testid="qty-classref-add">
-          <option value="">— Choose field —</option>
-          {% for col in sem.classref_available %}
-            {% if col.key not in sem.selected_prop_columns %}
-            <option value="{{ col.key }}">{{ col.label }}</option>
-            {% endif %}
-          {% empty %}
-          <option value="" disabled>No IFC classification references indexed</option>
-          {% endfor %}
-        </select>
-      </div>
-      <button type="submit"
-              class="btn btn-sm btn-outline-primary"
-              data-testid="qty-classref-add-submit">
-        Add column
-      </button>
-    </form>
-    {% if sem.unavailable.ifc_classification_ref %}
-    <p class="mi-footnote mb-0 text-secondary" data-testid="qty-classref-unavailable">
-      {{ sem.unavailable.ifc_classification_ref.message }}
-    </p>
-    {% elif not sem.classref_available %}
-    <p class="mi-footnote mb-0 text-secondary" data-testid="qty-classref-unavailable">
-      No indexed IFC classification references found in this IFC export / not indexed yet.
-    </p>
-    {% endif %}
-  </div>
+      <form method="get"
+            class="d-flex flex-wrap align-items-end gap-2"
+            data-testid="qty-classref-add-form"
+            action="">
+        {% for key, values in request.GET.lists %}
+          {% if key != "sem_cols" and key != "sem_cols_add" %}
+            {% for value in values %}
+            <input type="hidden" name="{{ key }}" value="{{ value }}">
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+        {% if sem.sem_cols_param %}
+        <input type="hidden" name="sem_cols" value="{{ sem.sem_cols_param }}">
+        {% endif %}
+        <div>
+          <label class="form-label small mb-0" for="qty-classref-add">Add IFC classification reference</label>
+          <select class="form-select form-select-sm"
+                  id="qty-classref-add"
+                  name="sem_cols_add"
+                  style="min-width:14rem;"
+                  data-testid="qty-classref-add">
+            <option value="">— Choose field —</option>
+            {% for col in sem.classref_available %}
+              {% if col.key not in sem.selected_prop_columns %}
+              <option value="{{ col.key }}">{{ col.label }}</option>
+              {% endif %}
+            {% empty %}
+            <option value="" disabled>No IFC classification references indexed</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit"
+                class="btn btn-sm btn-outline-secondary c5d-action-secondary"
+                data-testid="qty-classref-add-submit">
+          Add column
+        </button>
+      </form>
+      {% if sem.unavailable.ifc_classification_ref %}
+      <p class="c5d-helper mb-0 mt-2 text-secondary" data-testid="qty-classref-unavailable">
+        {{ sem.unavailable.ifc_classification_ref.message }}
+      </p>
+      {% elif not sem.classref_available %}
+      <p class="c5d-helper mb-0 mt-2 text-secondary" data-testid="qty-classref-unavailable">
+        No indexed IFC classification references found in this IFC export / not indexed yet.
+      </p>
+      {% endif %}
+    </div>
 
-  <div class="border rounded p-2 mb-2"
-       data-testid="qty-existing-classification">
-    <div class="mb-1">
-      <span class="small fw-semibold" data-testid="qty-existing-classification-title">
+    <div class="tab-pane fade" id="qty-pane-authoring" role="tabpanel"
+         data-testid="qty-existing-classification">
+      <span class="visually-hidden" data-testid="qty-existing-classification-title">
         Authoring classification properties
       </span>
-      <p class="mi-footnote mb-0" data-testid="qty-existing-classification-subtitle">
-        OmniClass / Assembly Code and similar authoring-tool properties — not true
-        IFC classification references, and not Castor schema mapping.
+      <p class="c5d-helper mb-2" data-testid="qty-existing-classification-subtitle">
+        OmniClass / Assembly Code — authoring properties, not IFC ClassRef or Castor mapping.
       </p>
-    </div>
-    <form method="get"
-          class="d-flex flex-wrap align-items-end gap-2 mb-2"
-          data-testid="qty-classlike-add-form"
-          action="">
-      {% for key, values in request.GET.lists %}
-        {% if key != "sem_cols" and key != "sem_cols_add" %}
-          {% for value in values %}
-          <input type="hidden" name="{{ key }}" value="{{ value }}">
-          {% endfor %}
+      <form method="get"
+            class="d-flex flex-wrap align-items-end gap-2"
+            data-testid="qty-classlike-add-form"
+            action="">
+        {% for key, values in request.GET.lists %}
+          {% if key != "sem_cols" and key != "sem_cols_add" %}
+            {% for value in values %}
+            <input type="hidden" name="{{ key }}" value="{{ value }}">
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+        {% if sem.sem_cols_param %}
+        <input type="hidden" name="sem_cols" value="{{ sem.sem_cols_param }}">
         {% endif %}
-      {% endfor %}
-      {% if sem.sem_cols_param %}
-      <input type="hidden" name="sem_cols" value="{{ sem.sem_cols_param }}">
-      {% endif %}
-      <div>
-        <label class="form-label small mb-0" for="qty-classlike-add">Add authoring property</label>
-        <select class="form-select form-select-sm"
-                id="qty-classlike-add"
-                name="sem_cols_add"
-                style="min-width:14rem;"
-                data-testid="qty-classlike-add">
-          <option value="">— Choose field —</option>
-          {% for col in sem.classification_like_available %}
-            {% if col.key not in sem.selected_prop_columns %}
-            <option value="{{ col.key }}">{{ col.label }}</option>
-            {% endif %}
-          {% empty %}
-          <option value="" disabled>No authoring classification properties indexed</option>
-          {% endfor %}
-        </select>
-      </div>
-      <button type="submit"
-              class="btn btn-sm btn-outline-primary"
-              data-testid="qty-classlike-add-submit">
-        Add column
-      </button>
-    </form>
+        <div>
+          <label class="form-label small mb-0" for="qty-classlike-add">Add authoring property</label>
+          <select class="form-select form-select-sm"
+                  id="qty-classlike-add"
+                  name="sem_cols_add"
+                  style="min-width:14rem;"
+                  data-testid="qty-classlike-add">
+            <option value="">— Choose field —</option>
+            {% for col in sem.classification_like_available %}
+              {% if col.key not in sem.selected_prop_columns %}
+              <option value="{{ col.key }}">{{ col.label }}</option>
+              {% endif %}
+            {% empty %}
+            <option value="" disabled>No authoring classification properties indexed</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit"
+                class="btn btn-sm btn-outline-secondary c5d-action-secondary"
+                data-testid="qty-classlike-add-submit">
+          Add column
+        </button>
+      </form>
+    </div>
   </div>
+
+  <hr class="my-2">
 
   <form method="get"
         class="d-flex flex-wrap align-items-end gap-2"
@@ -302,26 +321,29 @@
     </div>
 
     <button type="submit"
-            class="btn btn-sm btn-outline-primary"
+            class="btn btn-sm btn-outline-secondary c5d-action-secondary"
             data-testid="qty-semantic-apply-filter">
       Apply filter
     </button>
-    <a class="btn btn-sm btn-outline-secondary"
+    <a class="btn btn-sm btn-outline-secondary c5d-action-subtle"
        data-testid="qty-semantic-clear-filter"
        href="?{% for key, values in request.GET.lists %}{% if key != 'semantic_field' and key != 'semantic_value' and key != 'semantic_sort' and key != 'semantic_sort_dir' and key != 'sem_cols_add' %}{% for value in values %}{{ key }}={{ value|urlencode }}&amp;{% endfor %}{% endif %}{% endfor %}">
       Clear filters
     </a>
     <button type="button"
-            class="btn btn-sm btn-outline-primary"
+            class="btn btn-sm btn-outline-secondary c5d-action-secondary"
             data-testid="qty-semantic-select-filtered"
             id="qty-semantic-select-filtered">
       Select filtered rows
     </button>
   </form>
 
-  <p class="mi-footnote mt-2 mb-0" data-testid="qty-semantic-filters-helper">
-    {{ sem.helper }}
-  </p>
+  <details class="mt-2">
+    <summary class="c5d-helper" style="cursor:pointer;">Filter notes</summary>
+    <p class="c5d-helper mb-0" data-testid="qty-semantic-filters-helper">
+      {{ sem.helper }}
+    </p>
+  </details>
 </section>
 
 <script>
@@ -336,7 +358,6 @@
       var current = (colsHidden.value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
       if (current.indexOf(add) === -1) current.push(add);
       colsHidden.value = current.join(",");
-      // Prevent posting sem_cols_add as a sticky param
       addSel.name = "";
     });
   }
