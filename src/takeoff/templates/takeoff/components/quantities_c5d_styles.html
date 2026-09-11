@@ -1,0 +1,281 @@
+<!-- takeoff/components/quantities_c5d_styles.html — 5D-UX-1A visual system (c5d-*) -->
+<style>
+  /* 5D Quantity Preparation visual system — presentation only */
+  .qty-ws.c5d-page {
+    --c5d-radius: 0.45rem;
+    --c5d-gap: 0.75rem;
+    --c5d-support-width: 22rem;
+  }
+
+  .qty-ws .c5d-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.65rem 1rem;
+    padding: 0.75rem 0.9rem 0.55rem;
+    border-bottom: 1px solid var(--qty-border);
+    background: var(--qty-surface);
+  }
+  .qty-ws .c5d-header-main {
+    min-width: 0;
+    flex: 1 1 16rem;
+  }
+  .qty-ws .c5d-header-eyebrow {
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--qty-muted);
+    margin-bottom: 0.15rem;
+  }
+  .qty-ws .c5d-header-title {
+    font-size: 1.1rem;
+    font-weight: 650;
+    margin: 0;
+    line-height: 1.25;
+    color: var(--qty-text);
+  }
+  .qty-ws .c5d-header-subtitle {
+    font-size: 0.8rem;
+    color: var(--qty-muted);
+    margin: 0.2rem 0 0;
+    max-width: 40rem;
+  }
+  .qty-ws .c5d-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: auto;
+  }
+
+  .qty-ws .c5d-status-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    width: 100%;
+    padding: 0 0.9rem 0.65rem;
+    background: var(--qty-surface);
+    border-bottom: 1px solid var(--qty-border);
+  }
+  .qty-ws .c5d-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.2;
+    padding: 0.22rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--qty-border);
+    background: var(--qty-overlay);
+    color: var(--qty-text);
+  }
+  .qty-ws .c5d-status-label {
+    color: var(--qty-muted);
+    font-weight: 550;
+  }
+  .qty-ws .c5d-status.is-ok {
+    border-color: var(--qty-pill-ok-bd);
+    background: var(--qty-pill-ok-bg);
+    color: var(--qty-pill-ok-fg);
+  }
+  .qty-ws .c5d-status.is-warn {
+    border-color: var(--qty-pill-unresolved-bd);
+    background: var(--qty-pill-unresolved-bg);
+    color: var(--qty-pill-unresolved-fg);
+  }
+  .qty-ws .c5d-status.is-muted {
+    color: var(--qty-muted);
+  }
+
+  .qty-ws .c5d-workflow-rail {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    padding: 0.55rem 0.9rem;
+    border-bottom: 1px solid var(--qty-border);
+    background: var(--qty-surface-2);
+  }
+  .qty-ws .c5d-workflow-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--qty-muted);
+    padding: 0.28rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    text-decoration: none;
+  }
+  .qty-ws .c5d-workflow-step:hover {
+    color: var(--qty-text);
+    background: var(--qty-overlay);
+  }
+  .qty-ws .c5d-workflow-step.is-active {
+    color: var(--qty-accent-text);
+    border-color: color-mix(in srgb, var(--castor-primary, #3b82f6) 35%, var(--qty-border));
+    background: color-mix(in srgb, var(--castor-primary, #3b82f6) 10%, transparent);
+  }
+  .qty-ws .c5d-workflow-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.15rem;
+    height: 1.15rem;
+    border-radius: 999px;
+    font-size: 0.65rem;
+    background: var(--qty-overlay-strong);
+  }
+
+  .qty-ws .c5d-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--c5d-gap);
+    padding: 0.65rem 0.75rem 0.85rem;
+    align-items: start;
+  }
+  @media (min-width: 1200px) {
+    .qty-ws .c5d-workspace {
+      grid-template-columns: minmax(0, 1fr) var(--c5d-support-width);
+    }
+  }
+  .qty-ws .c5d-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+  .qty-ws .c5d-support {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+  @media (min-width: 1200px) {
+    .qty-ws .c5d-support {
+      position: sticky;
+      top: 0.5rem;
+      max-height: calc(100vh - 6rem);
+      overflow: auto;
+    }
+  }
+
+  .qty-ws .c5d-card,
+  .qty-ws .c5d-card.qty-builder-section {
+    border: 1px solid var(--qty-border);
+    border-radius: var(--c5d-radius);
+    background: var(--qty-surface);
+    padding: 0.65rem 0.75rem;
+    box-shadow: 0 1px 2px var(--castor-shadow, rgba(0, 0, 0, 0.05));
+  }
+  .qty-ws .c5d-card-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem 0.65rem;
+    margin-bottom: 0.4rem;
+  }
+  .qty-ws .c5d-section-title {
+    font-size: 0.84rem;
+    font-weight: 650;
+    margin: 0;
+    color: var(--qty-text);
+  }
+  .qty-ws .c5d-helper {
+    font-size: 0.72rem;
+    color: var(--qty-muted);
+    margin: 0;
+    line-height: 1.35;
+  }
+  .qty-ws .c5d-warning {
+    border-color: var(--qty-pill-unresolved-bd);
+    background: color-mix(in srgb, var(--qty-pill-unresolved-bg) 70%, var(--qty-surface));
+  }
+
+  .qty-ws .c5d-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.55rem;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid var(--qty-border);
+    border-radius: var(--c5d-radius);
+    background: var(--qty-surface-2);
+  }
+
+  .qty-ws .c5d-action-primary.btn {
+    font-weight: 600;
+  }
+  .qty-ws .c5d-action-subtle.btn,
+  .qty-ws a.c5d-action-subtle {
+    font-weight: 500;
+  }
+
+  .qty-ws .c5d-filter-tabs.nav-tabs {
+    border-bottom-color: var(--qty-border);
+    gap: 0.15rem;
+    flex-wrap: wrap;
+  }
+  .qty-ws .c5d-filter-tabs .nav-link {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.35rem 0.55rem;
+    color: var(--qty-muted);
+    border: 1px solid transparent;
+    border-radius: 0.35rem 0.35rem 0 0;
+  }
+  .qty-ws .c5d-filter-tabs .nav-link.active {
+    color: var(--qty-text);
+    background: var(--qty-surface);
+    border-color: var(--qty-border) var(--qty-border) var(--qty-surface);
+  }
+  .qty-ws .c5d-filter-pane {
+    padding-top: 0.55rem;
+  }
+
+  .qty-ws .c5d-advanced {
+    margin: 0 0.75rem 1rem;
+    border: 1px dashed var(--qty-border);
+    border-radius: var(--c5d-radius);
+    padding: 0.35rem 0.65rem 0.55rem;
+    background: transparent;
+  }
+  .qty-ws .c5d-advanced > summary {
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--qty-muted);
+    padding: 0.35rem 0;
+  }
+  .qty-ws .c5d-advanced-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    padding-top: 0.45rem;
+  }
+
+  .qty-ws .c5d-support .c5d-card {
+    padding: 0.55rem 0.6rem;
+  }
+  .qty-ws .c5d-support .table {
+    font-size: 0.72rem;
+  }
+  .qty-ws .c5d-support .c5d-note-col {
+    display: none;
+  }
+  @media (min-width: 1400px) {
+    .qty-ws .c5d-support .c5d-note-col {
+      display: table-cell;
+    }
+  }
+
+  /* Soften legacy stacked notes when still present */
+  .qty-ws .c5d-main .qty-builder-note {
+    display: none;
+  }
+  .qty-ws .c5d-main details.c5d-more-about .qty-builder-note,
+  .qty-ws .c5d-main details.c5d-more-about .mi-footnote {
+    display: block;
+  }
+</style>
