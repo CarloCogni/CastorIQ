@@ -18,10 +18,25 @@
 
                 <p class="fw-semibold fs-7 mb-2">What is it?</p>
                 <p class="text-secondary fs-7 mb-4">
-                    Quantities builds a reviewed 5D Quantity Preparation Model from indexed IFC.
-                    Journey: Discover evidence → Configure → Map rows → Confirm units → Freeze snapshot → Review.
+                    Quantities builds a reviewed 5D Quantity Preparation Model from indexed IFC
+                    (openBIM-first). Journey: Discover evidence → Configure → Map rows → Confirm units
+                    → Freeze snapshot → Review.
                     Start with the preparation table and support rail; use Configure for schema/sources/rules.
                     Help covers boundaries (not Ask, Modify, BOQ, cost, or writeback).
+                </p>
+                <p class="text-secondary fs-7 mb-4" data-testid="qty-help-openbim-neutrality">
+                    Some fields are exported by the authoring tool into the IFC file, such as Family,
+                    Type, Category, Workset, OmniClass, or Assembly Code. Castor treats them as model
+                    evidence, not as Revit-only assumptions. Availability varies by export.
+                </p>
+                <p class="text-secondary fs-7 mb-4" data-testid="qty-help-classref-vs-authoring">
+                    IFC Classification References are native IFC relationships. They are separate from
+                    authoring properties and separate from Castor schema mapping.
+                </p>
+                <p class="text-secondary fs-7 mb-4" data-testid="qty-help-zone-missing-export">
+                    Zone is not found in this IFC export when readiness shows
+                    <em>Missing in this IFC export</em>. Another IFC export may include zone membership,
+                    or the user may choose a zone source from available properties.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">Lifecycle</p>
@@ -74,11 +89,11 @@
                         <strong>Unsaved 5D review changes</strong> banner offers
                         <strong>Freeze updated 5D snapshot</strong> — session changes stay
                         local until you freeze; existing snapshots are not changed.</li>
-                    <li>IFC semantic filters — add model structure, true IFC classification
-                        references (ClassRef), and authoring properties (OmniClass / Assembly)
-                        as columns; filter before batch mapping. These stay separate from
+                    <li>IFC semantic filters — add IFC properties, model structure, IFC Classification
+                        Reference (ClassRef), and exported authoring properties (OmniClass / Assembly /
+                        Identity Data, etc.) as columns; filter before batch mapping. These stay separate from
                         Castor schema mapping targets.</li>
-                    <li>5D semantic source readiness — compact guidance on which sources can
+                    <li>5D semantic source readiness — compact openBIM/IFC-first guidance on which sources can
                         feed Level / Zone / Classification / Package / Unit fields. Missing
                         evidence means not found in this IFC export — not unsupported forever.
                         Not final approval, not cost readiness.</li>

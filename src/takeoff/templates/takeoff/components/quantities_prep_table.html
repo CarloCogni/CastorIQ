@@ -117,7 +117,8 @@
             {% endif %}
             <th class="qty-col-key qty-sticky qty-sticky-1">Model Group</th>
             {% if qty_prep.show.type_name %}
-            <th class="qty-col-key qty-sticky qty-sticky-2">Type Name</th>
+            <th class="qty-col-key qty-sticky qty-sticky-2"
+                title="Exported authoring type name when present in this IFC export">Type name (exported)</th>
             {% endif %}
             <th class="text-end qty-col-key qty-sticky qty-sticky-3" data-testid="qty-prep-col-total-quantity">Total Quantity</th>
             <th class="qty-col-key qty-sticky qty-sticky-4" data-testid="qty-prep-col-unit">Unit</th>
@@ -126,13 +127,15 @@
             <th class="qty-col-key">Review</th>
             <th class="qty-col-key">Handoff Status</th>
             {% if qty_prep.show.ifc_class %}
-            <th class="qty-col-secondary">IFC Class</th>
+            <th class="qty-col-secondary" title="IFC-native entity class">IFC Class</th>
             {% endif %}
             {% if qty_prep.semantic_filters.show_category_column %}
-            <th class="qty-col-secondary" data-testid="qty-prep-col-semantic-category">Category</th>
+            <th class="qty-col-secondary" data-testid="qty-prep-col-semantic-category"
+                title="Exported authoring property from this IFC export">Category (exported)</th>
             {% endif %}
             {% if qty_prep.semantic_filters.show_family_column %}
-            <th class="qty-col-secondary" data-testid="qty-prep-col-semantic-family">Family</th>
+            <th class="qty-col-secondary" data-testid="qty-prep-col-semantic-family"
+                title="Exported authoring property from this IFC export">Family (exported)</th>
             {% endif %}
             {% for col in qty_prep.semantic_filters.selected_prop_column_meta %}
             <th class="qty-col-secondary" data-testid="qty-prep-col-prop"
@@ -142,19 +145,22 @@
             <th class="qty-col-secondary">Selected Quantity Source</th>
             {% endif %}
             {% if qty_prep.show.level_storey %}
-            <th class="qty-col-secondary">Level / Storey</th>
+            <th class="qty-col-secondary" title="IFC spatial / storey evidence when present">Level / Storey</th>
             {% endif %}
             {% if qty_prep.show.zone %}
             <th class="qty-col-secondary">Zone</th>
             {% endif %}
             {% if qty_prep.show.classification_code %}
-            <th class="qty-col-secondary">Classification Code</th>
+            <th class="qty-col-secondary"
+                title="Castor schema mapping target — not IFC Classification Reference or authoring OmniClass/Assembly">Classification Code</th>
             {% endif %}
             {% if qty_prep.show.package_boq_mapping %}
-            <th class="qty-col-secondary">Package Mapping</th>
+            <th class="qty-col-secondary"
+                title="Castor schema mapping target (Package Mapping)">Package Mapping</th>
             {% endif %}
             {% if qty_prep.show.work_package %}
-            <th class="qty-col-secondary">Work Package</th>
+            <th class="qty-col-secondary"
+                title="Castor schema mapping target (Work Package)">Work Package</th>
             {% endif %}
           </tr>
         </thead>

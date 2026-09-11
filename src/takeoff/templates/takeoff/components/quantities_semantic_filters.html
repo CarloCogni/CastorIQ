@@ -35,6 +35,7 @@
            {% if sem.active_field %}open{% endif %}>
     <summary class="c5d-discover-toggle" data-testid="qty-discover-toggle">
       Filters &amp; evidence columns
+      <span class="text-secondary">(IFC-native, structure, ClassRef, exported authoring)</span>
     </summary>
     <div class="c5d-discover-panel">
 
@@ -56,7 +57,7 @@
   <details class="c5d-advanced mb-2" data-testid="qty-add-evidence-columns">
     <summary class="c5d-helper" style="cursor:pointer;">
       Add evidence columns
-      <span class="text-secondary">(IFC properties, structure, classification)</span>
+      <span class="text-secondary">(IFC properties, structure, ClassRef, exported authoring)</span>
     </summary>
 
   <ul class="nav nav-tabs c5d-filter-tabs mb-0 mt-2" role="tablist" data-testid="qty-filter-source-tabs">
@@ -73,12 +74,12 @@
     <li class="nav-item" role="presentation">
       <button class="nav-link" id="qty-tab-classref" data-bs-toggle="tab"
               data-bs-target="#qty-pane-classref" type="button" role="tab"
-              data-testid="qty-tab-ifc-classref">Existing IFC classification</button>
+              data-testid="qty-tab-ifc-classref">IFC Classification Reference</button>
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link" id="qty-tab-authoring" data-bs-toggle="tab"
               data-bs-target="#qty-pane-authoring" type="button" role="tab"
-              data-testid="qty-tab-authoring">Authoring properties</button>
+              data-testid="qty-tab-authoring">Exported authoring properties</button>
     </li>
   </ul>
 
@@ -189,7 +190,8 @@
         Existing IFC classification
       </span>
       <p class="c5d-helper mb-2" data-testid="qty-existing-ifc-classification-subtitle">
-        True IFC classification references from this export — not authoring properties or Castor mapping.
+        IFC Classification Reference — native IFC relationship evidence from this export.
+        Separate from exported authoring properties and from Castor schema mapping.
       </p>
       {% if sem.mapping_distinction_note %}
       <details class="mb-2">
@@ -253,7 +255,9 @@
         Authoring classification properties
       </span>
       <p class="c5d-helper mb-2" data-testid="qty-existing-classification-subtitle">
-        OmniClass / Assembly Code — authoring properties, not IFC ClassRef or Castor mapping.
+        Exported authoring properties (e.g. OmniClass, Assembly Code, Identity Data) —
+        present because they are in this IFC export, not because Castor assumes a specific authoring tool.
+        Not IFC Classification Reference. Not Castor schema mapping.
       </p>
       <form method="get"
             class="d-flex flex-wrap align-items-end gap-2"
@@ -270,7 +274,7 @@
         <input type="hidden" name="sem_cols" value="{{ sem.sem_cols_param }}">
         {% endif %}
         <div>
-          <label class="form-label small mb-0" for="qty-classlike-add">Add authoring property</label>
+          <label class="form-label small mb-0" for="qty-classlike-add">Add exported authoring property</label>
           <select class="form-select form-select-sm"
                   id="qty-classlike-add"
                   name="sem_cols_add"
