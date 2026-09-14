@@ -85,6 +85,11 @@ def test_discover_storey_and_project_level_and_unavailable_zone():
     assert meta["unavailable"]["zone"]["available"] is False
     assert meta["unavailable"]["ifc_classification_ref"]["available"] is False
     assert not any(d["key"] == "struct:zone" for d in meta["structure_columns_available"])
+    zone_msg = meta["unavailable"]["zone"]["message"]
+    assert "select it as the Zone source during preparation" in zone_msg
+    assert "Ask" not in zone_msg
+    assert "Modify" not in zone_msg
+    assert "writeback" not in zone_msg.lower()
 
 
 @pytest.mark.django_db

@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import MutableMapping
 from typing import Any
 
+from takeoff.services.quantity_output_units import QuantityOutputUnitsService
 from takeoff.services.quantity_prep_row_mapping import QuantityPrepRowMappingService
 from takeoff.services.quantity_unit_confirmation import QuantityUnitConfirmationService
 
@@ -40,7 +41,8 @@ def detect_pending_quantity_review_changes(
     has_mapping = any(_annotation_has_mapping_value(payload) for payload in annotations.values())
 
     unit_svc = QuantityUnitConfirmationService(project, user, session)
-    has_units = bool(unit_svc.get_confirmation() or {})
+    out_svc = QuantityOutputUnitsService(project, user, session)
+    has_units = bool(unit_svc.get_confirmation() or {}) or bool(out_svc.get_output_units())
 
     pending_types: list[str] = []
     if has_mapping:

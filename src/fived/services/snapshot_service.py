@@ -8,8 +8,6 @@ Not BOQ, not cost estimate, not rates, not writeback, not Modify.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 from collections.abc import Mapping, MutableMapping
 from typing import Any
@@ -21,6 +19,20 @@ from fived.models import (
     FiveDDataModel,
     FiveDModelRow,
     FiveDModelVersion,
+)
+from fived.services.content_hash_contract import (
+    CURRENT_CONTENT_HASH_CONTRACT,
+    compute_content_hash,
+    row_fingerprint_from_mapping,
+)
+from fived.services.content_hash_contract import (  # re-export for callers/tests
+    assess_version_content_hash as assess_version_content_hash,
+)
+from fived.services.content_hash_contract import (
+    verify_version_content_hash as verify_version_content_hash,
+)
+from fived.services.semantic_readiness_artifact import (
+    freeze_semantic_source_readiness_artifact,
 )
 from takeoff.services.quantity_prep_export import (
     mapping_field_origin,
@@ -154,10 +166,33 @@ def _normalize_total(raw: Any) -> float | None:
         return None
 
 
-def _content_hash(settings: Mapping[str, Any], rows: list[dict[str, Any]]) -> str:
-    payload = {"settings": settings, "rows": rows}
-    blob = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":"))
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+def _content_hash(
+    settings: Mapping[str, Any],
+    rows: list[dict[str, Any]],
+    *,
+    semantic_source_readiness: Mapping[str, Any] | None = None,
+) -> str:
+    """Canonical digest of frozen snapshot contents (HASH-1 / current contract).
+
+    Delegates to :func:`compute_content_hash` so create and verify share one
+    builder (deterministic Python row order + JSON normalization).
+    """
+    from fived.services.content_hash_contract import (
+        CONTENT_HASH_CONTRACT_V3,
+        CURRENT_CONTENT_HASH_CONTRACT,
+        row_fingerprint_v3_from_mapping,
+    )
+
+    if CURRENT_CONTENT_HASH_CONTRACT == CONTENT_HASH_CONTRACT_V3:
+        fingerprints = [row_fingerprint_v3_from_mapping(r) for r in rows]
+    else:
+        fingerprints = [row_fingerprint_from_mapping(r) for r in rows]
+    return compute_content_hash(
+        settings=settings,
+        row_fingerprints=fingerprints,
+        semantic_source_readiness=semantic_source_readiness,
+        include_readiness=True,
+    )
 
 
 def _next_version_label(data_model: FiveDDataModel) -> str:
@@ -209,8 +244,32 @@ class FiveDPrepSnapshotService:
             }
 
         qty_prep = runtime.get("qty_prep") or {}
-        prep_rows = list(qty_prep.get("prep_rows") or [])
+        # HIERARCHY-09: freeze instance leaves once — never Class+Type+Instance additive copies.
+        prep_rows = list(
+            qty_prep.get("prep_rows_export") or qty_prep.get("prep_rows") or []
+        )
         known_keys = {str(r.get("row_key") or "") for r in prep_rows if r.get("row_key")}
+        if qty_prep.get("hierarchy"):
+            settings_hierarchy_note = {
+                "hierarchy_contract": (qty_prep.get("hierarchy") or {}).get("contract_version"),
+                "freeze_grain": "instance",
+                "note": (
+                    "Hierarchy expand/collapse is presentation-only. "
+                    "Frozen quantity rows are matching IFC instances once."
+                ),
+            }
+        else:
+            settings_hierarchy_note = {}
+
+        try:
+            readiness_artifact = freeze_semantic_source_readiness_artifact(
+                qty_prep.get("semantic_source_readiness")
+            )
+        except ValueError as exc:
+            return {
+                "result": None,
+                "error": f"Semantic readiness artifact invalid: {exc}",
+            }
 
         settings_snapshot = {
             "basis_rules": dict(runtime.get("basis_overrides") or {}),
@@ -220,16 +279,25 @@ class FiveDPrepSnapshotService:
             "prep_row_grain": str(qty_prep.get("prep_row_grain") or ""),
             "show": dict(qty_prep.get("show") or {}),
             "contract_version": CONTRACT_VERSION_F2,
+            "output_units": dict((qty_prep.get("output_units") or {}).get("effective") or {}),
+            "conversion_version": str(
+                (qty_prep.get("output_units") or {}).get("conversion_version") or ""
+            ),
+            **settings_hierarchy_note,
         }
         reviews = _filter_annotations(runtime.get("review_annotations") or {}, known_keys)
         mappings = _filter_annotations(runtime.get("mapping_annotations") or {}, known_keys)
         session_annotations_snapshot = {
             "row_reviews": reviews,
             "manual_mappings": mappings,
+            "output_units": dict(
+                (qty_prep.get("output_units") or {}).get("output_units") or {}
+            ),
             "provenance_note": (
                 "Manual session mapping values (free-text or schema-node) are "
                 "preparation provenance only — not official classification authority "
-                "and not approved/certified."
+                "and not approved/certified. Output units convert displayed totals "
+                "from IFC model units."
             ),
         }
         unresolved = _unresolved_register_export(
@@ -243,24 +311,43 @@ class FiveDPrepSnapshotService:
                 continue
             row_payloads.append(self._row_dict_from_prep(raw))
 
-        hash_rows = [
-            {
-                "source_row_key": r["source_row_key"],
-                "ifc_class": r["ifc_class"],
-                "type_name": r["type_name"],
-                "quantity_basis": r["quantity_basis"],
-                "total_quantity": r["total_quantity"],
-                "classification_code": r["classification_code"],
-                "package_mapping": r["package_mapping"],
-                "work_package": r["work_package"],
-                "classification_origin": r["classification_origin"],
-                "package_mapping_origin": r["package_mapping_origin"],
-                "work_package_origin": r["work_package_origin"],
-                "session_review_status": r["session_review_status"],
-            }
-            for r in row_payloads
-        ]
-        digest = _content_hash(settings_snapshot, hash_rows)
+        hash_rows = []
+        for r in row_payloads:
+            prov = r.get("quantity_provenance") or {}
+            uc = prov.get("unit_conversion") if isinstance(prov, dict) else {}
+            if not isinstance(uc, dict):
+                uc = {}
+            hash_rows.append(
+                {
+                    "source_row_key": r["source_row_key"],
+                    "ifc_class": r["ifc_class"],
+                    "type_name": r["type_name"],
+                    "quantity_basis": r["quantity_basis"],
+                    "total_quantity": r["total_quantity"],
+                    "classification_code": r["classification_code"],
+                    "package_mapping": r["package_mapping"],
+                    "work_package": r["work_package"],
+                    "classification_origin": r["classification_origin"],
+                    "package_mapping_origin": r["package_mapping_origin"],
+                    "work_package_origin": r["work_package_origin"],
+                    "session_review_status": r["session_review_status"],
+                    "measurement_type": prov.get("measurement_type") or "",
+                    "quantity_source": r.get("quantity_source")
+                    or prov.get("quantity_source")
+                    or "",
+                    "model_total": uc.get("model_total"),
+                    "model_unit": uc.get("model_unit") or "",
+                    "output_total": uc.get("output_total"),
+                    "output_unit": uc.get("output_unit") or "",
+                    "conversion_version": uc.get("version") or "",
+                }
+            )
+        digest = _content_hash(
+            settings_snapshot,
+            hash_rows,
+            semantic_source_readiness=readiness_artifact,
+        )
+        hash_contract = CURRENT_CONTENT_HASH_CONTRACT
 
         try:
             with transaction.atomic():
@@ -295,8 +382,10 @@ class FiveDPrepSnapshotService:
                     boundary_snapshot=dict(BOUNDARY_SNAPSHOT_F2),
                     session_annotations_snapshot=session_annotations_snapshot,
                     unresolved_register_snapshot=unresolved,
+                    semantic_source_readiness_snapshot=readiness_artifact,
                     source_query=query_dict,
                     content_hash=digest,
+                    content_hash_contract_version=hash_contract,
                     notes=(notes or "").strip(),
                     status=FiveDModelVersion.Status.FROZEN,
                     row_count=len(row_payloads),
@@ -393,7 +482,30 @@ class FiveDPrepSnapshotService:
         quantity_provenance: dict[str, Any] = {
             "basis_unresolved": bool(raw.get("basis_unresolved")),
             "missing_quantity_source": bool(raw.get("missing_quantity_source")),
+            "measurement_type": str(raw.get("measurement_type") or ""),
+            "quantity_source": str(
+                raw.get("ifc_quantity_source") or raw.get("quantity_source") or ""
+            ),
         }
+        uc = raw.get("unit_conversion")
+        if isinstance(uc, Mapping) and uc:
+            quantity_provenance["unit_conversion"] = dict(uc)
+        elif raw.get("model_total") is not None or raw.get("model_unit"):
+            from takeoff.services.quantity_unit_conversion import (
+                CONVERSION_VERSION,
+                conversion_provenance_payload,
+                convert_quantity,
+            )
+
+            result = convert_quantity(
+                model_total=raw.get("model_total"),
+                model_unit=str(raw.get("model_unit") or ""),
+                output_unit=str(raw.get("output_unit") or raw.get("unit_basis") or ""),
+            )
+            quantity_provenance["unit_conversion"] = conversion_provenance_payload(result)
+            quantity_provenance["unit_conversion"]["version"] = (
+                quantity_provenance["unit_conversion"].get("version") or CONVERSION_VERSION
+            )
         if mapping_prov:
             quantity_provenance["mapping"] = mapping_prov
 
@@ -403,9 +515,13 @@ class FiveDPrepSnapshotService:
             "ifc_class": str(raw.get("ifc_class") or ""),
             "type_name": str(raw.get("type_name") or ""),
             "quantity_basis": str(raw.get("quantity_basis") or ""),
-            "quantity_source": str(raw.get("quantity_source") or ""),
-            "unit_basis": str(raw.get("unit_basis") or ""),
-            "total_quantity": _normalize_total(raw.get("total")),
+            "quantity_source": str(
+                raw.get("ifc_quantity_source") or raw.get("quantity_source") or ""
+            ),
+            "unit_basis": str(raw.get("output_unit") or raw.get("unit_basis") or ""),
+            "total_quantity": _normalize_total(
+                raw.get("output_total") if raw.get("output_total") is not None else raw.get("total")
+            ),
             "total_quantity_display": str(raw.get("total_display") or ""),
             "quantity_provenance": quantity_provenance,
             "basis_unresolved": bool(raw.get("basis_unresolved")),

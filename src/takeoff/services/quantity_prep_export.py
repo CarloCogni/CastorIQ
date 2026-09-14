@@ -218,9 +218,26 @@ def serialize_export_row(row: Mapping[str, Any], *, show: Mapping[str, bool]) ->
         "row_key": str(row.get("row_key") or ""),
         "model_group": str(row.get("model_group") or ""),
         "ifc_class": str(row.get("ifc_class") or ""),
-        "quantity_source": str(row.get("quantity_source") or ""),
+        "measurement_type": str(row.get("measurement_type") or ""),
+        "quantity_source": str(row.get("ifc_quantity_source") or row.get("quantity_source") or ""),
         "quantity_basis": str(row.get("quantity_basis") or ""),
-        "unit_basis": str(row.get("unit_basis") or ""),
+        "model_total": row.get("model_total"),
+        "model_unit": str(row.get("model_unit") or ""),
+        "model_unit_label": str(row.get("model_unit_label") or ""),
+        "output_total": row.get("output_total")
+        if row.get("output_total") is not None
+        else row.get("total"),
+        "output_unit": str(row.get("output_unit") or row.get("unit_basis") or ""),
+        "output_unit_label": str(
+            row.get("output_unit_label") or row.get("unit_basis_display") or ""
+        ),
+        "conversion_factor": row.get("conversion_factor"),
+        "conversion_version": str(
+            (row.get("unit_conversion") or {}).get("version")
+            if isinstance(row.get("unit_conversion"), Mapping)
+            else ""
+        ),
+        "unit_basis": str(row.get("output_unit") or row.get("unit_basis") or ""),
         "total_quantity_display": str(row.get("total_display") or ""),
         "total_quantity": row.get("total"),
         "computed_status": str(row.get("computed_review_status") or row.get("review_status") or ""),
@@ -307,7 +324,8 @@ def build_export_document(
 ) -> dict[str, Any]:
     """Build preparation_export.json document root."""
     show = dict(qty_prep.get("show") or {})
-    rows_in = list(qty_prep.get("prep_rows") or [])
+    # HIERARCHY-09: export each matching instance once (not parent+child doubles).
+    rows_in = list(qty_prep.get("prep_rows_export") or qty_prep.get("prep_rows") or [])
     known_keys = {str(r.get("row_key") or "") for r in rows_in if r.get("row_key")}
     rows_out = [serialize_export_row(r, show=show) for r in rows_in]
     when = generated_at or datetime.now(UTC)
@@ -372,6 +390,7 @@ def build_export_document(
             "session_annotations_only": True,
             "config_drafts_settings_only": True,
             "package_boq_mapping_is_schema_field_name_only": True,
+            "quantities_include_model_and_output_units": True,
             "quantities_are_ifc_reported_model_units": True,
         },
         "settings": {
@@ -391,7 +410,7 @@ def build_export_document(
 
 
 def csv_headers(show: Mapping[str, bool]) -> list[str]:
-    """Stable CSV headers reflecting included schema fields."""
+    """Legacy CSV headers reflecting included schema fields (pre-layout)."""
     headers = [
         "row_key",
         "model_group",
@@ -401,8 +420,14 @@ def csv_headers(show: Mapping[str, bool]) -> list[str]:
         headers.append("type_name")
     headers.extend(
         [
+            "measurement_type",
             "quantity_basis",
             "quantity_source",
+            "model_total",
+            "model_unit",
+            "output_total",
+            "output_unit",
+            "conversion_factor",
             "unit_basis",
             "total_quantity",
             "computed_status",
@@ -422,17 +447,103 @@ def csv_headers(show: Mapping[str, bool]) -> list[str]:
     return headers
 
 
-def build_rows_csv(document: Mapping[str, Any], *, show: Mapping[str, bool]) -> str:
-    """Build UTF-8 CSV text for rows.csv."""
-    headers = csv_headers(show)
+# Visible table column key → CSV field name (Actions omitted).
+_LAYOUT_TO_CSV: dict[str, str] = {
+    "ifc_class": "ifc_class",
+    "name": "type_name",
+    "quantity": "total_quantity",
+    "measurement": "measurement_type",
+    "ifc_source": "quantity_source",
+    "unit": "output_unit",
+    "status": "computed_status",
+    "classification_code": "classification_code",
+    "package_boq_mapping": "package_boq_mapping",
+    "work_package": "work_package",
+}
+
+
+def csv_headers_from_layout(
+    table_columns: list[Mapping[str, Any]] | None,
+    *,
+    show: Mapping[str, bool],
+) -> list[str]:
+    """CSV headers following visible table layout order.
+
+    Full provenance remains in preparation_export.json; CSV mirrors the UI layout.
+    """
+    cols = [c for c in (table_columns or []) if isinstance(c, Mapping)]
+    if not cols:
+        return csv_headers(show)
+
+    headers: list[str] = []
+    seen: set[str] = set()
+    for col in cols:
+        key = str(col.get("key") or "").strip()
+        if not key or key == "actions":
+            continue
+        if key in _LAYOUT_TO_CSV:
+            header = _LAYOUT_TO_CSV[key]
+        elif key.startswith(("prop:", "spatial:", "classref:")):
+            header = key
+        else:
+            header = key
+        if header in seen:
+            continue
+        seen.add(header)
+        headers.append(header)
+        if key in MAPPING_FIELD_KEYS:
+            origin = f"{key}_origin"
+            if origin not in seen:
+                seen.add(origin)
+                headers.append(origin)
+    if "row_key" not in seen:
+        headers.insert(0, "row_key")
+    return headers
+
+
+def _prop_cell_display(row: Mapping[str, Any], col_key: str) -> str:
+    by_key = row.get("prop_column_by_key")
+    if isinstance(by_key, Mapping) and col_key in by_key:
+        cell = by_key.get(col_key)
+        if isinstance(cell, Mapping):
+            return str(cell.get("display") or "")
+    for cell in row.get("prop_column_cells") or []:
+        if isinstance(cell, Mapping) and str(cell.get("key") or "") == col_key:
+            return str(cell.get("display") or "")
+    props = row.get("prop_columns") or {}
+    if isinstance(props, Mapping) and col_key in props:
+        agg = props.get(col_key)
+        if isinstance(agg, Mapping):
+            return str(agg.get("display") or "")
+    return ""
+
+
+def build_rows_csv(
+    document: Mapping[str, Any],
+    *,
+    show: Mapping[str, bool],
+    table_columns: list[Mapping[str, Any]] | None = None,
+    prep_rows: list[Mapping[str, Any]] | None = None,
+) -> str:
+    """Build UTF-8 CSV text for rows.csv (layout-aware when columns provided)."""
+    headers = csv_headers_from_layout(table_columns, show=show)
     buf = io.StringIO()
     # UTF-8 BOM helps Excel; still not an XLSX export.
     writer = csv.DictWriter(buf, fieldnames=headers, extrasaction="ignore", lineterminator="\n")
     writer.writeheader()
-    for row in document.get("rows") or []:
+    doc_rows = list(document.get("rows") or [])
+    prep = list(prep_rows or [])
+    for idx, row in enumerate(doc_rows):
         flat: dict[str, str] = {}
+        prep_row: Mapping[str, Any] = (
+            prep[idx] if idx < len(prep) and isinstance(prep[idx], Mapping) else {}
+        )
         for h in headers:
-            if h == "total_quantity":
+            if h.startswith(("prop:", "spatial:", "classref:")):
+                flat[h] = neutralize_csv_cell(_prop_cell_display(prep_row, h))
+            elif h == "type_name" and h not in row:
+                flat[h] = neutralize_csv_cell(prep_row.get("type_name") or row.get("type_name"))
+            elif h == "total_quantity":
                 raw = row.get("total_quantity_display")
                 if raw in (None, ""):
                     raw = row.get("total_quantity")
@@ -461,9 +572,16 @@ def build_export_zip_bytes(
 ) -> tuple[bytes, str, dict[str, Any]]:
     """Return (zip_bytes, filename, json_document)."""
     when = generated_at or datetime.now(UTC)
+    table_columns = list(qty_prep.get("table_columns") or [])
+    # Ensure Name is present in JSON rows when the Name column is visible.
+    qty_prep_for_doc: dict[str, Any] = dict(qty_prep)
+    show_for_doc = dict(qty_prep.get("show") or {})
+    if any(str(c.get("key")) == "name" for c in table_columns):
+        show_for_doc["type_name"] = True
+        qty_prep_for_doc["show"] = show_for_doc
     document = build_export_document(
         project=project,
-        qty_prep=qty_prep,
+        qty_prep=qty_prep_for_doc,
         basis_overrides=basis_overrides,
         schema_includes=schema_includes,
         source_mappings=source_mappings,
@@ -472,8 +590,24 @@ def build_export_zip_bytes(
         mapping_annotations=mapping_annotations,
         generated_at=when,
     )
-    show = dict(qty_prep.get("show") or {})
-    csv_text = build_rows_csv(document, show=show)
+    layout = qty_prep.get("table_layout") or {}
+    document["visible_layout"] = {
+        "col_order": list(
+            layout.get("order") or [c.get("key") for c in table_columns if c.get("key")]
+        ),
+        "csv_follows_visible_layout": True,
+        "provenance_in_json": True,
+        "column_calculations": dict(qty_prep.get("column_calculations") or {}),
+        "col_calc": str(qty_prep.get("col_calc_param") or ""),
+        "hierarchy_sort": dict(qty_prep.get("hierarchy_sort") or {}),
+    }
+    show = show_for_doc
+    csv_text = build_rows_csv(
+        document,
+        show=show,
+        table_columns=table_columns,
+        prep_rows=list(qty_prep.get("prep_rows") or []),
+    )
 
     mem = io.BytesIO()
     with zipfile.ZipFile(mem, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:

@@ -1,14 +1,18 @@
-<!-- takeoff/components/quantities_prep_pagination.html — SCALE-1A filtered pagination -->
+<!-- takeoff/components/quantities_prep_pagination.html — SCALE-1A / TABLE-04 -->
 {% with p=qty_prep.pagination %}
 {% if p %}
-<nav class="qty-prep-pagination d-flex flex-wrap align-items-center gap-2 mb-2"
+<nav class="qty-prep-pagination d-flex flex-wrap align-items-center gap-2 mt-2 mb-0"
      data-testid="qty-prep-pagination"
-     aria-label="Preparation row pagination">
+     aria-label="Quantity table pagination">
   <span class="small" data-testid="qty-prep-pagination-range">
     {% if p.filtered_rows %}
-    Showing {{ p.start_index }}–{{ p.end_index }} of {{ p.filtered_rows }} filtered preparation row{{ p.filtered_rows|pluralize }}
+    {% if p.unit_label == "classes" %}
+    Showing {{ p.start_index }}–{{ p.end_index }} of {{ p.filtered_rows }} class{{ p.filtered_rows|pluralize:"es" }}
     {% else %}
-    Showing 0 of 0 filtered preparation rows
+    Showing {{ p.start_index }}–{{ p.end_index }} of {{ p.filtered_rows }} row{{ p.filtered_rows|pluralize }}
+    {% endif %}
+    {% else %}
+    Showing 0 of 0 {% if p.unit_label == "classes" %}classes{% else %}rows{% endif %}
     {% endif %}
   </span>
   <span class="small text-secondary" data-testid="qty-prep-pagination-page">

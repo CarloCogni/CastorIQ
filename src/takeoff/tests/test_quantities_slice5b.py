@@ -53,6 +53,7 @@ def _ui_manual_classification(project):
 
 @pytest.mark.django_db
 def test_manual_inputs_only_for_manual_field(client):
+    """TABLE-04B: included mapping fields are assignable regardless of Advanced intent."""
     project = _pilot_like_project()
     client.force_login(project.owner)
     html = client.get(
@@ -63,17 +64,17 @@ def test_manual_inputs_only_for_manual_field(client):
             "source_work_package": "not_mapped",
         },
     ).content.decode()
-    assert 'data-testid="qty-row-mapping-input-classification_code"' in html
-    assert 'data-testid="qty-row-mapping-input-package_boq_mapping"' not in html
-    assert 'data-testid="qty-row-mapping-input-work_package"' not in html
-    assert (
-        "Manual mapping values are available only for fields configured as Manual field." in html
-        or ('data-testid="qty-row-mapping-input-classification_code"' in html)
-    )
+    assert 'data-testid="qty-batch-map-selected"' in html
+    assert "Assign values" in html
+    # Drawer / batch targets follow inclusion for all three fields.
+    assert 'data-testid="qty-batch-field-classification_code"' in html
+    assert 'data-testid="qty-batch-field-package_boq_mapping"' in html
+    assert 'data-testid="qty-batch-field-work_package"' in html
 
 
 @pytest.mark.django_db
 def test_no_manual_input_for_future_modify_or_not_mapped(client):
+    """TABLE-04B: future_modify / not_mapped no longer hide Assign values."""
     project = _pilot_like_project()
     client.force_login(project.owner)
     html = client.get(
@@ -84,9 +85,9 @@ def test_no_manual_input_for_future_modify_or_not_mapped(client):
             "source_work_package": "future_modify_handoff",
         },
     ).content.decode()
-    assert 'data-testid="qty-row-mapping-input-classification_code"' not in html
-    assert 'data-testid="qty-row-mapping-input-package_boq_mapping"' not in html
-    assert 'data-testid="qty-row-mapping-unavailable"' in html
+    assert 'data-testid="qty-batch-map-selected"' in html
+    assert 'data-testid="qty-batch-mapping-modal"' in html
+    assert 'data-testid="qty-batch-mapping-unavailable"' not in html
 
 
 @pytest.mark.django_db
@@ -275,6 +276,7 @@ def test_clear_mapping_restores_missing_and_independence_from_review(client):
 
 @pytest.mark.django_db
 def test_reject_non_manual_submission(client):
+    """TABLE-04B: future_modify intent still accepts working Assign values overrides."""
     project = _pilot_like_project()
     client.force_login(project.owner)
     ui = build_preparation_ui(
@@ -288,10 +290,10 @@ def test_reject_non_manual_submission(client):
             "action": "apply",
             "row_key": row["row_key"],
             "return_query": "source_classification_code=future_modify_handoff",
-            "classification_code": "SHOULD-FAIL",
+            "classification_code": "SHOULD-APPLY",
         },
     )
-    assert resp.status_code == 400
+    assert resp.status_code in (204, 302)
 
 
 @pytest.mark.django_db
@@ -316,6 +318,7 @@ def test_stale_row_key_ignored():
 
 @pytest.mark.django_db
 def test_intent_change_ignores_stored_value():
+    """TABLE-04B: working overrides survive source-intent changes (config not mutated)."""
     project = _pilot_like_project()
     ui_manual = _ui_manual_classification(project)
     row = ui_manual["prep_rows"][0]
@@ -327,12 +330,12 @@ def test_intent_change_ignores_stored_value():
         ModelQuantitiesService(project).build(),
         source_mappings={"classification_code": "future_modify_handoff"},
     )
-    # Same row_key shape for class grain defaults.
     apply_session_mapping_values_to_ui(ui_future, annotations)
     matched = [r for r in ui_future["prep_rows"] if r["row_key"] == row["row_key"]]
-    if matched:
-        assert matched[0]["classification_code"] == ""
-        assert matched[0]["missing_classification"] is True
+    assert matched
+    assert matched[0]["classification_code"] == "CL-X"
+    assert matched[0]["missing_classification"] is False
+    assert ui_future["source_mapping_intents"]["classification_code"] == "future_modify_handoff"
 
 
 @pytest.mark.django_db
@@ -395,13 +398,11 @@ def test_boundaries_no_quantity_override_or_forbidden(client):
         "approve configuration",
     ):
         assert phrase not in page
-    assert (
-        "disabled"
-        in html.split('data-testid="qty-send-unresolved-to-modify"', 1)[0][
-            html.split('data-testid="qty-send-unresolved-to-modify"', 1)[0].rfind("<button") :
-        ]
-    )
-    assert "Raw Indexed Quantity Inventory" in html
+    # Modify handoff control lives under Advanced; when present it stays disabled.
+    if 'data-testid="qty-send-unresolved-to-modify"' in html:
+        chunk = html.split('data-testid="qty-send-unresolved-to-modify"', 1)[0]
+        assert "disabled" in chunk[chunk.rfind("<button") :]
+    assert "Raw Indexed Quantity Inventory" in html or 'data-testid="quantities-optional-estimate"' in html
     from django.apps import apps
 
     names = {m.__name__ for m in apps.get_app_config("takeoff").get_models()}

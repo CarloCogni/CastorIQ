@@ -50,9 +50,39 @@ urlpatterns = [
         name="qty_prep_row_mapping_batch",
     ),
     path(
+        "projects/<uuid:pk>/prep-row-measurement/",
+        views.QuantityPrepRowMeasurementView.as_view(),
+        name="qty_prep_row_measurement",
+    ),
+    path(
+        "projects/<uuid:pk>/prep-row-measurement-batch/",
+        views.QuantityPrepRowMeasurementBatchView.as_view(),
+        name="qty_prep_row_measurement_batch",
+    ),
+    path(
+        "projects/<uuid:pk>/measurement-settings/",
+        views.QuantityMeasurementSettingsView.as_view(),
+        name="qty_measurement_settings",
+    ),
+    path(
+        "projects/<uuid:pk>/field-values/",
+        views.QuantityFieldValuesView.as_view(),
+        name="qty_field_values",
+    ),
+    path(
         "projects/<uuid:pk>/prep-freeze/",
         views.QuantityPrepFreezeView.as_view(),
         name="qty_prep_freeze",
+    ),
+    path(
+        "projects/<uuid:pk>/editable-tables/save/",
+        views.QuantityEditableTableSaveView.as_view(),
+        name="qty_editable_table_save",
+    ),
+    path(
+        "projects/<uuid:pk>/editable-tables/open/",
+        views.QuantityEditableTableOpenView.as_view(),
+        name="qty_editable_table_open",
     ),
     path(
         "projects/<uuid:pk>/prep-export/",

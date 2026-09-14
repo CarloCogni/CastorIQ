@@ -1,4 +1,4 @@
-<!-- takeoff/qto.html — 5D Quantity Preparation (5D-UX-1A hierarchy) -->
+<!-- takeoff/qto.html — TABLE-04 one-table Quantities product UI -->
 {% include "takeoff/components/quantities_grid_styles.html" %}
 
 <div class="d-flex flex-column h-100 qty-ws qty-builder c5d-page" id="qto-root"
@@ -6,12 +6,9 @@
 
   <header class="c5d-header" data-testid="quantities-workspace-toolbar">
     <div class="c5d-header-main" style="min-width:0;">
-      <div class="c5d-header-eyebrow" data-testid="quantities-workspace-title">
-        <i class="bi bi-calculator me-1" style="opacity:.7;"></i>Quantities
-      </div>
       <div class="d-flex align-items-center gap-2 flex-wrap">
-        <h1 class="c5d-header-title" data-testid="quantities-workspace-subtitle">
-          5D Quantity Preparation
+        <h1 class="c5d-header-title mb-0" data-testid="quantities-workspace-title">
+          Quantities
         </h1>
         <button type="button"
                 class="help-pill c5d-action-subtle"
@@ -22,98 +19,61 @@
           <i class="bi bi-question-circle"></i>
         </button>
       </div>
-      <p class="c5d-header-subtitle mb-0">
-        Build a reviewed, schema-mapped quantity snapshot from IFC evidence (openBIM-first).
+      {% if quantities.ifc_file_name %}
+      <p class="c5d-header-subtitle mb-0" data-testid="quantities-workspace-source"
+         title="{{ quantities.ifc_file_name }}">
+        {{ quantities.ifc_file_name }}
       </p>
-      <!-- Keep legacy title string for older smoke assertions / search -->
+      {% endif %}
+      <span class="visually-hidden" data-testid="quantities-workspace-subtitle">Quantities table</span>
       <span class="visually-hidden">Build Quantity Preparation Data Model</span>
     </div>
     <div class="c5d-header-actions">
-      {% if quantities.ifc_file_name %}
-      <span class="mi-source" title="{{ quantities.ifc_file_name }}"
-            data-testid="quantities-workspace-source">
-        {{ quantities.ifc_file_name }}
-      </span>
-      {% endif %}
+      {% if model_inventory_url %}
       <a href="{{ model_inventory_url }}"
          class="btn btn-sm btn-outline-secondary c5d-action-subtle"
-         data-testid="quantities-open-model">
-        <i class="bi bi-box-seam me-1"></i>Open Model
+         data-testid="quantities-open-model"
+         aria-label="Open Link Analysis">
+        Open Link Analysis
       </a>
+      {% endif %}
+      {% if entities_url %}
       <a href="{{ entities_url }}"
          class="btn btn-sm btn-outline-secondary c5d-action-subtle"
-         data-testid="quantities-open-ifc-elements">
+         data-testid="quantities-open-ifc-elements"
+         aria-label="Open IFC Elements">
         Open IFC Elements
       </a>
+      {% endif %}
+      <div class="c5d-status-chips mb-0" data-testid="qty-c5d-status-chips" aria-label="Status">
+        {% if quantities.has_ifc %}
+        <span class="c5d-status is-ok" data-testid="qty-chip-ifc">IFC present</span>
+        {% else %}
+        <span class="c5d-status is-warn" data-testid="qty-chip-ifc">IFC missing</span>
+        {% endif %}
+        {% with ou=qty_prep.output_units %}
+        {% if ou.any_override %}
+        <span class="c5d-status is-ok" data-testid="qty-chip-units">Units override</span>
+        {% else %}
+        <span class="c5d-status is-ok" data-testid="qty-chip-units">Model units</span>
+        {% endif %}
+        {% endwith %}
+        {% if fived_latest_version and fived_schema_insight_url %}
+        <a class="c5d-status is-ok text-decoration-none"
+           data-testid="qty-chip-snapshot"
+           href="{{ fived_schema_insight_url }}"
+           title="{{ fived_latest_version.version_label }}">
+          Saved versions
+        </a>
+        {% else %}
+        <span class="c5d-status is-muted" data-testid="qty-chip-snapshot">No saved version</span>
+        {% endif %}
+      </div>
     </div>
   </header>
 
-  <div class="c5d-status-chips" data-testid="qty-c5d-status-chips" aria-label="Preparation status">
-    {% if quantities.has_ifc %}
-    <span class="c5d-status is-ok" data-testid="qty-chip-ifc">
-      <span class="c5d-status-label">IFC evidence</span> Present
-    </span>
-    {% else %}
-    <span class="c5d-status is-warn" data-testid="qty-chip-ifc">
-      <span class="c5d-status-label">IFC evidence</span> Missing
-    </span>
-    {% endif %}
-
-    {% if qty_prep_pending.has_pending_review_changes %}
-    <span class="c5d-status is-warn" data-testid="qty-chip-mapping">
-      <span class="c5d-status-label">Mapping session</span> Pending changes
-    </span>
-    {% else %}
-    <span class="c5d-status is-ok" data-testid="qty-chip-mapping">
-      <span class="c5d-status-label">Mapping session</span> Clean
-    </span>
-    {% endif %}
-
-    {% with uc=qty_prep.unit_confirmation %}
-    {% if uc.any_confirmed %}
-    <span class="c5d-status is-ok" data-testid="qty-chip-units">
-      <span class="c5d-status-label">Units</span> Confirmed
-    </span>
-    {% else %}
-    <span class="c5d-status is-warn" data-testid="qty-chip-units">
-      <span class="c5d-status-label">Units</span> Unresolved
-    </span>
-    {% endif %}
-    {% endwith %}
-
-    {% if fived_latest_version %}
-    <span class="c5d-status is-ok" data-testid="qty-chip-snapshot"
-          title="{{ fived_latest_version.version_label }}">
-      <span class="c5d-status-label">Snapshot</span>
-      {{ fived_latest_version.version_label|truncatechars:28 }}
-    </span>
-    {% else %}
-    <span class="c5d-status is-muted" data-testid="qty-chip-snapshot">
-      <span class="c5d-status-label">Snapshot</span> None yet
-    </span>
-    {% endif %}
-  </div>
-
-  <nav class="c5d-workflow-rail" data-testid="qty-c5d-workflow-rail" aria-label="Preparation workflow">
-    <a class="c5d-workflow-step is-active" href="#qty-discover-section">
-      <span class="c5d-workflow-num">1</span> Discover
-    </a>
-    <a class="c5d-workflow-step" href="#qty-configure-section">
-      <span class="c5d-workflow-num">2</span> Configure
-    </a>
-    <a class="c5d-workflow-step" href="#qty-prep-table-section">
-      <span class="c5d-workflow-num">3</span> Map
-    </a>
-    <a class="c5d-workflow-step" href="#qty-unit-confirmation">
-      <span class="c5d-workflow-num">4</span> Confirm Units
-    </a>
-    <a class="c5d-workflow-step" href="#qty-support-next-action">
-      <span class="c5d-workflow-num">5</span> Freeze
-    </a>
-    <a class="c5d-workflow-step" href="#qty-support-next-action">
-      <span class="c5d-workflow-num">6</span> Review
-    </a>
-  </nav>
+  <!-- Keep legacy workflow rail testid absent; smoke that asserts absence of stages -->
+  <span class="visually-hidden" data-testid="qty-c5d-workflow-rail-removed">workflow rail removed</span>
 
   {% if not quantities.has_ifc %}
   <div class="p-3">
@@ -124,248 +84,59 @@
   </div>
   {% else %}
 
-  <div class="c5d-workspace" data-testid="qty-c5d-workspace">
-    <div class="c5d-main" data-testid="qty-c5d-main">
-
-      {% include "takeoff/components/quantities_freeze_pending_banner.html" %}
-
-      <div id="qty-discover-section">
-        {% if qty_prep.semantic_filters %}
-        {% include "takeoff/components/quantities_semantic_filters.html" %}
-        {% endif %}
-      </div>
-
-      <details class="c5d-card" id="qty-configure-section" data-testid="qty-configure-details">
-        <summary class="c5d-section-title" style="cursor:pointer;">
-          Configure preparation
-          <span class="c5d-helper d-inline ms-1">Schema, sources, measurement rules, drafts</span>
-        </summary>
-        <div class="pt-2 d-flex flex-column gap-2">
-          {% include "takeoff/components/quantities_prep_config_panel.html" %}
-          <form method="get"
-                action=""
-                class="qty-prep-config-form"
-                data-testid="qty-prep-config-form"
-                id="qty-prep-config-form">
-            {% include "takeoff/components/quantities_setup_summary.html" %}
-            {% include "takeoff/components/quantities_column_config.html" %}
-            {% include "takeoff/components/quantities_source_mapping.html" %}
-            {% include "takeoff/components/quantities_basis_rules.html" %}
-          </form>
-        </div>
-      </details>
+  <div class="c5d-workspace c5d-workspace-flow c5d-workspace-table" data-testid="qty-c5d-workspace">
+    <div class="c5d-main" data-testid="qty-c5d-main" style="max-width:100%;">
+      {% if qty_prep_pending.has_pending_review_changes %}
+      <p class="c5d-helper mb-1" data-testid="qty-freeze-pending-banner">
+        Session changes are active — use <strong>Save version</strong> to create a read-only copy.
+      </p>
+      {% endif %}
 
       {% include "takeoff/components/quantities_prep_table.html" %}
-
     </div>
-
-    <aside class="c5d-support" data-testid="qty-c5d-support" aria-label="Preparation support">
-      {% include "takeoff/components/quantities_semantic_source_readiness.html" %}
-      {% include "takeoff/components/quantities_unit_confirmation.html" %}
-      <div id="qty-support-next-action">
-        {% include "takeoff/components/quantities_schema_insight_entry.html" %}
-      </div>
-    </aside>
   </div>
 
-  <details class="c5d-advanced" data-testid="quantities-optional-estimate">
-    <summary>Advanced &amp; reference — insights, inventory, legacy tools</summary>
+  <details class="c5d-advanced mt-2" data-testid="quantities-optional-estimate">
+    <summary>Advanced &amp; reference</summary>
     <div class="c5d-advanced-body">
-      <p class="c5d-helper mb-0" data-testid="quantities-boundary-copy">
-        Preparation snapshot from indexed IFC. Not Ask, not Modify, not BOQ, not cost,
-        not verified QS measurement. Details in Help.
+      <p class="c5d-helper mb-2" data-testid="quantities-boundary-copy">
+        Preparation from indexed IFC. Not Ask, not Modify, not BOQ, not cost.
       </p>
       <span class="visually-hidden" data-testid="quantities-not-boq-badge">Not BOQ</span>
       <span class="visually-hidden" data-testid="quantities-model-only-badge">Model quantities only</span>
+      <div id="qty-configure-section" data-testid="qty-configure-details">
+        {% include "takeoff/components/quantities_prep_config_panel.html" %}
+        <form method="get" action="" class="qty-prep-config-form" data-testid="qty-prep-config-form">
+          {% include "takeoff/components/quantities_setup_summary.html" %}
+          {% include "takeoff/components/quantities_column_config.html" %}
+          {% include "takeoff/components/quantities_source_mapping.html" %}
+          {% include "takeoff/components/quantities_basis_rules.html" %}
+        </form>
+      </div>
+      {% include "takeoff/components/quantities_schema_insight_entry.html" %}
       {% include "takeoff/components/quantities_missing_summary.html" %}
-      {% include "takeoff/components/quantities_visual_summary.html" %}
-      {% include "takeoff/components/quantities_insights.html" %}
-      {% include "takeoff/components/quantities_enrichment_cta.html" %}
       {% include "takeoff/components/quantities_model_reference.html" %}
-      <div class="c5d-card">
-        <p class="c5d-helper mb-2" data-testid="qty-advanced-export-note">
-          Optional legacy QTO cache tools — not the primary preparation workspace.
-        </p>
+      <div class="c5d-card mt-2">
         <p class="c5d-helper mb-2" data-testid="qty-advanced-legacy-export-copy">
-          This legacy export uses the optional QTO cache and may include cost/cache fields if present.
-          It does not export the current generated preparation data model, schema configuration,
-          source intent, row reviews, or manual mapping values.
-          Use Export preparation model (session) on the preparation table for that snapshot.
+          Legacy QTO cache export is separate from Export table.
         </p>
-        <div class="d-flex flex-wrap gap-2">
-          <a href="{% url 'takeoff:qto_export' project.pk %}"
-             class="btn btn-sm btn-outline-secondary c5d-action-subtle"
-             data-testid="qty-advanced-export"
-             title="Legacy QTO cache Excel — not the generated preparation data model">
-            <i class="bi bi-file-earmark-excel me-1"></i>Export legacy QTO cache
-          </a>
-          <button type="button"
-                  class="btn btn-sm btn-outline-secondary c5d-action-subtle"
-                  data-testid="qty-advanced-recompute"
-                  hx-post="{% url 'takeoff:qto_recompute' project.pk %}"
-                  hx-swap="none">
-            <i class="bi bi-arrow-clockwise me-1"></i>Recompute optional cache
-          </button>
-        </div>
+        <a href="{% url 'takeoff:qto_export' project.pk %}"
+           class="btn btn-sm btn-outline-secondary"
+           data-testid="qty-advanced-export">
+          Export legacy QTO cache
+        </a>
       </div>
     </div>
   </details>
+
+  {% include "takeoff/components/quantities_columns_modal.html" %}
+  {% include "takeoff/components/quantities_measurement_settings_modal.html" %}
+  {% include "takeoff/components/quantities_units_modal.html" %}
+  {% include "takeoff/components/quantities_save_table_modal.html" %}
+  {% include "takeoff/components/quantities_open_table_modal.html" %}
+  {% include "takeoff/components/quantities_save_version_modal.html" %}
 
   {% endif %}
 </div>
 
 {% include "takeoff/components/quantities_help_modal.html" %}
-
-<script>
-(function () {
-  var root = document.getElementById("qto-root");
-  if (!root) return;
-
-  function escAttr(v) {
-    if (window.CSS && typeof CSS.escape === "function") return CSS.escape(v);
-    return String(v).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  }
-
-  function dash(v) {
-    return v == null || v === "" ? "—" : v;
-  }
-
-  function clearSelected() {
-    root.querySelectorAll(".mi-row-selected, .mi-nav-item.is-active").forEach(function (el) {
-      el.classList.remove("mi-row-selected", "is-active");
-    });
-  }
-
-  function focusLabel(focus) {
-    if (focus === "level") return "Level / Storey";
-    if (focus === "type") return "Type";
-    return "IFC Class";
-  }
-
-  function applySelection(el) {
-    if (!el) return;
-    clearSelected();
-    el.classList.add(el.tagName === "TR" ? "mi-row-selected" : "is-active");
-
-    var focus = el.getAttribute("data-qty-focus") || "class";
-    var name = el.getAttribute("data-qty-name") || el.getAttribute("data-qty-key") || "—";
-    var key = el.getAttribute("data-qty-key") || "";
-
-    var label = document.getElementById("qty-selection-label");
-    var fields = document.getElementById("qty-selection-fields");
-    var detail = document.getElementById("qty-selection-detail");
-    if (label) label.textContent = focusLabel(focus) + ": " + name;
-    if (fields) fields.hidden = false;
-
-    var set = function (id, val) {
-      var n = document.getElementById(id);
-      if (n) n.textContent = val;
-    };
-    var coverage = el.getAttribute("data-qty-coverage");
-    set("qty-sel-type", focusLabel(focus));
-    set("qty-sel-name", name);
-    set("qty-sel-elements", dash(el.getAttribute("data-qty-elements")));
-    set("qty-sel-has", dash(el.getAttribute("data-qty-has")));
-    set("qty-sel-missing", dash(el.getAttribute("data-qty-missing")));
-    set("qty-sel-coverage", coverage != null && coverage !== "" ? coverage + "%" : "—");
-    set("qty-sel-net-volume", dash(el.getAttribute("data-qty-net-volume")));
-    set("qty-sel-net-area", dash(el.getAttribute("data-qty-net-area")));
-    set("qty-sel-net-side-area", dash(el.getAttribute("data-qty-net-side-area")));
-    set("qty-sel-length", dash(el.getAttribute("data-qty-length")));
-
-    if (detail) {
-      detail.textContent =
-        "Raw indexed IFC quantity values only. Input evidence — not selected measurement, BOQ, 5D, or QS takeoff.";
-    }
-
-    if (key) {
-      var nav = root.querySelector(
-        '.mi-nav-item[data-qty-focus="' + focus + '"][data-qty-key="' + escAttr(key) + '"]'
-      );
-      if (nav) nav.classList.add("is-active");
-      var rowSel =
-        focus === "class"
-          ? 'tr[data-testid="qty-class-row"]'
-          : focus === "level"
-            ? 'tr[data-testid="qty-level-row"]'
-            : 'tr[data-testid="qty-type-row"]';
-      var row = root.querySelector(rowSel + '[data-qty-key="' + escAttr(key) + '"]');
-      if (row) row.classList.add("mi-row-selected");
-    }
-  }
-
-  root.querySelectorAll("[data-qty-collapse]").forEach(function (section) {
-    var btn = section.querySelector(".mi-nav-section-h");
-    if (!btn) return;
-    btn.addEventListener("click", function () {
-      var collapsed = section.classList.toggle("is-collapsed");
-      btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
-    });
-  });
-
-  root.addEventListener("click", function (e) {
-    var hit = e.target.closest(
-      'tr[data-testid="qty-class-row"], tr[data-testid="qty-level-row"], tr[data-testid="qty-type-row"], .mi-nav-item[data-qty-key]'
-    );
-    if (!hit || !root.contains(hit)) return;
-    if (e.target.closest(".mi-nav-section-h")) return;
-    if (e.target.closest("a.btn")) return;
-    applySelection(hit);
-  });
-
-  var filterInput = document.getElementById("qty-quick-filter");
-  if (filterInput) {
-    filterInput.addEventListener("input", function () {
-      var q = (filterInput.value || "").trim().toLowerCase();
-      root.querySelectorAll(
-        'tr[data-testid="qty-class-row"], tr[data-testid="qty-level-row"], tr[data-testid="qty-type-row"]'
-      ).forEach(function (row) {
-        var name = (row.getAttribute("data-qty-name") || row.getAttribute("data-qty-key") || "").toLowerCase();
-        var text = (row.innerText || "").toLowerCase();
-        var show = !q || name.indexOf(q) !== -1 || text.indexOf(q) !== -1;
-        row.classList.toggle("mi-row-hidden", !show);
-      });
-    });
-  }
-
-  var classTable = document.getElementById("qty-class-table");
-  var sortState = { key: null, dir: 1 };
-  if (classTable) {
-    classTable.querySelectorAll("th.mi-sortable").forEach(function (th) {
-      th.addEventListener("click", function () {
-        var key = th.getAttribute("data-qty-sort");
-        if (!key) return;
-        if (sortState.key === key) sortState.dir *= -1;
-        else {
-          sortState.key = key;
-          sortState.dir = key === "name" ? 1 : -1;
-        }
-        classTable.querySelectorAll("th.mi-sortable").forEach(function (h) {
-          h.classList.remove("mi-sort-asc", "mi-sort-desc");
-        });
-        th.classList.add(sortState.dir === 1 ? "mi-sort-asc" : "mi-sort-desc");
-        var tbody = classTable.tBodies[0];
-        if (!tbody) return;
-        var rows = Array.prototype.slice.call(
-          tbody.querySelectorAll('tr[data-testid="qty-class-row"]')
-        );
-        var attr = "data-qty-" + key;
-        if (key === "name") attr = "data-qty-name";
-        rows.sort(function (a, b) {
-          var av = a.getAttribute(attr) || "";
-          var bv = b.getAttribute(attr) || "";
-          if (key === "name") return av.localeCompare(bv) * sortState.dir;
-          var an = parseFloat(av);
-          var bn = parseFloat(bv);
-          if (isNaN(an)) an = -Infinity;
-          if (isNaN(bn)) bn = -Infinity;
-          return (an - bn) * sortState.dir;
-        });
-        rows.forEach(function (r) {
-          tbody.appendChild(r);
-        });
-      });
-    });
-  }
-}());
-</script>

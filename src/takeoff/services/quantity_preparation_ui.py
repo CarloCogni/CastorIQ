@@ -616,9 +616,21 @@ def _total_for_basis(row: dict[str, Any], basis: dict[str, Any]) -> float | int 
 
 
 def _review_status(row: dict[str, Any]) -> str:
+    """User-facing row status for the working table (presentation).
+
+    Quantity calculation gaps (measurement) stay distinct from mapping gaps
+    (classification / package / work package).
+    """
+    mstatus = str(row.get("measurement_status") or "")
+    if mstatus == "unavailable":
+        return "Not available"
+    if mstatus == "choice_required":
+        return "Choose source"
     if row.get("basis_unresolved"):
-        return "Missing basis rule"
-    if row.get("missing_quantity_source"):
+        return "Choose measurement"
+    if row.get("missing_quantity_source") and mstatus in {"", "unresolved"}:
+        if not str(row.get("measurement_type") or "").strip():
+            return "Choose measurement"
         return "Missing selected quantity source"
     if (
         row.get("missing_classification")
@@ -633,6 +645,16 @@ def _review_status(row: dict[str, Any]) -> str:
             )
         )
     return "Resolved"
+
+
+def refresh_prep_row_status(row: dict[str, Any]) -> None:
+    """Recompute review/handoff presentation after measurement or mapping overlays."""
+    row["review_status"] = _review_status(row)
+    row["computed_review_status"] = row["review_status"]
+    row["review_status_display"] = row["review_status"]
+    row["handoff_status"] = _handoff_status(row)
+    row["eligible_for_handoff"] = row["handoff_status"] == "Eligible for Modify handoff"
+    row["ready_for_handoff"] = row["eligible_for_handoff"]
 
 
 def _has_target_context(row: dict[str, Any]) -> bool:
@@ -851,6 +873,8 @@ def build_prep_rows(
             ),
             "work_package_hint": _mapping_cell_hint(work_src) if include_work else "",
             "element_count": raw.get("element_count"),
+            "element_type_id": raw.get("element_type_id"),
+            "measure_inventory": raw.get("measure_inventory"),
             "missing_quantity_source": missing_source,
             "missing_classification": missing_classification,
             "missing_package": missing_package,
@@ -1143,6 +1167,16 @@ def build_preparation_ui(
         if quantities.get("has_ifc")
         else []
     )
+    grain = (
+        "type" if quantities.get("by_type_shown") and quantities.get("by_type") else "ifc_class"
+    )
+    from takeoff.services.quantity_prep_row_measurement import (
+        attach_measurement_defaults_to_prep_rows,
+    )
+
+    attach_measurement_defaults_to_prep_rows(prep_rows, grain=grain)
+    for row in prep_rows:
+        refresh_prep_row_status(row)
     unresolved_register = build_unresolved_register(prep_rows)
     return {
         "schema_fields": schema_fields,
@@ -1153,8 +1187,11 @@ def build_preparation_ui(
             "zone": bool(includes.get("zone")),
             "type_name": bool(includes.get("type_name")),
             "ifc_class": True,
-            "quantity_source": True,
-            "quantity_basis": True,
+            "quantity_source": False,
+            "quantity_basis": False,
+            "measurement_type": True,
+            "ifc_quantity_source": True,
+            "model_unit": True,
             "unit_basis": True,
             "total_quantity": True,
             "classification_code": bool(includes.get("classification_code")),
@@ -1218,9 +1255,7 @@ def build_preparation_ui(
             "readiness or QS verification."
         ),
         "prep_rows": prep_rows,
-        "prep_row_grain": (
-            "type" if quantities.get("by_type_shown") and quantities.get("by_type") else "ifc_class"
-        ),
+        "prep_row_grain": grain,
         "unresolved_register": unresolved_register,
         # Back-compat alias for any leftover template references during Slice 2a.
         "missing_summary": unresolved_register,

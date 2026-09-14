@@ -150,7 +150,12 @@ def test_no_zone_keys_created_on_enrich():
 
 @pytest.mark.django_db
 def test_quantities_ui_shows_classref_section(client):
-    """Quantities page exposes Existing IFC classification section when indexed."""
+    """Indexed IFC Classification Reference remains reachable via grouped picker.
+
+    REVIEW-08C: the old Discover ``qty-existing-ifc-classification`` panel was
+    presentation-only. Capability lives in the Classification picker family and
+    ``classref:*`` field keys (filter + columns), not the removed stage journey.
+    """
     project = _project_with_classref()
     client.force_login(project.owner)
     url = reverse("takeoff:qto", kwargs={"pk": project.pk})
@@ -161,15 +166,24 @@ def test_quantities_ui_shows_classref_section(client):
             "source_classification_code": "manual_field",
             "source_package_boq_mapping": "manual_field",
             "source_work_package": "manual_field",
+            "table_layout": "v2",
+            "col_order": "ifc_class,name,classref:ifc,status,actions",
             "sem_cols": "classref:ifc",
             "semantic_field": "classref:ifc",
             "semantic_value": "Uniformat / B10",
         },
     ).content.decode()
-    assert 'data-testid="qty-existing-ifc-classification"' in html
-    assert "IFC Classification Reference" in html
-    assert 'data-testid="qty-existing-classification"' in html
-    assert "Authoring classification properties" in html
-    assert "Castor schema mapping" in html
+    # Replacement surface (not the removed Discover panel).
+    assert 'data-testid="qty-existing-ifc-classification"' not in html
+    assert "Classification" in html
+    assert 'data-field-key="classref:ifc"' in html or "classref:ifc" in html
+    assert (
+        "IFC Classification Reference" in html
+        or "ClassRef" in html
+        or "classification" in html.lower()
+    )
     assert 'data-testid="qty-batch-map-selected"' in html
     assert "Uniformat / B10" in html
+    assert 'data-testid="qty-filter-field"' in html or 'data-testid="qty-column-field"' in html
+    # Authoring vs Castor schema distinction still present on Assign values.
+    assert "Castor schema" in html or "schema" in html.lower()

@@ -1,0 +1,297 @@
+<!-- takeoff/components/quantities_field_picker_js.html — REVIEW-08B/08C picker + value combobox -->
+<script>
+(function () {
+  if (window.CastorQtyFieldPicker) return;
+
+  function qs(root, sel) { return root.querySelector(sel); }
+  function qsa(root, sel) { return Array.prototype.slice.call(root.querySelectorAll(sel)); }
+
+  function initPicker(root, opts) {
+    if (!root || root.dataset.pickerReady === "1") return;
+    root.dataset.pickerReady = "1";
+    var search = qs(root, ".qty-field-picker-search");
+    var tree = qs(root, ".qty-field-picker-tree");
+    var noMatch = qs(root, ".qty-field-picker-no-matches");
+    var status = qs(root, ".qty-field-picker-status");
+    var onSelect = (opts && opts.onSelect) || function () {};
+
+    function options() {
+      return qsa(root, ".qty-field-picker-option");
+    }
+
+    function setStatus(msg, kind) {
+      if (!status) return;
+      if (!msg) {
+        status.classList.add("d-none");
+        status.textContent = "";
+        return;
+      }
+      status.textContent = msg;
+      status.classList.remove("d-none");
+      status.dataset.kind = kind || "info";
+    }
+
+    function filterList() {
+      var q = ((search && search.value) || "").trim().toLowerCase();
+      var visibleOpts = 0;
+      options().forEach(function (btn) {
+        var hay = (btn.getAttribute("data-search") || "").toLowerCase();
+        var show = !q || hay.indexOf(q) !== -1;
+        btn.classList.toggle("d-none", !show);
+        if (show) visibleOpts += 1;
+      });
+      qsa(root, ".qty-field-picker-group").forEach(function (g) {
+        var any = qsa(g, ".qty-field-picker-option").some(function (b) {
+          return !b.classList.contains("d-none");
+        });
+        g.classList.toggle("d-none", !any);
+        if (q && any) g.open = true;
+      });
+      qsa(root, ".qty-field-picker-family").forEach(function (f) {
+        var any = qsa(f, ".qty-field-picker-group").some(function (g) {
+          return !g.classList.contains("d-none");
+        });
+        f.classList.toggle("d-none", !any);
+        if (q && any) f.open = true;
+      });
+      var catalogueEmpty = !options().length;
+      if (noMatch) {
+        if (catalogueEmpty) {
+          noMatch.classList.add("d-none");
+        } else {
+          noMatch.classList.toggle("d-none", !q || visibleOpts > 0);
+        }
+      }
+      if (catalogueEmpty) {
+        setStatus("No indexed fields available for this scope.", "empty");
+      } else if (q && visibleOpts === 0) {
+        setStatus("", "nomatch");
+      } else {
+        setStatus("", "ok");
+      }
+    }
+
+    function selectKey(key, opts) {
+      opts = opts || {};
+      options().forEach(function (btn) {
+        var on = btn.getAttribute("data-field-key") === key;
+        btn.classList.toggle("active", on);
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+      root.dataset.selectedKey = key || "";
+      var btn = options().find(function (b) { return b.getAttribute("data-field-key") === key; });
+      if (opts.notify !== false) {
+        var meta = null;
+        if (btn) {
+          meta = {
+            label: btn.getAttribute("data-field-label") || key,
+            valueType: btn.getAttribute("data-value-type") || "text",
+            alreadyAdded: btn.getAttribute("data-already-added") === "1",
+            el: btn
+          };
+        }
+        onSelect(key, meta);
+      }
+    }
+
+    options().forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        if (btn.getAttribute("data-already-added") === "1" || btn.classList.contains("disabled")) {
+          return;
+        }
+        selectKey(btn.getAttribute("data-field-key") || "");
+      });
+    });
+    if (search) {
+      search.addEventListener("input", filterList);
+      search.addEventListener("search", filterList);
+    }
+    filterList();
+    var initial = root.getAttribute("data-selected-key") || "";
+    if (initial) selectKey(initial, { notify: false });
+
+    root._qtyPicker = {
+      resetSearch: function () {
+        if (search) search.value = "";
+        filterList();
+      },
+      selectKey: selectKey,
+      filterList: filterList,
+      getSelectedKey: function () { return root.dataset.selectedKey || ""; }
+    };
+  }
+
+  function initValueCombobox(cfg) {
+    var input = cfg.input;
+    var panel = cfg.panel;
+    var metaByKey = cfg.metaByKey || {};
+    var valuesUrl = cfg.valuesUrl || "";
+    var getFieldKey = cfg.getFieldKey || function () { return ""; };
+    var getClasses = cfg.getClasses || function () { return []; };
+    var requestSeq = 0;
+    var debounceTimer = null;
+    if (!input || !panel) return;
+    // Idempotent: HTMX / re-init must not stack focus/input listeners.
+    if (input.dataset.valueComboboxReady === "1" && input._qtyValueCombobox) {
+      return input._qtyValueCombobox;
+    }
+    input.dataset.valueComboboxReady = "1";
+
+    input.setAttribute("autocomplete", "off");
+    input.setAttribute("autocorrect", "off");
+    input.setAttribute("spellcheck", "false");
+    input.setAttribute("data-1p-ignore", "true");
+    input.setAttribute("data-lpignore", "true");
+    input.removeAttribute("list");
+
+    function clearPanel() {
+      panel.innerHTML = "";
+      panel.classList.add("d-none");
+    }
+
+    function appendSuggestion(val) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "dropdown-item small py-1 qty-value-suggestion";
+      b.textContent = val;
+      b.setAttribute("data-value", val);
+      b.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        input.value = val;
+        clearPanel();
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      panel.appendChild(b);
+    }
+
+    function renderPayload(payload, append) {
+      if (!append) panel.innerHTML = "";
+      var values = (payload && payload.values) || [];
+      if (!values.length && !append) {
+        panel.innerHTML = '<div class="small text-secondary px-2 py-1">No stored values for this property</div>';
+        panel.classList.remove("d-none");
+        return;
+      }
+      values.forEach(appendSuggestion);
+      var note = document.createElement("div");
+      note.className = "small text-secondary px-2 py-1 border-top qty-value-suggest-note";
+      var total = (payload && payload.total) || values.length;
+      var shown = panel.querySelectorAll(".qty-value-suggestion").length;
+      if (payload && payload.has_more) {
+        note.textContent = "Showing " + shown + " of " + total + " — type to search, or load more.";
+        var more = document.createElement("button");
+        more.type = "button";
+        more.className = "dropdown-item small py-1 text-primary qty-value-load-more";
+        more.textContent = "Load more…";
+        more.addEventListener("mousedown", function (e) {
+          e.preventDefault();
+          fetchValues(getFieldKey(), input.value || "", shown, true);
+        });
+        panel.appendChild(note);
+        panel.appendChild(more);
+      } else {
+        var complete = !(payload && payload.capped);
+        note.textContent = complete
+          ? ("Distinct stored values for this field (" + total + ").")
+          : ("Showing first " + total + " distinct values (capped) — type to search.");
+        panel.appendChild(note);
+      }
+      panel.classList.remove("d-none");
+    }
+
+    function fetchValues(fieldKey, q, offset, append) {
+      if (!fieldKey || !valuesUrl) {
+        clearPanel();
+        return;
+      }
+      var seq = ++requestSeq;
+      if (!append) {
+        panel.innerHTML = '<div class="small text-secondary px-2 py-1">Loading values…</div>';
+        panel.classList.remove("d-none");
+      }
+      var params = new URLSearchParams();
+      params.set("field", fieldKey);
+      if (q) params.set("q", q);
+      params.set("offset", String(offset || 0));
+      params.set("limit", "40");
+      (getClasses() || []).forEach(function (c) {
+        if (c) params.append("semantic_classes", c);
+      });
+      fetch(valuesUrl + "?" + params.toString(), {
+        headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin"
+      }).then(function (r) {
+        if (!r.ok) throw new Error("values " + r.status);
+        return r.json();
+      }).then(function (payload) {
+        if (seq !== requestSeq) return;
+        if (payload.error && !payload.values) {
+          panel.innerHTML = '<div class="small text-danger px-2 py-1">' +
+            (payload.error || "Could not load values") + "</div>";
+          panel.classList.remove("d-none");
+          return;
+        }
+        renderPayload(payload, !!append);
+      }).catch(function () {
+        if (seq !== requestSeq) return;
+        panel.innerHTML = '<div class="small text-danger px-2 py-1">Could not load values. Retry.</div>';
+        var retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "dropdown-item small text-primary";
+        retry.textContent = "Retry";
+        retry.addEventListener("mousedown", function (e) {
+          e.preventDefault();
+          fetchValues(fieldKey, q, 0, false);
+        });
+        panel.appendChild(retry);
+        panel.classList.remove("d-none");
+      });
+    }
+
+    function scheduleFetch() {
+      var key = getFieldKey();
+      if (!key) { clearPanel(); return; }
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(function () {
+        fetchValues(key, input.value || "", 0, false);
+      }, 180);
+    }
+
+    input.addEventListener("focus", function () {
+      var key = getFieldKey();
+      if (key) fetchValues(key, input.value || "", 0, false);
+    });
+    input.addEventListener("input", scheduleFetch);
+    input.addEventListener("blur", function () {
+      setTimeout(clearPanel, 180);
+    });
+
+    var api = {
+      setField: function (fieldKey, clearValue) {
+        requestSeq += 1;
+        clearPanel();
+        if (clearValue) input.value = "";
+        if (fieldKey && document.activeElement === input) {
+          fetchValues(fieldKey, input.value || "", 0, false);
+        }
+      },
+      clear: function () {
+        requestSeq += 1;
+        clearPanel();
+      },
+      refresh: function () {
+        var key = getFieldKey();
+        if (key) fetchValues(key, input.value || "", 0, false);
+      }
+    };
+    input._qtyValueCombobox = api;
+    return api;
+  }
+
+  window.CastorQtyFieldPicker = {
+    init: initPicker,
+    initValueCombobox: initValueCombobox
+  };
+})();
+</script>

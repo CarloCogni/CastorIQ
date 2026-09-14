@@ -127,11 +127,18 @@
       <span class="badge text-bg-secondary">Read-only</span>
     </div>
     <div class="small" data-testid="s3-snapshot-bar-text">
-      <span class="fw-semibold">{{ insight.version.version_label }}</span>
+      <span class="fw-semibold" data-testid="s3-selected-version-label">{{ version.version_label }}</span>
       · {{ insight.row_count }} IFC quantity rows
       · created from quantity preparation
     </div>
+    {% if data_model.name %}
+    <div class="small text-secondary mt-1" data-testid="s3-snapshot-context">
+      Context: {{ data_model.name }}
+    </div>
+    {% endif %}
   </section>
+
+  {% include "fived/components/semantic_source_readiness_review.html" %}
 
   <section class="mb-3" data-testid="s3-insight-summary">
     <h2 class="h6 mb-3">Schema insight summary</h2>
@@ -146,17 +153,18 @@
       </div>
       <div class="col-6 col-xl">
         <div class="s3g-summary-card" data-testid="s3-summary-quantity-readiness">
-          <div class="text-secondary small mb-1">Quantity readiness</div>
+          <div class="text-secondary small mb-1">Quantity row readiness</div>
           <div class="s3g-value">{{ insight_summary.readiness_value }}</div>
           <div class="small text-secondary">{{ insight_summary.readiness_subtext }}</div>
+          <div class="small text-secondary mt-1">Usable-row coverage — not semantic source fields</div>
         </div>
       </div>
       <div class="col-6 col-xl">
         <div class="s3g-summary-card" data-testid="s3-summary-mapped-netvolume">
           <div class="text-secondary small mb-1">Mapped NetVolume</div>
           <div class="s3g-value">{{ insight_summary.mapped_netvolume_display }}</div>
-          <div class="small text-secondary">
-            Unit: {{ insight_summary.mapped_netvolume_unit_status }}
+          <div class="small text-secondary" data-testid="s3-mapped-quantity-unit">
+            {{ insight_summary.mapped_netvolume_unit_caption }}
             · Measurement Basis: NetVolume
           </div>
         </div>

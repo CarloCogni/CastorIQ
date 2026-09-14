@@ -38,8 +38,10 @@ class FiveDModelVersionFactory(factory.django.DjangoModelFactory):
     boundary_snapshot = factory.LazyFunction(lambda: dict(BOUNDARY_SNAPSHOT_F2))
     session_annotations_snapshot = factory.LazyFunction(dict)
     unresolved_register_snapshot = factory.LazyFunction(dict)
+    semantic_source_readiness_snapshot = None
     source_query = factory.LazyFunction(dict)
     content_hash = ""
+    content_hash_contract_version = ""
     notes = ""
     status = FiveDModelVersion.Status.FROZEN
     row_count = 0

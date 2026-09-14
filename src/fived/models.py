@@ -118,9 +118,29 @@ class FiveDModelVersion(UUIDModel):
         blank=True,
         verbose_name="Unresolved register snapshot",
     )
+    semantic_source_readiness_snapshot = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        verbose_name="Semantic source readiness snapshot",
+        help_text=(
+            "SEM-4A semantic source readiness frozen at snapshot time "
+            "(sem4a_readiness_v1). Null on legacy versions that predate capture."
+        ),
+    )
     source_query = models.JSONField(default=dict, blank=True, verbose_name="Source query")
     content_hash = models.CharField(
         max_length=64, blank=True, default="", verbose_name="Content hash"
+    )
+    content_hash_contract_version = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        verbose_name="Content hash contract version",
+        help_text=(
+            "Explicit hash-contract id used when content_hash was computed "
+            "(e.g. fived_content_hash_v2). Empty on legacy snapshots."
+        ),
     )
     notes = models.TextField(blank=True, default="", verbose_name="Notes")
     status = models.CharField(

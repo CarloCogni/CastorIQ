@@ -57,7 +57,7 @@ def build_row_key(
 
     Format: ``v1|{grain}|{ifc_class}|{type_name_or_dash}|{quantity_basis_or_dash}``
     """
-    grain_norm = grain if grain in {"type", "ifc_class"} else "ifc_class"
+    grain_norm = grain if grain in {"type", "ifc_class", "instance"} else "ifc_class"
     ifc = (ifc_class or "").strip() or "-"
     type_part = (type_name or "").strip() or "-"
     basis_part = (quantity_basis or "").strip() or "-"

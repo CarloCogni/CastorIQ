@@ -54,9 +54,9 @@ def test_banner_visible_after_mapping_in_session(client):
     session.save()
     html = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk})).content.decode()
     assert 'data-testid="qty-freeze-pending-banner"' in html
-    assert "Unsaved 5D review changes" in html
+    assert "Save version" in html
     assert 'data-testid="qty-freeze-cta"' in html
-    assert "Freeze updated 5D snapshot" in html
+    assert "Save version" in html.split('data-testid="qty-freeze-cta"', 1)[1][:80]
 
 
 @pytest.mark.django_db

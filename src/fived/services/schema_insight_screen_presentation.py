@@ -352,6 +352,11 @@ def build_schema_insight_screen_summary(insight: Mapping[str, Any]) -> dict[str,
         "mapped_netvolume_display": format_quantity_number(mapped_net_total),
         "mapped_netvolume_unit_status": unit_info["label"],
         "mapped_netvolume_unit_resolved": unit_info["resolved"],
+        "mapped_netvolume_unit_caption": (
+            f"Mapped quantity unit: {unit_info['label']}"
+            if unit_info["resolved"]
+            else "Mapped quantity unit: not resolved"
+        ),
         "package_groups": len(mapped_pkg),
         "work_package_groups": len(mapped_wp),
         "coverage_percent": coverage_pct,

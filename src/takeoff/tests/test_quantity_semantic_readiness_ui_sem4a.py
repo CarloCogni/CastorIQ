@@ -11,8 +11,8 @@ from ifc_processor.tests.factories import IFCEntityFactory, IFCFileFactory
 
 
 @pytest.mark.django_db
-def test_quantities_page_renders_readiness_panel(client):
-    """Quantities HTML includes compact 5D semantic source readiness panel."""
+def test_quantities_page_omits_live_readiness_panel(client):
+    """Working Quantities rail no longer shows final semantic source readiness."""
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed")
     IFCEntityFactory(
@@ -24,10 +24,9 @@ def test_quantities_page_renders_readiness_panel(client):
     client.force_login(project.owner)
     url = reverse("takeoff:qto", kwargs={"pk": project.pk})
     html = client.get(url, {"basis_IfcBeam": "NetVolume"}).content.decode()
-    assert 'data-testid="qty-semantic-source-readiness"' in html
-    assert "5D semantic source readiness" in html
-    assert 'data-field-key="zone"' in html
-    assert "Missing in this IFC export" in html
-    assert "guidance only" in html.lower()
-    assert "not final approval" in html.lower()
-    assert "not cost readiness" in html.lower()
+    assert 'data-testid="qty-semantic-source-readiness"' not in html
+    assert "5D semantic source readiness" not in html
+    assert 'data-testid="qty-schema-insight-entry"' in html
+    assert "Complete preparation and freeze a snapshot to review semantic readiness." in html or (
+        'data-testid="qty-schema-insight-open"' in html
+    )

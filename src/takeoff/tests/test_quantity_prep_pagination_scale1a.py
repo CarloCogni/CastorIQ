@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from django.http import QueryDict
 from django.urls import reverse
@@ -181,16 +183,86 @@ def test_quantities_page_renders_pagination_controls(client):
     html = response.content.decode("utf-8")
     assert 'data-testid="quantities-page"' in html
     assert 'data-testid="qty-prep-pagination"' in html
-    assert "Showing 1–50 of 55 filtered preparation rows" in html
-    assert 'data-testid="qty-prep-page-size"' in html
-    assert "Map selected visible rows" in html
-    assert "selected visible rows from the current page" in html
+    assert html.count('data-testid="qty-prep-pagination"') == 1
+    # Use word-boundary so data-testid="qty-prep-page-size" is not a false hit.
+    assert len(re.findall(r'\bid="qty-prep-page-size"', html)) == 1
+    assert "Showing 1–50 of 55 rows" in html
+    assert html.count('data-testid="qty-prep-page-size"') == 1
+    assert "Assign values" in html
+    assert "selected rows" in html.lower()
+    # Compact count stays in the filter bar; full "Showing …" only once below.
+    assert 'data-testid="qty-prep-row-count-footnote"' in html
+    footnote = html.split('data-testid="qty-prep-row-count-footnote"', 1)[1][:120]
+    assert "55 rows" in footnote
+    assert "filtered" not in footnote.lower()
 
     page2 = client.get(
         url,
         {**manual, "prep_page": "2", "prep_page_size": "50"},
     )
     html2 = page2.content.decode("utf-8")
-    assert "Showing 51–55 of 55 filtered preparation rows" in html2
+    assert html2.count('data-testid="qty-prep-pagination"') == 1
+    assert "Showing 51–55 of 55 rows" in html2
     assert html2.count("qty-batch-row-check") >= 5
     assert html2.count("qty-batch-row-check") < 55
+
+
+@pytest.mark.django_db
+def test_quantities_pagination_single_occurrence_across_states(client):
+    """Exactly one pagination control block for first/middle/last/empty/filter/page-size."""
+    project = _project_with_n_types(120)
+    client.force_login(project.owner)
+    url = reverse("takeoff:qto", kwargs={"pk": project.pk})
+    manual = {
+        "source_classification_code": "manual_field",
+        "source_package_boq_mapping": "manual_field",
+        "source_work_package": "manual_field",
+    }
+
+    def _assert_one(html: str) -> None:
+        assert html.count('data-testid="qty-prep-pagination"') == 1
+        assert len(re.findall(r'\bid="qty-prep-page-size"', html)) == 1
+        assert html.count('data-testid="qty-prep-page-size"') == 1
+        assert html.count('data-testid="qty-prep-pagination-prev"') == 1
+        assert html.count('data-testid="qty-prep-pagination-next"') == 1
+
+    first = client.get(url, {**manual, "prep_page": "1", "prep_page_size": "50"}).content.decode()
+    _assert_one(first)
+    assert "Showing 1–50 of 120 rows" in first
+    assert "Page 1 of 3" in first
+
+    middle = client.get(url, {**manual, "prep_page": "2", "prep_page_size": "50"}).content.decode()
+    _assert_one(middle)
+    assert "Showing 51–100 of 120 rows" in middle
+    assert "Page 2 of 3" in middle
+
+    last = client.get(url, {**manual, "prep_page": "3", "prep_page_size": "50"}).content.decode()
+    _assert_one(last)
+    assert "Showing 101–120 of 120 rows" in last
+    assert "Page 3 of 3" in last
+
+    sized = client.get(url, {**manual, "prep_page": "1", "prep_page_size": "100"}).content.decode()
+    _assert_one(sized)
+    assert "Showing 1–100 of 120 rows" in sized
+
+    # Zero results via impossible ClassRef filter still keeps a single pagination block.
+    empty = client.get(
+        url,
+        {
+            **manual,
+            "semantic_field": "classref:ifc",
+            "semantic_value": "__no_such_classref__",
+            "prep_page": "1",
+            "prep_page_size": "50",
+        },
+    ).content.decode()
+    _assert_one(empty)
+    assert "Showing 0 of 0 rows" in empty
+
+    # One page of results when page size covers the full filtered set.
+    one_page = client.get(
+        url, {**manual, "prep_page": "1", "prep_page_size": "200"}
+    ).content.decode()
+    _assert_one(one_page)
+    assert "Showing 1–120 of 120 rows" in one_page
+    assert "Page 1 of 1" in one_page

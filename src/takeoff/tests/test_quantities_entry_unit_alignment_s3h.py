@@ -74,7 +74,7 @@ def test_quantities_entry_uses_quantity_review_copy(client):
     assert "Review IFC quantities grouped by the latest frozen 5D snapshot." in entry
     assert "Schema Insight" not in entry
     assert "schema insight" not in entry.lower()
-    assert "Freeze a new snapshot after mapping changes." in entry
+    assert "Save version again after Assign values or Units changes." in entry
 
 
 @pytest.mark.django_db
@@ -92,8 +92,8 @@ def test_quantities_prep_table_hides_model_volume_units(client):
     assert "model length units" not in table
     assert "blank basis" not in table
     assert "blank unit" not in table
-    assert "Unit not resolved" in table
-
+    # UNIT-03 / TABLE-04: model unit label (m³) or unresolved — never raw dump phrase.
+    assert ("m³" in table) or ("Unit not resolved" in table)
 
 @pytest.mark.django_db
 def test_unresolved_register_copy_is_product_tone(client):

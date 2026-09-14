@@ -54,13 +54,31 @@ def test_zone_missing_when_no_zone_source():
     )
     zone = _by_key(result["fields"], "zone")
     assert zone["readiness_status"] == STATUS_MISSING
-    assert "not found in this IFC export" in zone["message"].lower() or (
-        "No zone evidence found" in zone["message"]
-    )
+    assert "No Zone evidence was found in this IFC export" in zone["message"]
+    assert "Ask" not in zone["message"]
+    assert "Modify" not in zone["message"]
+    assert "writeback" not in zone["message"].lower()
+    assert "select it as the Zone source during preparation" in zone["message"]
+    assert "freezing a new snapshot" in zone["message"]
 
 
 @pytest.mark.django_db
-def test_level_uses_spatial_or_project_level():
+def test_unit_field_is_project_unit_declaration():
+    """Unit field_key stays unit; display label is Project unit declaration."""
+    result = build_semantic_source_readiness(
+        project=ProjectFactory(),
+        scan={"key_nonempty": {}, "spatial_nonempty": {}},
+        unit_confirmation={"any_confirmed": True},
+    )
+    unit = _by_key(result["fields"], "unit")
+    assert unit["field_key"] == "unit"
+    assert unit["label"] == "Project unit declaration"
+    assert unit["readiness_status"] == STATUS_CONFIRMED
+    assert "project unit declaration was confirmed" in unit["message"].lower()
+    assert "Ask/Modify" not in result["helper"]
+    assert "writeback" not in result["helper"].lower()
+    assert "writeback" not in result["future_bridge_note"].lower()
+
     """Level readiness uses available spatial/project-level sources."""
     result = build_semantic_source_readiness(
         project=ProjectFactory(),

@@ -21,6 +21,9 @@ from fived.services.schema_insight_screen_presentation import (
 from fived.services.schema_quantity_insight_service import (
     FiveDSchemaQuantityInsightService,
 )
+from fived.services.semantic_readiness_artifact import (
+    semantic_readiness_review_presentation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +63,7 @@ class SchemaQuantityInsightReportView(ProjectAccessMixin, TemplateView):
         ctx["insight"] = insight
         ctx["screen"] = screen
         ctx["insight_summary"] = screen["summary"]
+        ctx["semantic_readiness_review"] = semantic_readiness_review_presentation(version)
         ctx["quantities_url"] = reverse("takeoff:qto", kwargs={"pk": project.pk})
         ctx["project_url"] = reverse("projects:detail", kwargs={"pk": project.pk})
         return ctx

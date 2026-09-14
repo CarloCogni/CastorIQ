@@ -307,7 +307,7 @@
         data-testid="qty-semantic-filters-form"
         action="">
     {% for key, values in request.GET.lists %}
-      {% if key != "semantic_field" and key != "semantic_value" and key != "semantic_sort" and key != "semantic_sort_dir" and key != "sem_cols_add" %}
+      {% if key != "semantic_field" and key != "semantic_value" and key != "semantic_sort" and key != "semantic_sort_dir" and key != "sem_cols_add" and key != "sem_cols" %}
         {% for value in values %}
         <input type="hidden" name="{{ key }}" value="{{ value }}">
         {% endfor %}

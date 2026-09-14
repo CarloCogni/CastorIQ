@@ -133,13 +133,13 @@ def build_semantic_source_readiness(
             "selected_source": "",
             "readiness_status": STATUS_AVAILABLE if zone_sources else STATUS_MISSING,
             "message": (
-                "Zone-like property evidence detected. Choose a source later in the "
-                "semantic profile editor (not built in SEM-4A)."
+                "Zone-like property evidence detected. Select a suitable exported property "
+                "as the Zone source during preparation before freezing a new snapshot."
                 if zone_sources
                 else (
-                    "No zone evidence found in this IFC export. Castor can still let the "
-                    "user choose a zone property if one exists, or resolve this later "
-                    "through Ask/Modify/writeback."
+                    "No Zone evidence was found in this IFC export. If a suitable exported "
+                    "property exists, select it as the Zone source during preparation "
+                    "before freezing a new snapshot."
                 )
             ),
         }
@@ -200,19 +200,22 @@ def build_semantic_source_readiness(
             }
         )
 
-    # Unit
+    # Project unit declaration (IFC project_units) — distinct from quantity-row units.
     fields.append(
         {
             "field_key": "unit",
-            "label": "Unit",
+            "label": "Project unit declaration",
             "recommended_sources": ["IFC project_units + user confirmation"],
             "available_sources": ["IFC project_units"],
             "selected_source": "IFC project_units",
             "readiness_status": STATUS_CONFIRMED if unit_confirmed else STATUS_AVAILABLE,
             "message": (
-                "Unit confirmed from IFC project_units (UNIT-2)."
+                "IFC project unit declaration was confirmed for this frozen preparation state."
                 if unit_confirmed
-                else "Unit source is IFC project_units; confirm in the unit panel when needed."
+                else (
+                    "IFC project_units are available; confirm the project unit declaration "
+                    "in Quantity units before freezing when needed."
+                )
             ),
         }
     )
@@ -234,12 +237,12 @@ def build_semantic_source_readiness(
         "fields": fields,
         "helper": (
             "Review which model fields can feed the 5D data model. "
-            "Missing evidence is an IFC export gap — not unsupported forever. "
-            "Future: Ask/Modify → approval → writeback → re-index."
+            "Missing evidence is an IFC export gap — if a suitable exported property "
+            "exists, map it during a later preparation pass before freezing a new snapshot."
         ),
         "future_bridge_note": (
-            "missing data → Ask/Modify proposal → approval → IFC writeback → "
-            "re-index → 5D update (not implemented in SEM-4A)."
+            "Missing IFC export evidence can be addressed by mapping a suitable "
+            "exported property during preparation, then freezing a new snapshot."
         ),
     }
 

@@ -1,0 +1,67 @@
+<!-- takeoff/components/quantities_save_table_modal.html — WORKSPACE-05 Save table -->
+<div class="modal fade" id="qtySaveTableModal" tabindex="-1"
+     aria-labelledby="qtySaveTableModalLabel" aria-hidden="true"
+     data-testid="qty-save-table-modal">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post"
+            action="{{ qty_editable_table_save_url }}"
+            data-testid="qty-save-table-form"
+            id="qty-save-table-form">
+        {% csrf_token %}
+        <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
+        {% if qty_editable_binding %}
+        <input type="hidden" name="table_id" value="{{ qty_editable_binding.id }}">
+        <input type="hidden" name="revision" value="{{ qty_editable_binding.revision }}">
+        {% endif %}
+        <div class="modal-header py-2">
+          <h5 class="modal-title" id="qtySaveTableModalLabel">
+            {% if qty_editable_binding %}Save table{% else %}Save table{% endif %}
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small text-secondary mb-2" data-testid="qty-save-table-help">
+            Saves this editable working table so you can reopen it later.
+            Distinct from Save version (read-only) and Export table (download).
+          </p>
+          <label class="form-label small mb-1" for="qty-save-table-name">Name</label>
+          <input type="text"
+                 class="form-control form-control-sm"
+                 id="qty-save-table-name"
+                 name="name"
+                 maxlength="120"
+                 required
+                 value="{% if qty_editable_binding %}{{ qty_editable_binding.name }}{% endif %}"
+                 placeholder="e.g. Structural beams — review set"
+                 data-testid="qty-save-table-name"
+                 autocomplete="off">
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-primary" data-testid="qty-save-table-submit">
+            {% if qty_editable_binding %}Save updates{% else %}Save table{% endif %}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var form = document.getElementById("qty-save-table-form");
+  if (!form) return;
+  form.addEventListener("submit", function () {
+    var btn = form.querySelector('[data-testid="qty-save-table-submit"]');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+    }
+    var status = document.querySelector('[data-testid="qty-editable-status"]');
+    if (status) {
+      status.textContent = "Saving…";
+      status.className = "qty-editable-status qty-editable-status--saving";
+    }
+  });
+})();
+</script>
