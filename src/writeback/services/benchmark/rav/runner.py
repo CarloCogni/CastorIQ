@@ -40,10 +40,16 @@ class ScanSettings:
     entity_relevance_threshold: float | None = None
     entity_top_k: int | None = None
     skip_low_value: bool = True
+    entity_first: bool = True
+    verify_values: bool = True
 
     def label(self) -> str:
         """Short tag for tables: ``default`` or the knobs that differ from it."""
         parts = []
+        if not self.entity_first:
+            parts.append("no-entity-first")
+        if not self.verify_values:
+            parts.append("no-verify")
         if not self.type_gate:
             parts.append("no-type-gate")
         if not self.keyword_filter:
@@ -66,6 +72,8 @@ class ScanSettings:
             "entity_relevance_threshold": self.entity_relevance_threshold,
             "entity_top_k": self.entity_top_k,
             "skip_low_value": self.skip_low_value,
+            "entity_first": self.entity_first,
+            "verify_values": self.verify_values,
         }
 
 
@@ -286,6 +294,8 @@ class RavRunner:
             keyword_filter=settings.keyword_filter,
             entity_relevance_threshold=settings.entity_relevance_threshold,
             entity_top_k=settings.entity_top_k,
+            entity_first=settings.entity_first,
+            verify_values=settings.verify_values,
         )
 
         started = time.perf_counter()

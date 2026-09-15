@@ -14,11 +14,60 @@ The conflict scan detects contradictions between IFC model properties and projec
 
 ### New approach (document-first)
 1. **Gather requirement chunks** — filter `DocumentChunk` records that contain AEC compliance keywords (`shall`, `must`, `required`, `fire rating`, `EI`, `REI`, etc.)
-2. **Build entity–chunk map** — for each requirement chunk, vector-search top-K IFC entities nearby in embedding space
+2. **Build entity–chunk map** — for each requirement chunk, three passes whose results are unioned per entity (see below)
 3. **LLM compare** — one call per entity that matched at least one requirement chunk
-4. **Persist** — upsert `Conflict` records using `content_hash` deduplication
+4. **Verify** — the current value a finding claims is replaced by the value the index holds before anything is stored (see below)
+5. **Persist** — upsert `Conflict` records using `content_hash` deduplication
 
 **Why it's better:** Only scans entities that are actually referenced in specification requirements. Entities with no relevant requirements are never sent to the LLM.
+
+### Entity–chunk mapping: lookups first, embeddings last
+
+The first measured run (`docs/evaluation/2026-08-30-rav-benchmark.md`) showed that
+per-chunk embedding top-K is a lottery among near-identical entities: of three
+identical external walls two were reached and one was not, and no thermal-spec
+chunk reached any wall or window at all, so whole conflict cases were
+structurally invisible to the model. The mapping is therefore built in three
+passes per requirement chunk, in this order, and an entity keeps every chunk any
+pass gave it:
+
+| Pass | What it matches | Why |
+|---|---|---|
+| **reference** | the chunk quotes an entity's model reference (`Pset_*.Reference`, e.g. `Wall-Ext_102Bwk-75Ins-100LBlk-12P`) or a `:`-separated segment of its name, whole-word, case-insensitive. A string qualifies only if it looks like a type code (a digit, `_` or `-`) or is a multi-word name; `Glazed` or `Floor` would match prose | specifications cite elements by their type mark; this is an exact lookup, not retrieval |
+| **label** | the chunk names an element class (`wall(s)`, `partition(s)`, `door(s)`, `window(s)`, `slab(s)`, `floor`, `roof`, …) **and** a property (`U-value`, `fire resistance`, `R'w`, …); every entity of that class is added, nearest by embedding first, capped at `ENTITY_TYPE_QUOTA` per class | "external walls shall …" applies to all of them, not to whichever five embed closest |
+| **embedding** | top-`ENTITY_TOP_K` entities within `ENTITY_RELEVANCE_THRESHOLD` cosine distance | the original pass; catches what the two lookups have no vocabulary for |
+
+The label table (`ENTITY_FIRST_LABELS`) is deliberately narrower than the
+post-LLM type gate: "wall" does not pull in curtain walls, a requirement that
+means them says "curtain wall". Both lookup passes are switched off together by
+`entity_first=False` (benchmark: `--no-entity-first`), which restores the
+embedding-only behaviour for ablation. `full_scan()` reports how many
+(entity, chunk) pairs each pass contributed under `stats["retrieval"]`.
+
+### Value verification
+
+The model reads the entity's properties from the prompt and still invents
+current values (`EI60` on a wall that carries no `FireRating`). Before a finding
+is stored, `_verify_ifc_value` looks the claimed property up in the entity's
+indexed properties through the shared alias table
+(`writeback/services/property_aliases.py`, the same table the RAV benchmark
+scores with):
+
+- property present → the stored `ifc_value` is the index's value, whatever the model claimed;
+- property absent → the stored `ifc_value` is `(not set)`; a claimed value on an absent property is counted as `values_unset` in the scan stats, a corrected one as `values_corrected`.
+
+The equal-value guard then compares the verified value with the document's:
+exact after squashing, numerically equal at the document's own precision
+(`0.35 as designed` describes `0.350998`), or a boolean the wording asserts
+(`non-load-bearing` describes `False`). Off with `verify_values=False`
+(`--no-verify-values`).
+
+### Finding attribution
+
+The model names the excerpt a finding came from by `source_chunk_index`, and is
+sometimes wrong (a fire-rating conflict cited to the thermal spec). Each finding
+is filed against the chunk that best quotes its `document_value` and names its
+property; the model's choice stands on a tie.
 
 ---
 
@@ -46,10 +95,12 @@ All constants live in `writeback/services/conflict_scan_service.py`:
 | Constant | Value | Meaning |
 |----------|-------|---------|
 | `CONFIDENCE_THRESHOLD` | `0.7` | Minimum confidence to persist a finding |
+| `ENTITY_RELEVANCE_THRESHOLD` | `0.45` | Cosine distance cutoff for the embedding pass |
+| `ENTITY_TOP_K` | `5` | Max entities per requirement chunk, embedding pass |
+| `ENTITY_TYPE_QUOTA` | `25` | Max entities per element class per chunk, label pass |
+| `MIN_REFERENCE_LENGTH` / `MIN_PHRASE_LENGTH` | `6` / `10` | What counts as a reference string in the reference pass |
 
-All of these (plus the element-type gate and the requirement-keyword filter) are overridable per-instance via keyword-only constructor arguments — production callers use the defaults; `manage.py benchmark_rav --ablate` switches each mitigation off in turn to measure what it buys (see `docs/benchmarks.md` §Harness D).
-| `ENTITY_RELEVANCE_THRESHOLD` | `0.45` | Cosine distance cutoff for entity–chunk pairing |
-| `ENTITY_TOP_K` | `5` | Max entities per requirement chunk |
+All of these (plus the element-type gate, the requirement-keyword filter, the entity-first passes and value verification) are overridable per-instance via keyword-only constructor arguments — production callers use the defaults; `manage.py benchmark_rav --ablate` switches each mitigation off in turn to measure what it buys (see `docs/benchmarks.md` §Harness D).
 
 Adjust these constants if the deployed LLM is systematically over- or under-confident, or if the entity-to-requirement matching produces too many or too few pairs.
 

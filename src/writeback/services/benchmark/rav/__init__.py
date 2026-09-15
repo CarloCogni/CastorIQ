@@ -21,7 +21,7 @@ The three tests every RAV claim has to survive:
 """
 
 from .corpus import KeyCase, RavCorpus, RavCorpusError, load_key
-from .report import RavReport, diff_rav_runs, render_rav_report
+from .report import RavReport, aggregate_runs, diff_rav_aggregates, diff_rav_runs, render_rav_report
 from .runner import RavRunner, ScanSettings, score_findings
 
 __all__ = [
@@ -31,6 +31,8 @@ __all__ = [
     "RavReport",
     "RavRunner",
     "ScanSettings",
+    "aggregate_runs",
+    "diff_rav_aggregates",
     "diff_rav_runs",
     "load_key",
     "render_rav_report",

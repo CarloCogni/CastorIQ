@@ -6,6 +6,15 @@
 **Model:** `llama3.1:8b`, temp 0.1, embeddings as configured in the dev stack
 **Artifacts:** `runs/rav-2026-08-30-default.json`, `runs/rav-2026-08-30-ablate.json`
 
+**Correction, 2026-09-15.** The committed `fixtures/benchmark/rav/key.json` holds
+**26 cases (12 planted conflicts, 14 aligned requirements)** over 15 entities, not
+the 24 (12 / 12) stated above; the scored denominators in Part B (25 conflict
+triples, 26 negatives) were always computed from the committed key and are
+unaffected. The run was reproduced on 2026-09-15 with three repeats on the same
+model and settings: P 0.29 [0.26–0.31], R 0.20 [0.20–0.20], F1 0.24, which is the
+variance floor the retrieval fix is judged against
+(`2026-09-15-rav-retrieval-fix.md`). The rest of this record is left as written.
+
 ---
 
 # Part A — What this demonstrates
