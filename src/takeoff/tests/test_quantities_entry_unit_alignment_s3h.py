@@ -95,6 +95,7 @@ def test_quantities_prep_table_hides_model_volume_units(client):
     # UNIT-03 / TABLE-04: model unit label (m³) or unresolved — never raw dump phrase.
     assert ("m³" in table) or ("Unit not resolved" in table)
 
+
 @pytest.mark.django_db
 def test_unresolved_register_copy_is_product_tone(client):
     """Register keeps counts; defensive BOQ/readiness paragraph is gone from register."""

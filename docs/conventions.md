@@ -19,17 +19,13 @@ Markdown tables listing your services will be stale within a week. A docstring o
 ### What This Looks Like
 
 ```python
-# writeback/services/triage_classifier.py
-"""Stage 1 of the writeback pipeline — request triage.
+# writeback/services/grounding.py
+"""Ground: the facts about the file the code generator needs, as exact strings.
 
-Splits the raw user message into independent action segments. Each
-segment carries a ``kind`` (PROPERTY / PSET / ATTRIBUTE / CREATE /
-DELETE / RELATIONSHIP / OUT_OF_SCOPE / UNCLEAR), a free-text
-``target_phrase`` describing what the user wants modified, and a
-free-text ``value_phrase`` describing the new value or operation
-parameter.
-
-Uses the user's configured Ollama model via core.llm.get_llm().
+A lookup, not a retrieval (spec G-1). Three index queries return the complete
+storey list, the complete space list (capped) and the per-type entity counts;
+the model resolves "first floor" or "the corridor" by reading those strings.
+No vectors, no fuzzy matching.
 """
 ```
 
@@ -40,7 +36,7 @@ A developer reading this file knows exactly what it does, what it produces, and 
 - **Every module**: docstring explaining purpose and role in the system
 - **Every class**: docstring explaining what it represents
 - **Every public method**: docstring explaining what it does (not how)
-- **File header**: `# writeback/services/triage_classifier.py`
+- **File header**: `# writeback/services/grounding.py`
 
 If the purpose isn't obvious from name + docstring, fix the name and docstring — don't write a markdown file.
 
@@ -151,14 +147,14 @@ Good code is defined as much by what it leaves out as by what it includes.
 Don't build what you don't need yet. If a feature isn't required by the current task, it doesn't exist. YAGNI (You Ain't Gonna Need It) is a first-class principle.
 
 ```python
-# Good: we need tier 1 now, so we build tier 1
-class Tier1Validator:
-    """Validates simple property-change intents against DB state."""
+# Good: one flag rule is what the card needs today, so one function
+def flag_rows(rows: list[DiffRow], request: str) -> list[DiffRow]:
+    """A row is flagged when its new value is not in the request text."""
     ...
 
-# Bad: building an abstract validator framework "for future tiers"
-class AbstractTierValidator(ABC):
-    """Base class for all tier validators (1, 2, 3, and future 4+)."""
+# Bad: a rule framework "for the flag rules we might add"
+class AbstractFlagRule(ABC):
+    """Base class for all flag rules (value, count, shape, and future ones)."""
     ...
 ```
 
@@ -209,12 +205,14 @@ When logic lives in views, you can't reuse it. Need the same approval logic in a
 ```
 writeback/
   services/
-    modification_service.py    # Orchestrates the full modification flow
-    triage_classifier.py       # Stage 1: segment user request into action kinds
-    slot_extractor.py          # Stage 2: per-kind narrow slot extraction
-    entity_resolver.py         # Stage 3: locate target entities
-    tier_router.py             # Stage 3.5: deterministic tier selection
-    tier1_validator.py         # Validates tier 1 intents
+    modification_service.py    # Facade: propose, claim, execute, reject, supersede
+    pipeline.py                # ground → generate → run → verify, the repair loop
+    grounding.py               # The index lookup the prompt is built from
+    generator.py               # The one model call that writes select() and modify()
+    verifier.py                # Scope check, row aggregation, the one flag rule
+    explainer.py               # The blind explanation
+    proposal_service.py        # The proposal row, Guardian, the lifecycle transitions
+    execution_service.py       # The approval swap: lock, fingerprint, commit, index
     ...
   views.py                     # Thin: receives HTTP, calls services, returns response
   forms.py                     # Thin: validates input shape

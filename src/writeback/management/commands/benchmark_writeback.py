@@ -1,11 +1,11 @@
 # writeback/management/commands/benchmark_writeback.py
 """Score the writeback pipeline on a corpus of natural-language prompts.
 
-Runs real prompts through the real pipeline against a real model, executes the
-resulting journals on a throwaway copy of the project's IFC, and reports two
-scores: how often the request was *understood* (routed as the corpus says it
-should be) and how often the resulting journal was faithfully *written* to the
-file.
+Runs real prompts through the real V3 pipeline against a real model on a
+scratch copy of the project's IFC, and reports whether the right entities were
+selected (targets match), whether the measured diff is the expected one (diff
+match), whether nothing else moved (integrity), and whether requests that must
+be declined were (reject / no-change).
 
 Nothing here is a mock. That is the point — unit tests already cover the stages
 with a stubbed LLM; this answers the question those cannot: does the system
@@ -13,17 +13,14 @@ handle real language, with this model, today.
 
 Usage::
 
-    # Understanding only — fast, no writes.
+    # A section, saved for later comparison.
     cd src && uv run manage.py benchmark_writeback \\
-        --project <uuid> --no-execute --filter 1
+        --project <uuid> --filter 1,3 --json ../runs/today.json
 
-    # Full pass, saved for later comparison.
-    cd src && uv run manage.py benchmark_writeback \\
-        --project <uuid> --json ../runs/today.json
-
-    # Compare models.
+    # Bake-off rows (one artifact per model).
     cd src && uv run manage.py benchmark_writeback --project <uuid> \\
-        --model ollama:qwen2.5-coder --model anthropic:claude-sonnet-5
+        --model ollama:qwen2.5-coder:7b --model anthropic:claude-sonnet-4-6 \\
+        --repeat 2 --json ../runs/bakeoff.json
 
     # Regression check against a previous run.
     cd src && uv run manage.py benchmark_writeback \\
@@ -62,7 +59,7 @@ DEFAULT_CORPUS = (
 class Command(BaseCommand):
     help = (
         "Run the natural-language corpus through the writeback pipeline and "
-        "score understanding (routing) and fidelity (did the write land)."
+        "score targets match, diff match, integrity and rejections."
     )
 
     def add_arguments(self, parser):
@@ -78,8 +75,8 @@ class Command(BaseCommand):
             default=[],
             metavar="PROVIDER:MODEL",
             help=(
-                "Model to benchmark, e.g. 'ollama:qwen2.5-coder' or "
-                "'anthropic:claude-sonnet-5'. Repeat to sweep. "
+                "Model to benchmark, e.g. 'ollama:qwen2.5-coder:7b' or "
+                "'anthropic:claude-sonnet-4-6'. Repeat to sweep. "
                 "Omit to use the current SiteLLMConfig."
             ),
         )
@@ -92,14 +89,20 @@ class Command(BaseCommand):
             "--repeat",
             type=int,
             default=1,
-            help="Run each case N times; a case passes only if every run passes.",
+            help=(
+                "Run each case up to N times; the first failing run is the one reported. "
+                "A case that already failed is not repeated, nor is an advisory case, and "
+                "a run the model could not answer never replaces a scored run."
+            ),
         )
         parser.add_argument("--json", default="", help="Write the run artifact here.")
         parser.add_argument("--baseline", default="", help="Diff against a previous artifact.")
         parser.add_argument(
-            "--no-execute",
-            action="store_true",
-            help="Score routing only — skip journal execution and file verification.",
+            "--note",
+            action="append",
+            default=[],
+            metavar="KEY=VALUE",
+            help="Free-form note stored in the artifact, e.g. --note vram=8GB --note offload=yes.",
         )
         parser.add_argument(
             "--keep-failure-records",
@@ -110,7 +113,6 @@ class Command(BaseCommand):
                 "would otherwise flood the metacastor table with expected noise."
             ),
         )
-        parser.add_argument("--verbose-slots", action="store_true", help="Report slot mismatches.")
 
     def handle(self, *args, **options):
         # Stamped before any case runs so the FailureRecord purge has a precise
@@ -121,22 +123,20 @@ class Command(BaseCommand):
         ifc_file = self._resolve_ifc_file(project)
         cases = self._load_cases(options["corpus"], options["filter"])
         repeats = max(1, options["repeat"])
-        execute = not options["no_execute"]
+        notes = dict(n.partition("=")[::2] for n in options["note"] if "=" in n)
 
         self.stdout.write(
             f"{len(cases)} case(s) from {Path(options['corpus']).name} "
             f"against project {project.name!r} / {Path(ifc_file.file.name).name}"
         )
-        if not execute:
-            self.stdout.write(self.style.WARNING("execution disabled — understanding score only"))
 
         targets = options["model"] or [""]
         reports = [
-            self._run_one_model(target, project, ifc_file, cases, repeats=repeats, execute=execute)
+            self._run_one_model(target, project, ifc_file, cases, repeats=repeats, notes=notes)
             for target in targets
         ]
 
-        self.stdout.write(render_report(reports, verbose=options["verbose_slots"]))
+        self.stdout.write(render_report(reports))
 
         if options["json"]:
             for report in reports:
@@ -166,7 +166,7 @@ class Command(BaseCommand):
     # ── One model pass ─────────────────────────────────────
 
     def _run_one_model(
-        self, target: str, project, ifc_file, cases, *, repeats: int, execute: bool
+        self, target: str, project, ifc_file, cases, *, repeats: int, notes: dict
     ) -> BenchmarkReport:
         """Run the corpus once under `target`, restoring site config after."""
         label = target or self._current_model_label()
@@ -174,18 +174,11 @@ class Command(BaseCommand):
 
         restore = self._apply_model(target) if target else None
         try:
-            runner = BenchmarkRunner(project, ifc_file=ifc_file, execute=execute)
+            runner = BenchmarkRunner(project, ifc_file=ifc_file)
             results = []
             self.stdout.write(self.style.MIGRATE_HEADING(f"\n=== {label} ==="))
             for index, case in enumerate(cases, start=1):
-                result = runner.run_case(case)
-                for _ in range(repeats - 1):
-                    # Re-running is how LLM non-determinism is surfaced rather
-                    # than averaged away: the worst run is the one reported.
-                    retry = runner.run_case(case)
-                    if not retry.passed:
-                        result = retry
-                        break
+                result = self._run_case_repeated(runner, case, repeats)
                 results.append(result)
                 self._write_progress(index, len(cases), result)
         finally:
@@ -196,11 +189,36 @@ class Command(BaseCommand):
             model_label=label,
             started_at=started.isoformat(),
             results=results,
-            executed=execute,
             repeats=repeats,
+            notes=notes,
         )
         self._attach_cost(report, started)
         return report
+
+    @staticmethod
+    def _run_case_repeated(runner: BenchmarkRunner, case, repeats: int):
+        """Run a case up to ``repeats`` times and keep the worst scored run.
+
+        Re-running is how LLM non-determinism is surfaced rather than averaged
+        away. A case that has already failed is not run again; an advisory
+        case is never repeated; a run the model could not answer (a harness
+        error) is neither a failure nor a scored run: it does not replace a
+        scored run, and it is retried while the budget lasts. ``runs`` records
+        how many times the case actually ran.
+        """
+        result = runner.run_case(case)
+        runs = 1
+        while runs < repeats and (result.passed or result.error) and not case.advisory:
+            retry = runner.run_case(case)
+            runs += 1
+            if retry.error:
+                continue
+            if result.error or not retry.passed:
+                result = retry
+            if not result.passed:
+                break
+        result.runs = runs
+        return result
 
     def _write_progress(self, index: int, total: int, result) -> None:
         if result.error:
@@ -211,8 +229,16 @@ class Command(BaseCommand):
             mark, style = ".", self.style.SUCCESS
         else:
             mark, style = "F", self.style.ERROR
+        repairs = (
+            f" (+{result.repairs} repair{'s' if result.repairs != 1 else ''})"
+            if result.repairs
+            else ""
+        )
         self.stdout.write(
-            style(f"  [{index:>3}/{total}] {mark} {result.case_id:>6}  {result.prompt[:56]}")
+            style(
+                f"  [{index:>3}/{total}] {mark} {result.case_id:>6}  {result.prompt[:56]}"
+                f"  {result.duration_seconds:.0f}s{repairs}"
+            )
         )
 
     # ── Model override ─────────────────────────────────────

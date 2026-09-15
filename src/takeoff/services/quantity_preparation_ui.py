@@ -1167,9 +1167,7 @@ def build_preparation_ui(
         if quantities.get("has_ifc")
         else []
     )
-    grain = (
-        "type" if quantities.get("by_type_shown") and quantities.get("by_type") else "ifc_class"
-    )
+    grain = "type" if quantities.get("by_type_shown") and quantities.get("by_type") else "ifc_class"
     from takeoff.services.quantity_prep_row_measurement import (
         attach_measurement_defaults_to_prep_rows,
     )

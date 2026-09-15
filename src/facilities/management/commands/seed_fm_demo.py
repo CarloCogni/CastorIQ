@@ -139,36 +139,76 @@ class Command(BaseCommand):
     def _assets(self, project, user, rooms, classes) -> list:
         today = timezone.now().date()
         specs = [
-            dict(tag="AHU-1A01", name="Air handling unit — Reception",
-                 ifc_type="IfcUnitaryEquipment", room="1A01",
-                 manufacturer="Trane", model_number="CVHF-250", serial_number="TRN-2023-88412",
-                 condition=84, warranty=today + dt.timedelta(days=520),
-                 commissioning=today - dt.timedelta(days=610), cls="Ss_65_40_33",
-                 note="Serves reception + waiting. HEPA final filter, VAV controlled."),
-            dict(tag="RECEP-DESK-1A01", name="Reception desk & workstation",
-                 ifc_type="Furniture", room="1A01",
-                 manufacturer="Kinnarps", model_number="Series/e", serial_number="KIN-1A01-01",
-                 condition=91, warranty=today + dt.timedelta(days=900),
-                 commissioning=today - dt.timedelta(days=200), cls="Pr_40_30_25",
-                 note="Front-of-house desk with under-counter power + data."),
-            dict(tag="DCHAIR-1A02", name="Dental treatment chair",
-                 ifc_type="IfcUnitaryEquipment", room="1A02",
-                 manufacturer="KaVo", model_number="Estetica E70", serial_number="KAVO-70-33128",
-                 condition=76, warranty=today + dt.timedelta(days=140),
-                 commissioning=today - dt.timedelta(days=430), cls="Pr_65_52_18",
-                 note="Consultation chair. Due preventive service — see WO."),
-            dict(tag="AUTOCLAVE-1A03", name="Autoclave steriliser",
-                 ifc_type="IfcUnitaryEquipment", room="1A03",
-                 manufacturer="Melag", model_number="Vacuklav 41B+", serial_number="MEL-41B-77219",
-                 condition=68, warranty=today + dt.timedelta(days=60),
-                 commissioning=today - dt.timedelta(days=980), cls="Pr_65_52_08",
-                 note="Class B steriliser. Annual pressure-vessel inspection due."),
-            dict(tag="MEDAIR-1AC1", name="Medical air compressor",
-                 ifc_type="IfcCompressor", room="1AC1",
-                 manufacturer="Dürr", model_number="Tornado 2", serial_number="DUR-T2-45510",
-                 condition=59, warranty=today - dt.timedelta(days=30),
-                 commissioning=today - dt.timedelta(days=1400), cls="Ss_55_70_38",
-                 note="Oil-free medical air. Warranty lapsed — flagged for replace-vs-maintain."),
+            dict(
+                tag="AHU-1A01",
+                name="Air handling unit — Reception",
+                ifc_type="IfcUnitaryEquipment",
+                room="1A01",
+                manufacturer="Trane",
+                model_number="CVHF-250",
+                serial_number="TRN-2023-88412",
+                condition=84,
+                warranty=today + dt.timedelta(days=520),
+                commissioning=today - dt.timedelta(days=610),
+                cls="Ss_65_40_33",
+                note="Serves reception + waiting. HEPA final filter, VAV controlled.",
+            ),
+            dict(
+                tag="RECEP-DESK-1A01",
+                name="Reception desk & workstation",
+                ifc_type="Furniture",
+                room="1A01",
+                manufacturer="Kinnarps",
+                model_number="Series/e",
+                serial_number="KIN-1A01-01",
+                condition=91,
+                warranty=today + dt.timedelta(days=900),
+                commissioning=today - dt.timedelta(days=200),
+                cls="Pr_40_30_25",
+                note="Front-of-house desk with under-counter power + data.",
+            ),
+            dict(
+                tag="DCHAIR-1A02",
+                name="Dental treatment chair",
+                ifc_type="IfcUnitaryEquipment",
+                room="1A02",
+                manufacturer="KaVo",
+                model_number="Estetica E70",
+                serial_number="KAVO-70-33128",
+                condition=76,
+                warranty=today + dt.timedelta(days=140),
+                commissioning=today - dt.timedelta(days=430),
+                cls="Pr_65_52_18",
+                note="Consultation chair. Due preventive service — see WO.",
+            ),
+            dict(
+                tag="AUTOCLAVE-1A03",
+                name="Autoclave steriliser",
+                ifc_type="IfcUnitaryEquipment",
+                room="1A03",
+                manufacturer="Melag",
+                model_number="Vacuklav 41B+",
+                serial_number="MEL-41B-77219",
+                condition=68,
+                warranty=today + dt.timedelta(days=60),
+                commissioning=today - dt.timedelta(days=980),
+                cls="Pr_65_52_08",
+                note="Class B steriliser. Annual pressure-vessel inspection due.",
+            ),
+            dict(
+                tag="MEDAIR-1AC1",
+                name="Medical air compressor",
+                ifc_type="IfcCompressor",
+                room="1AC1",
+                manufacturer="Dürr",
+                model_number="Tornado 2",
+                serial_number="DUR-T2-45510",
+                condition=59,
+                warranty=today - dt.timedelta(days=30),
+                commissioning=today - dt.timedelta(days=1400),
+                cls="Ss_55_70_38",
+                note="Oil-free medical air. Warranty lapsed — flagged for replace-vs-maintain.",
+            ),
         ]
         assets = []
         for s in specs:
@@ -212,27 +252,68 @@ class Command(BaseCommand):
     def _permits(self, project, user, assets) -> list:
         now = timezone.now()
         specs = [
-            dict(num="PTW-1001", title="Hot work — AHU coil brazing", kind="hot_work",
-                 status="active", issued="ProClima s.r.o.",
-                 vf=now - dt.timedelta(days=1), vu=now + dt.timedelta(days=13), asset=0),
-            dict(num="PTW-1002", title="Electrical isolation — steriliser circuit", kind="electrical",
-                 status="active", issued="ElektroMed", vf=now - dt.timedelta(days=2),
-                 vu=now + dt.timedelta(days=5), asset=3),
-            dict(num="PTW-1003", title="Working at height — ceiling AHU access", kind="working_at_height",
-                 status="expired", issued="ProClima s.r.o.", vf=now - dt.timedelta(days=40),
-                 vu=now - dt.timedelta(days=8), asset=0),
-            dict(num="PTW-1004", title="Confined space — plant riser", kind="confined_space",
-                 status="draft", issued="", vf=None, vu=None, asset=4),
-            dict(num="PTW-1005", title="Medical gas work — compressor swap", kind="other",
-                 status="active", issued="MedGas CZ", vf=now - dt.timedelta(days=1),
-                 vu=now + dt.timedelta(days=27), asset=4),
+            dict(
+                num="PTW-1001",
+                title="Hot work — AHU coil brazing",
+                kind="hot_work",
+                status="active",
+                issued="ProClima s.r.o.",
+                vf=now - dt.timedelta(days=1),
+                vu=now + dt.timedelta(days=13),
+                asset=0,
+            ),
+            dict(
+                num="PTW-1002",
+                title="Electrical isolation — steriliser circuit",
+                kind="electrical",
+                status="active",
+                issued="ElektroMed",
+                vf=now - dt.timedelta(days=2),
+                vu=now + dt.timedelta(days=5),
+                asset=3,
+            ),
+            dict(
+                num="PTW-1003",
+                title="Working at height — ceiling AHU access",
+                kind="working_at_height",
+                status="expired",
+                issued="ProClima s.r.o.",
+                vf=now - dt.timedelta(days=40),
+                vu=now - dt.timedelta(days=8),
+                asset=0,
+            ),
+            dict(
+                num="PTW-1004",
+                title="Confined space — plant riser",
+                kind="confined_space",
+                status="draft",
+                issued="",
+                vf=None,
+                vu=None,
+                asset=4,
+            ),
+            dict(
+                num="PTW-1005",
+                title="Medical gas work — compressor swap",
+                kind="other",
+                status="active",
+                issued="MedGas CZ",
+                vf=now - dt.timedelta(days=1),
+                vu=now + dt.timedelta(days=27),
+                asset=4,
+            ),
         ]
         permits = []
         for s in specs:
             p = Permit.objects.create(
-                project=project, permit_number=s["num"], title=s["title"],
-                kind=s["kind"], status=s["status"], issued_to=s["issued"],
-                valid_from=s["vf"], valid_until=s["vu"],
+                project=project,
+                permit_number=s["num"],
+                title=s["title"],
+                kind=s["kind"],
+                status=s["status"],
+                issued_to=s["issued"],
+                valid_from=s["vf"],
+                valid_until=s["vu"],
                 notes=f"Demo permit for the FM walkthrough. {MARKER}",
             )
             p.assets.add(assets[s["asset"]])
@@ -244,21 +325,56 @@ class Command(BaseCommand):
     def _work_orders(self, project, user, rooms, assets, permits):
         now = timezone.now()
         specs = [
-            dict(title="Emergency light failed — Reception", category="corrective",
-                 priority=1, status=WorkOrderStatus.IN_PROGRESS, asset=1, room="1A01",
-                 permit=None, due=now + dt.timedelta(days=1)),
-            dict(title="Quarterly HVAC preventive service", category="preventive",
-                 priority=3, status=WorkOrderStatus.SCHEDULED, asset=0, room="1A01",
-                 permit=0, due=now + dt.timedelta(days=6)),
-            dict(title="Annual pressure-vessel inspection — autoclave", category="inspection",
-                 priority=2, status=WorkOrderStatus.ASSIGNED, asset=3, room="1A03",
-                 permit=1, due=now + dt.timedelta(days=9)),
-            dict(title="Fire extinguisher check — First Floor", category="safety",
-                 priority=2, status=WorkOrderStatus.COMPLETED, asset=None, room="1A01",
-                 permit=None, due=now - dt.timedelta(days=2)),
-            dict(title="Deep clean & filter swap — treatment rooms", category="cleaning",
-                 priority=4, status=WorkOrderStatus.SUBMITTED, asset=2, room="1A02",
-                 permit=None, due=now + dt.timedelta(days=14)),
+            dict(
+                title="Emergency light failed — Reception",
+                category="corrective",
+                priority=1,
+                status=WorkOrderStatus.IN_PROGRESS,
+                asset=1,
+                room="1A01",
+                permit=None,
+                due=now + dt.timedelta(days=1),
+            ),
+            dict(
+                title="Quarterly HVAC preventive service",
+                category="preventive",
+                priority=3,
+                status=WorkOrderStatus.SCHEDULED,
+                asset=0,
+                room="1A01",
+                permit=0,
+                due=now + dt.timedelta(days=6),
+            ),
+            dict(
+                title="Annual pressure-vessel inspection — autoclave",
+                category="inspection",
+                priority=2,
+                status=WorkOrderStatus.ASSIGNED,
+                asset=3,
+                room="1A03",
+                permit=1,
+                due=now + dt.timedelta(days=9),
+            ),
+            dict(
+                title="Fire extinguisher check — First Floor",
+                category="safety",
+                priority=2,
+                status=WorkOrderStatus.COMPLETED,
+                asset=None,
+                room="1A01",
+                permit=None,
+                due=now - dt.timedelta(days=2),
+            ),
+            dict(
+                title="Deep clean & filter swap — treatment rooms",
+                category="cleaning",
+                priority=4,
+                status=WorkOrderStatus.SUBMITTED,
+                asset=2,
+                room="1A02",
+                permit=None,
+                due=now + dt.timedelta(days=14),
+            ),
         ]
         photos = [DOWNLOADS / f"FM_{i}.png" for i in range(1, 6)]
         for i, s in enumerate(specs):
@@ -278,12 +394,19 @@ class Command(BaseCommand):
                 requested_by=user,
                 assignee_user=user if s["status"] >= WorkOrderStatus.ASSIGNED else None,
                 due_at=s["due"],
-                actual_start=now - dt.timedelta(hours=6) if s["status"] >= WorkOrderStatus.IN_PROGRESS else None,
-                actual_end=now - dt.timedelta(days=2) if s["status"] >= WorkOrderStatus.COMPLETED else None,
+                actual_start=now - dt.timedelta(hours=6)
+                if s["status"] >= WorkOrderStatus.IN_PROGRESS
+                else None,
+                actual_end=now - dt.timedelta(days=2)
+                if s["status"] >= WorkOrderStatus.COMPLETED
+                else None,
             )
             WorkOrderStatusEvent.objects.create(
-                work_order=wo, from_status=None, to_status=WorkOrderStatus.DRAFT,
-                actor=user, note="Created (demo)",
+                work_order=wo,
+                from_status=None,
+                to_status=WorkOrderStatus.DRAFT,
+                actor=user,
+                note="Created (demo)",
             )
             if s["permit"] is not None:
                 wo.permits.add(permits[s["permit"]])
@@ -291,10 +414,11 @@ class Command(BaseCommand):
             src = photos[i % len(photos)]
             if src.exists():
                 WorkOrderAttachment.objects.create(
-                    work_order=wo, kind="photo",
+                    work_order=wo,
+                    kind="photo",
                     caption=f"Site photo {i + 1} {MARKER}",
                     uploaded_by=user,
-                    file=ContentFile(src.read_bytes(), name=f"wo_{i+1}_photo.png"),
+                    file=ContentFile(src.read_bytes(), name=f"wo_{i + 1}_photo.png"),
                 )
         self.stdout.write(f"Work orders: {len(specs)}")
 
@@ -305,16 +429,41 @@ class Command(BaseCommand):
     # ── requests ─────────────────────────────────────────────────────
     def _requests(self, project, user, rooms, assets):
         specs = [
-            dict(title="Reception too warm in the afternoon", sev="medium",
-                 status="open", room="1A01", asset=0),
-            dict(title="Dental chair foot control intermittent", sev="high",
-                 status="triaged", room="1A02", asset=2),
-            dict(title="Autoclave door seal hissing", sev="high",
-                 status="escalated", room="1A03", asset=3),
-            dict(title="Waiting-room light flickering", sev="low",
-                 status="open", room="1A01", asset=None),
-            dict(title="Compressor noise louder than usual", sev="medium",
-                 status="triaged", room="1AC1", asset=4),
+            dict(
+                title="Reception too warm in the afternoon",
+                sev="medium",
+                status="open",
+                room="1A01",
+                asset=0,
+            ),
+            dict(
+                title="Dental chair foot control intermittent",
+                sev="high",
+                status="triaged",
+                room="1A02",
+                asset=2,
+            ),
+            dict(
+                title="Autoclave door seal hissing",
+                sev="high",
+                status="escalated",
+                room="1A03",
+                asset=3,
+            ),
+            dict(
+                title="Waiting-room light flickering",
+                sev="low",
+                status="open",
+                room="1A01",
+                asset=None,
+            ),
+            dict(
+                title="Compressor noise louder than usual",
+                sev="medium",
+                status="triaged",
+                room="1AC1",
+                asset=4,
+            ),
         ]
         for s in specs:
             ActionRequest.objects.create(
@@ -356,14 +505,18 @@ class Command(BaseCommand):
         hero_gid = ROOM_1A01_GID
 
         # reuse the existing 1A01 point if present, else create one
-        pt = ExplorePoint.objects.filter(
-            project=project, floor=floor, label="1A01"
-        ).first()
+        pt = ExplorePoint.objects.filter(project=project, floor=floor, label="1A01").first()
         if pt is None:
             pt = ExplorePoint.objects.create(
-                project=project, floor=floor, client_id="pt-demo-1a01",
-                label="1A01", kind="photo", x_percent=57, y_percent=27,
-                phase=phase, created_by=user,
+                project=project,
+                floor=floor,
+                client_id="pt-demo-1a01",
+                label="1A01",
+                kind="photo",
+                x_percent=57,
+                y_percent=27,
+                phase=phase,
+                created_by=user,
             )
         # link the IFC room + all module tables + a per-element table
         hero_element = IFCEntity.objects.filter(
@@ -377,12 +530,14 @@ class Command(BaseCommand):
             {"key": "elements", "filterBy": "globalId"},
         ]
         if hero_element:
-            table_links.append({
-                "key": f"element:{hero_element.pk}",
-                "elementId": str(hero_element.pk),
-                "elementName": hero_element.name or "(element)",
-                "props": [],
-            })
+            table_links.append(
+                {
+                    "key": f"element:{hero_element.pk}",
+                    "elementId": str(hero_element.pk),
+                    "elementName": hero_element.name or "(element)",
+                    "props": [],
+                }
+            )
         pt.ifc_entity = hero_element  # link a concrete IFC element for GlobalID focus
         pt.table_links = table_links
         pt.save()
@@ -394,11 +549,15 @@ class Command(BaseCommand):
         for i, src in enumerate(photos):
             if src.exists():
                 ExploreMedia.objects.create(
-                    point=pt, client_id=f"m-demo-photo-{i}", media_type="photo",
-                    file=ContentFile(src.read_bytes(), name=f"1a01_photo_{i+1}.png"),
+                    point=pt,
+                    client_id=f"m-demo-photo-{i}",
+                    media_type="photo",
+                    file=ContentFile(src.read_bytes(), name=f"1a01_photo_{i + 1}.png"),
                     taken_on=today - dt.timedelta(days=i * 7),
-                    label=f"Reception photo {i+1}", phase=phase,
-                    description=f"Walkthrough photo {MARKER}", uploaded_by=user,
+                    label=f"Reception photo {i + 1}",
+                    phase=phase,
+                    description=f"Walkthrough photo {MARKER}",
+                    uploaded_by=user,
                 )
         panos = [
             (SCRATCH / "pano_1A01_reception.jpg", "Reception 360°"),
@@ -407,9 +566,14 @@ class Command(BaseCommand):
         for i, (src, label) in enumerate(panos):
             if src.exists():
                 ExploreMedia.objects.create(
-                    point=pt, client_id=f"m-demo-360-{i}", media_type="360",
-                    file=ContentFile(src.read_bytes(), name=f"1a01_pano_{i+1}.jpg"),
-                    taken_on=today, label=label, phase=phase,
-                    description=f"360 panorama {MARKER}", uploaded_by=user,
+                    point=pt,
+                    client_id=f"m-demo-360-{i}",
+                    media_type="360",
+                    file=ContentFile(src.read_bytes(), name=f"1a01_pano_{i + 1}.jpg"),
+                    taken_on=today,
+                    label=label,
+                    phase=phase,
+                    description=f"360 panorama {MARKER}",
+                    uploaded_by=user,
                 )
         self.stdout.write("Spaces point 1A01 enriched (photos + 2×360 + tables)")

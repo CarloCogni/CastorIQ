@@ -234,9 +234,7 @@ def test_save_open_preserves_quantity_unit_assignment_with_sort():
 
     from takeoff.services.quantity_output_units import QuantityOutputUnitsService
 
-    QuantityOutputUnitsService(project, user, fresh).reset_class_output_units(
-        ifc_class="IfcColumn"
-    )
+    QuantityOutputUnitsService(project, user, fresh).reset_class_output_units(ifc_class="IfcColumn")
     reset = build_qty_prep_session_ui(
         project=project, user=user, session=fresh, query=query, ifc_file=ifc
     )

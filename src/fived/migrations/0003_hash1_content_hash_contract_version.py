@@ -4,15 +4,20 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('fived', '0002_sem4a_semantic_readiness_snapshot'),
+        ("fived", "0002_sem4a_semantic_readiness_snapshot"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='fivedmodelversion',
-            name='content_hash_contract_version',
-            field=models.CharField(blank=True, default='', help_text='Explicit hash-contract id used when content_hash was computed (e.g. fived_content_hash_v2). Empty on legacy snapshots.', max_length=64, verbose_name='Content hash contract version'),
+            model_name="fivedmodelversion",
+            name="content_hash_contract_version",
+            field=models.CharField(
+                blank=True,
+                default="",
+                help_text="Explicit hash-contract id used when content_hash was computed (e.g. fived_content_hash_v2). Empty on legacy snapshots.",
+                max_length=64,
+                verbose_name="Content hash contract version",
+            ),
         ),
     ]

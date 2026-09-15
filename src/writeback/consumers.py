@@ -6,13 +6,21 @@ ProposalConsumer — streams the modification proposal pipeline.
 ScanConsumer     — streams the conflict scan pipeline.
 
 Protocol (ProposalConsumer):
-    Client → Server:  {"action": "propose", "message": "<text>", "session_id": "<uuid>"}
+    Client → Server:  {"action": "propose", "message": "<text>", "session_id": "<uuid>",
+                       "skip_guardian": false}
     Client → Server:  {"action": "cancel"}
-    Server → Client:  {"type": "phase", "phase": "<name>", "status": "running|done|error", ...}
+    Server → Client:  {"type": "phase", "phase": "ground|generate|run|verify|guardian",
+                       "status": "running|done|error", "detail": {targets, flags, verdict}}
     Server → Client:  {"type": "proposal", "status": "proposed", "proposal": {...}}
+    Server → Client:  {"type": "proposal", "status": "no_change", "message": "<text>"}
     Server → Client:  {"type": "cancelled"}
     Server → Client:  {"type": "error", "message": "<text>"}
     Server → Client:  {"type": "done"}
+
+A propose runs as an asyncio task: Channels dispatches frames one at a time,
+so a ``cancel`` frame is only seen while the propose is running if the
+propose does not hold the dispatch loop. One propose per connection at a
+time; a second one while the first runs is answered with an error.
 
 Protocol (ScanConsumer):
     Client → Server:  {"action": "start_scan", "skip_low_value": true}
@@ -24,13 +32,12 @@ Protocol (ScanConsumer):
     Server → Client:  {"type": "done"}
 """
 
-import json
+import asyncio
 import logging
 import threading
 
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
-from django.core.exceptions import ValidationError as DjangoValidationError
 
 from core.consumers import CastorConsumerMixin, capture_consumer_errors
 
@@ -50,6 +57,7 @@ class ProposalConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
         self.user = self.scope["user"]
         self.project_id = self.scope["url_route"]["kwargs"]["project_id"]
         self._cancel_event = threading.Event()
+        self._task: asyncio.Task | None = None
 
         if self.user.is_anonymous:
             await self.close(code=4001)
@@ -69,6 +77,11 @@ class ProposalConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
 
     @capture_consumer_errors
     async def disconnect(self, close_code: int) -> None:
+        # Abort a running pipeline at its next emit: a closed tab must not keep
+        # the model busy on a proposal nobody will see.
+        cancel_event = getattr(self, "_cancel_event", None)
+        if cancel_event is not None:
+            cancel_event.set()
         logger.debug(
             "ProposalConsumer disconnected: user=%s code=%s",
             getattr(self.user, "username", "?"),
@@ -79,9 +92,13 @@ class ProposalConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
     async def receive_json(self, content: dict, **kwargs) -> None:
         action = content.get("action")
         if action == "propose":
-            await self._handle_propose(content)
-        elif action == "propose_with_retry":
-            await self._handle_propose_with_retry(content)
+            if self._task is not None and not self._task.done():
+                await self.safe_send_json(
+                    {"type": "error", "message": "A request is already running; press Stop first."}
+                )
+                return
+            # A task, not an await: the dispatch loop stays free for a cancel frame.
+            self._task = asyncio.create_task(self._handle_propose(content))
         elif action == "cancel":
             self._cancel_event.set()
             logger.debug("ProposalConsumer: cancel requested by %s", self.user.username)
@@ -102,17 +119,30 @@ class ProposalConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
 
         session_id = content.get("session_id")
         conflict_ids_raw = content.get("conflict_ids", "")
+        skip_guardian = bool(content.get("skip_guardian"))
 
         try:
-            result, proposals, superseded_ids = await self._run_pipeline(
-                message_text, session_id, conflict_ids_raw
+            proposal, superseded_ids = await self._run_pipeline(
+                message_text, session_id, conflict_ids_raw, skip_guardian
             )
+            # The card render is inside the guard: a serialiser error must
+            # reach the client as an error frame, not close the socket.
+            serialized = await self._serialize_result(proposal)
+            serialized["superseded_ids"] = superseded_ids
+            await self.safe_send_json({"type": "proposal", **serialized})
+            await self.safe_send_json({"type": "done"})
         except Exception as e:
             from writeback.services.emitters import CancellationError
-            from writeback.services.modification_service import ModificationError
+            from writeback.services.modification_service import ModificationError, NoChangeError
 
             if isinstance(e, CancellationError):
                 await self.safe_send_json({"type": "cancelled"})
+                return
+            if isinstance(e, NoChangeError):
+                await self.safe_send_json(
+                    {"type": "proposal", "status": "no_change", "message": str(e)}
+                )
+                await self.safe_send_json({"type": "done"})
                 return
             logger.exception("Proposal pipeline error: %s", e)
             await self.log_consumer_exception(e, method="_handle_propose")
@@ -126,12 +156,6 @@ class ProposalConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
                 )
             else:
                 await self.safe_send_json({"type": "error", "message": str(e)})
-            return
-
-        serialized = await self._serialize_result(result, proposals)
-        serialized["superseded_ids"] = superseded_ids
-        await self.safe_send_json({"type": "proposal", **serialized})
-        await self.safe_send_json({"type": "done"})
 
     # `thread_sensitive=False` puts the LLM-bound work on the asgiref shared
     # thread pool instead of the single shared sync thread. Without this, a
@@ -144,29 +168,25 @@ class ProposalConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
         message_text: str,
         session_id: str | None,
         conflict_ids_raw: str = "",
-        failure_id: str | None = None,
+        skip_guardian: bool = False,
     ):
         """
         Synchronous pipeline execution wrapped for async use.
 
-        Creates the user message, runs ModificationService.propose() with a
-        WebSocketEmitter, saves the assistant message, and returns the raw
-        result. When ``failure_id`` is given, the matching FailureRecord is
-        passed as ``retry_of`` so its structured errors feed the retried stage.
+        Resolves the session, builds the WebSocket emitter and hands the
+        request to ``ModificationService.propose_in_session``, which owns the
+        chat messages, the supersede and the link on both transports.
         """
-        from chat.models import ChatSession, Message
+        from chat.models import ChatSession
         from environments.models import Project
-        from metacastor.models import FailureRecord
-        from writeback.services.emitters import CancellationError, WebSocketEmitter
+        from writeback.services.emitters import WebSocketEmitter
         from writeback.services.modification_service import ModificationError, ModificationService
 
-        # Resolve project
         try:
             project = Project.objects.select_related("owner").get(pk=self.project_id)
         except Project.DoesNotExist:
             raise ModificationError("Project not found.")
 
-        # Resolve or create session
         if session_id:
             try:
                 session = ChatSession.objects.get(
@@ -180,139 +200,20 @@ class ProposalConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
         else:
             session = self._get_or_create_session(project, self.user)
 
-        # Save user message
-        user_msg = Message.objects.create(
-            session=session,
-            role=Message.Role.USER,
-            content=message_text,
-        )
-
         emitter = WebSocketEmitter(
             self.send_json,
             cancel_event=self._cancel_event,
             scope=self.scope,
             consumer_name=f"{type(self).__module__}.{type(self).__name__}",
         )
-        svc = ModificationService(project, user=self.user)
-
-        # Resolve the retry context BEFORE superseding anything: a stale or
-        # malformed failure_id from the client must degrade to a fresh run,
-        # not blow up after the prior proposals were already superseded.
-        retry_of = None
-        if failure_id:
-            try:
-                retry_of = FailureRecord.objects.filter(pk=failure_id).first()
-            except (DjangoValidationError, ValueError):
-                logger.warning("Ignoring malformed failure_id in retry: %r", failure_id)
-
-        # Supersede any prior pending proposals in this session before
-        # generating a new one — captures the abandon as a queryable status.
-        superseded_ids = svc.supersede_pending(session, self.user)
-
-        try:
-            result = svc.propose(
-                user_message=message_text,
-                user=self.user,
-                message_obj=user_msg,
-                emitter=emitter,
-                retry_of=retry_of,
-            )
-        except CancellationError:
-            logger.debug("Proposal pipeline cancelled for user=%s", self.user.username)
-            raise
-        except ModificationError as e:
-            Message.objects.create(
-                session=session,
-                role=Message.Role.ASSISTANT,
-                content=f"⚠️ {e}",
-            )
-            raise
-
-        # Normalize to list
-        proposals = result if isinstance(result, list) else [result]
-        is_chain = isinstance(result, list)
-
-        # Save assistant message
-        explanations = [p.explanation for p in proposals]
-        assistant_msg = Message.objects.create(
-            session=session,
-            role=Message.Role.ASSISTANT,
-            content=" + ".join(explanations) if is_chain else explanations[0],
+        return ModificationService(project, user=self.user).propose_in_session(
+            session,
+            message_text,
+            self.user,
+            conflict_ids=conflict_ids_raw,
+            skip_guardian=skip_guardian,
+            emitter=emitter,
         )
-
-        linked_ids = (
-            [i.strip() for i in conflict_ids_raw.split(",") if i.strip()]
-            if conflict_ids_raw
-            else []
-        )
-        skill_count = getattr(svc, "_skill_count", 0)
-        for p in proposals:
-            p.message = assistant_msg
-            if p.intent_json is None:
-                p.intent_json = {}
-            p.intent_json["skill_count"] = skill_count
-            if linked_ids:
-                p.linked_conflict_ids = linked_ids
-                p.save(update_fields=["message", "linked_conflict_ids", "intent_json"])
-            else:
-                p.save(update_fields=["message", "intent_json"])
-
-        # Auto-title
-        if session.title == "New Modification":
-            session.title = message_text[:50]
-            session.save(update_fields=["title"])
-
-        return result, proposals, superseded_ids
-
-    async def _handle_propose_with_retry(self, content: dict) -> None:
-        """
-        Re-run the proposal pipeline with failure context injected into the classifier.
-
-        Expected content: {"action": "propose_with_retry", "failure_id": "<uuid>",
-                           "message": "<original query>", "session_id": "<uuid>"}
-        """
-        failure_id = (content.get("failure_id") or "").strip()
-        message_text = (content.get("message") or "").strip()
-
-        if not failure_id or not message_text:
-            await self.safe_send_json(
-                {"type": "error", "message": "failure_id and message are required."}
-            )
-            return
-
-        self._cancel_event.clear()
-        session_id = content.get("session_id")
-        conflict_ids_raw = content.get("conflict_ids", "")
-
-        try:
-            result, proposals, superseded_ids = await self._run_pipeline(
-                message_text, session_id, conflict_ids_raw, failure_id=failure_id
-            )
-        except Exception as e:
-            from writeback.services.emitters import CancellationError
-            from writeback.services.modification_service import ModificationError
-
-            if isinstance(e, CancellationError):
-                await self.safe_send_json({"type": "cancelled"})
-                return
-            logger.exception("Retry pipeline error: %s", e)
-            await self.log_consumer_exception(e, method="_handle_propose_with_retry")
-            failure_id_new = (
-                getattr(e, "failure_record_id", None) if isinstance(e, ModificationError) else None
-            )
-            if failure_id_new:
-                failure_data = await self._load_failure_data(failure_id_new)
-                await self.safe_send_json(
-                    {"type": "failure", "failure": failure_data, "message": str(e)}
-                )
-            else:
-                await self.safe_send_json({"type": "error", "message": str(e)})
-            return
-
-        serialized = await self._serialize_result(result, proposals)
-        serialized["superseded_ids"] = superseded_ids
-        await self.safe_send_json({"type": "proposal", **serialized})
-        await self.safe_send_json({"type": "done"})
 
     @sync_to_async
     def _load_failure_data(self, failure_id: str) -> dict:
@@ -340,59 +241,13 @@ class ProposalConsumer(CastorConsumerMixin, AsyncJsonWebsocketConsumer):
         }
 
     @sync_to_async
-    def _serialize_result(self, result, proposals: list) -> dict:
-        """Replicate the serialization from ModifyView._handle_propose()."""
-        is_chain = isinstance(result, list)
+    def _serialize_result(self, proposal) -> dict:
+        """The one serialiser plus the rendered card, same as ModifyView._handle_propose()."""
+        from writeback.services.proposal_serializer import render_card, serialize_proposal
 
-        serialized = []
-        for p in proposals:
-            try:
-                diff_preview = json.loads(p.diff_preview)
-            except (json.JSONDecodeError, TypeError):
-                diff_preview = []
-
-            entry = {
-                "id": str(p.id),
-                "tier": p.tier,
-                "operation": p.operation,
-                "explanation": p.explanation,
-                "confidence": p.confidence,
-                "affected_count": p.affected_count,
-                "diff_preview": diff_preview,
-                "conflict_ids": ",".join(str(i) for i in p.linked_conflict_ids),
-                "skill_count": (p.intent_json or {}).get("skill_count", 0),
-                "guardian": {
-                    "status": p.verification_status,
-                    "result": p.verification_result,
-                    "source": p.verification_source,
-                },
-            }
-
-            if p.tier == 2 and p.intent_json and "plan" in p.intent_json:
-                entry["plan_steps"] = [
-                    {
-                        "step": s.get("step", i + 1),
-                        "operation": s.get("operation", ""),
-                        "explanation": s.get("explanation", ""),
-                    }
-                    for i, s in enumerate(p.intent_json["plan"])
-                ]
-
-            if p.tier == 3 and p.intent_json:
-                if "code" in p.intent_json:
-                    entry["code"] = p.intent_json["code"]
-                if "review" in p.intent_json:
-                    entry["review"] = p.intent_json["review"]
-            # Drives the client-side Execute gating; the server check in
-            # views._handle_approve remains the source of truth.
-            entry["requires_code_ack"] = p.requires_code_ack
-
-            serialized.append(entry)
-
-        if is_chain:
-            return {"status": "proposed", "chain": True, "proposals": serialized}
-
-        return {"status": "proposed", "proposal": serialized[0]}
+        card = serialize_proposal(proposal)
+        card["html"] = render_card(proposal, proposal.ifc_file.project, card)
+        return {"status": "proposed", "proposal": card}
 
     @sync_to_async
     def _check_project_access(self) -> bool:

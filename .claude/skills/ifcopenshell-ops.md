@@ -24,17 +24,21 @@ never call `end_transaction()`; saving is a separate explicit `save()`.
 
 ## Property Operations
 - SET: prop.NominalValue = model.create_entity("IfcLabel", "EI120")
-- ADD to pset: ifcopenshell.api.run("pset.edit_pset", model, pset=pset, properties={...})
-- ADD pset: ifcopenshell.api.run("pset.add_pset", model, product=entity, name="Pset_X")
+- ADD to pset: pset.edit_pset(pset=own, properties={...}) — generated code uses the api
+  sheet's notation (model implied); services call ifcopenshell.api.run("pset.edit_pset", model, ...)
+- ADD pset: pset.add_pset(product=entity, name="Pset_X") (find-or-create; may be shared)
 - REMOVE: properties={"PropName": None}
 
-## Entity Operations (Tier 3)
+## Entity Operations (generated code)
 
-Prefer the pre-coded `Tier3Writer` (`ifc_processor/services/tier3_writer.py`)
-over generating these calls — it is tested and already handles the traps below.
+Generated `modify()` code calls these directly. The traps below are the ones
+that bit the pre-coded writers; the api sheet in `writeback/services/api_sheet.py`
+lists the signatures the model sees.
 
 - Create: `root.create_entity(model, ifc_class="IfcSpace", name="X")` — mints
-  GlobalId + OwnerHistory. It has **no** LongName/Description parameters;
+  GlobalId + OwnerHistory. Never `model.create_entity` (no GlobalId; the sandbox
+  refuses it). An IfcZone is `root.create_entity(ifc_class="IfcZone", ...)`;
+  `group.add_group` makes a plain IfcGroup only. It has **no** LongName/Description parameters;
   set those afterwards with `attribute.edit_attributes(product=e, attributes={...})`.
 - Delete an element/space: `root.remove_product(model, product=entity)`.
 - **Delete an `IfcZone`/`IfcGroup`: use `group.remove_group(model, group=entity)`.**
@@ -51,8 +55,8 @@ over generating these calls — it is tested and already handles the traps below
 ## Key Rules
 - Generated code: never call model.write() or ifcopenshell.open()
 - Property name matching is always case-insensitive
-- Record every change in the changes list — Git traceability AND the DB
-  resync both key off it; an unreported change leaves the index stale
+- Generated code reports nothing: the harness diffs the file. Git, the card
+  and the index refresh all read that diff
 - Type coercion: IfcBoolean for bool, IfcReal for float, IfcLabel for string
 - Geometry is out of scope: never author or move physical elements
 

@@ -1,0 +1,80 @@
+<!-- writeback/components/history_help_modal.html — "How History works" -->
+
+<div class="modal fade" id="historyHelpModal" tabindex="-1" aria-labelledby="historyHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="historyHelpLabel">
+                    <i class="bi bi-clock-history me-2" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    How History works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+
+                <!-- 1. What is it? -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-box-seam me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    What is History?
+                </p>
+                <p class="text-secondary fs-7 mb-4">
+                    Every IFC file in the project lives in its own git repository. Each approved Modify
+                    proposal becomes one commit that carries the request, the number of targets and the
+                    generated code in its body. History lists those commits per file, newest first, so
+                    you can see what changed, when, by whom, and go back to any earlier state.
+                </p>
+
+                <!-- 2. Lifecycle -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-arrow-repeat me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Lifecycle of a commit
+                </p>
+                <div class="d-flex flex-column gap-2 fs-7 mb-4">
+                    <div class="d-flex gap-2"><span class="badge bg-success-subtle text-success" style="min-width:7rem;">CURRENT HEAD</span><span class="text-secondary">The newest commit; the file on disk is this state.</span></div>
+                    <div class="d-flex gap-2"><span class="badge bg-secondary-subtle text-secondary" style="min-width:7rem;">[MODIFY]</span><span class="text-secondary">An approved proposal: the reviewed copy replaced the original and was committed with the code.</span></div>
+                    <div class="d-flex gap-2"><span class="badge bg-primary-subtle text-primary" style="min-width:7rem;">RESTORE POINT</span><span class="text-secondary">A restore: a <strong>new</strong> commit that makes the file look like an earlier one. Nothing is rewritten or lost.</span></div>
+                    <div class="d-flex gap-2"><span class="badge bg-danger bg-opacity-10 text-danger" style="min-width:7rem;">Superseded</span><span class="text-secondary">A commit a later restore stepped over; still restorable itself.</span></div>
+                </div>
+
+                <!-- 3. How to -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-plus-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    How to read a commit and restore one
+                </p>
+                <div class="d-flex flex-column gap-2 fs-7 mb-4 text-secondary">
+                    <div><strong>Diff</strong> opens the change as the card showed it: one row per property, attribute or entity, aggregated with a count; a <i class="bi bi-flag-fill text-warning"></i> marks a row that was flagged and acknowledged at approval.</div>
+                    <div><strong>Targets</strong> badge is how many entities the generated <code>select()</code> returned; <em>modified / added / removed</em> are the diff's counts over real entities (property sets and relationships never count).</div>
+                    <div><strong>Restore</strong> reverts the file to that commit's state, creates a new commit for it, and re-parses the file into the database so Ask, Explore and the conflict scan see the restored values. Confirm the dialog; the restore takes as long as a reprocess.</div>
+                    <div><strong>Restored</strong> links a commit to the restore that brought it back; hash links jump between the two.</div>
+                </div>
+
+                <!-- 4. Who can do what -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-person-check me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Who can do what
+                </p>
+                <ul class="fs-7 text-secondary mb-4 ps-3">
+                    <li><strong>Every member</strong> of the project, viewers included, can read History and open a diff.</li>
+                    <li><strong>Only the project owner</strong> can restore; editors approve changes on the Modify tab but do not rewind the file.</li>
+                </ul>
+
+                <!-- 5. Caveats -->
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-exclamation-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    Caveats
+                </p>
+                <div class="d-flex flex-column gap-1 fs-8 text-secondary">
+                    <span><i class="bi bi-dot"></i>A restore is a new commit on top, never a rewrite: the history stays complete and every state stays restorable.</span>
+                    <span><i class="bi bi-dot"></i>Restoring re-parses the whole file, so it can take a minute on a large model; embeddings are regenerated as part of that reprocess.</span>
+                    <span><i class="bi bi-dot"></i>A pending proposal made against the file before a restore will be refused at approval ("file changed, please re-propose") because its fingerprint no longer matches.</span>
+                    <span><i class="bi bi-dot"></i>Commits made by earlier versions of Castor show the diff in their own, older format, or none.</span>
+                    <span><i class="bi bi-dot"></i>History is per file: uploading a new file starts a new section, it does not continue the old one.</span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

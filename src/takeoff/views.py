@@ -307,9 +307,7 @@ class QTOView(ProjectTabMixin, TemplateView):
         ctx["qty_measurement_settings_url"] = reverse(
             "takeoff:qty_measurement_settings", kwargs={"pk": project.pk}
         )
-        ctx["qty_field_values_url"] = reverse(
-            "takeoff:qty_field_values", kwargs={"pk": project.pk}
-        )
+        ctx["qty_field_values_url"] = reverse("takeoff:qty_field_values", kwargs={"pk": project.pk})
         ctx["qty_prep_export_url"] = reverse("takeoff:qty_prep_export", kwargs={"pk": project.pk})
         ctx["qty_prep_freeze_url"] = reverse("takeoff:qty_prep_freeze", kwargs={"pk": project.pk})
         ctx["qty_editable_table_save_url"] = reverse(
@@ -848,8 +846,7 @@ class QuantityPrepRowMeasurementView(ProjectAccessMixin, View):
         known_targets = {
             str(row.get("measurement_target_key") or "")
             for row in (
-                list(qty_prep.get("prep_rows") or [])
-                + list(qty_prep.get("prep_rows_export") or [])
+                list(qty_prep.get("prep_rows") or []) + list(qty_prep.get("prep_rows_export") or [])
             )
             if isinstance(row, dict) and row.get("measurement_target_key")
         }
@@ -910,8 +907,7 @@ class QuantityPrepRowMeasurementBatchView(ProjectAccessMixin, View):
         known_targets = {
             str(row.get("measurement_target_key") or "")
             for row in (
-                list(qty_prep.get("prep_rows") or [])
-                + list(qty_prep.get("prep_rows_export") or [])
+                list(qty_prep.get("prep_rows") or []) + list(qty_prep.get("prep_rows_export") or [])
             )
             if isinstance(row, dict) and row.get("measurement_target_key")
         }
@@ -963,8 +959,7 @@ class QuantityMeasurementSettingsView(ProjectAccessMixin, View):
             if result.get("error"):
                 return toast_response(result["error"], level="error", status=400)
             toast_msg = (
-                f"Class output-unit override cleared for {ifc_class}. "
-                "Other classes unchanged."
+                f"Class output-unit override cleared for {ifc_class}. Other classes unchanged."
             )
             _mark_qty_editable_dirty(request, project)
             redirect_url = reverse("takeoff:qto", kwargs={"pk": project.pk})
@@ -1136,9 +1131,7 @@ class QuantityPrepRowMappingBatchView(ProjectAccessMixin, View):
         else:
             prep_rows_for_mapping = list(qty_prep.get("prep_rows") or [])
             known_keys = {
-                str(row.get("row_key") or "")
-                for row in prep_rows_for_mapping
-                if row.get("row_key")
+                str(row.get("row_key") or "") for row in prep_rows_for_mapping if row.get("row_key")
             }
         eligible = {
             item["key"]

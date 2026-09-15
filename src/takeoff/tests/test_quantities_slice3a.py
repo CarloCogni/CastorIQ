@@ -167,7 +167,10 @@ def test_count_basis_uses_element_count(client):
     )
     wall = next(r for r in ui["prep_rows"] if r["ifc_class"] == "IfcWall")
     assert wall["quantity_basis"] in {"Count", "element_count"}
-    assert wall["measurement_type"] == "count" or wall["quantity_basis"] in {"Count", "element_count"}
+    assert wall["measurement_type"] == "count" or wall["quantity_basis"] in {
+        "Count",
+        "element_count",
+    }
     assert wall["total"] == 2
     assert wall["missing_quantity_source"] is False
 
@@ -184,7 +187,10 @@ def test_page_get_overrides_and_boundaries(client):
     assert 'data-qty-basis-unresolved="1"' in default_html
     # TABLE-04 one-table: Generate Preparation rail removed; Assign values is primary.
     assert "Assign values" in default_html or "Generate Preparation Data Model" in default_html
-    assert 'name="basis_IfcWall"' in default_html or 'data-testid="quantities-prep-table"' in default_html
+    assert (
+        'name="basis_IfcWall"' in default_html
+        or 'data-testid="quantities-prep-table"' in default_html
+    )
 
     overridden = client.get(
         url,
@@ -287,8 +293,13 @@ def test_unit_basis_derivation_copy_and_available_measures(client):
         or 'data-testid="quantities-units-modal"' in html
         or "Output units" in html
     )
-    assert 'data-testid="qty-prep-col-measurement"' in html or 'data-testid="qty-prep-col-measurement-basis"' in html
-    assert 'data-testid="qty-prep-col-model-unit"' in html or 'data-testid="qty-prep-col-unit"' in html
+    assert (
+        'data-testid="qty-prep-col-measurement"' in html
+        or 'data-testid="qty-prep-col-measurement-basis"' in html
+    )
+    assert (
+        'data-testid="qty-prep-col-model-unit"' in html or 'data-testid="qty-prep-col-unit"' in html
+    )
     assert 'data-testid="qty-prep-col-total-quantity"' in html
     if 'data-testid="qty-basis-rules-table"' in html:
         assert (

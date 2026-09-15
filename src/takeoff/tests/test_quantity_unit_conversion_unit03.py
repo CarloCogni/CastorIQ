@@ -147,7 +147,11 @@ def test_no_double_conversion_after_measurement_change():
     session.create()
     user = project.owner
     runtime = build_qty_prep_session_ui(project=project, user=user, session=session, query={})
-    key = next(r["measurement_target_key"] for r in _export_rows(runtime) if r.get("type_name") == "LenBeam")
+    key = next(
+        r["measurement_target_key"]
+        for r in _export_rows(runtime)
+        if r.get("type_name") == "LenBeam"
+    )
     QuantityOutputUnitsService(project, user, session).apply_output_units({"volume": "mm3"})
     QuantityPrepRowMeasurementService(project, user, session).apply_choice(
         measurement_target_key=key,
@@ -174,7 +178,11 @@ def test_freeze_and_export_capture_model_and_output(client):
     session.create()
     user = project.owner
     runtime = build_qty_prep_session_ui(project=project, user=user, session=session, query={})
-    key = next(r["measurement_target_key"] for r in _export_rows(runtime) if r.get("type_name") == "LenBeam")
+    key = next(
+        r["measurement_target_key"]
+        for r in _export_rows(runtime)
+        if r.get("type_name") == "LenBeam"
+    )
     QuantityPrepRowMeasurementService(project, user, session).apply_choice(
         measurement_target_key=key,
         measurement_type="length",

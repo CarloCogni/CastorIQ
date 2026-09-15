@@ -1,22 +1,18 @@
 # writeback/services/benchmark/__init__.py
-"""Natural-language benchmark harness for the writeback pipeline.
+"""Natural-language benchmark harness for the writeback pipeline (V3).
 
 Runs a corpus of real user prompts through the real pipeline against a real
-model, executes the resulting journals against a scratch copy of an IFC file,
-and scores two independent things:
+model, on a scratch copy of the sample house, and scores:
 
-* **understanding** — did the pipeline route the request the way the corpus
-  says it should? This is what varies between models.
-* **fidelity** — did the journal it produced actually land in the file? This
-  is model-independent and should stay at 100%; a drop means a writer or
-  executor bug, not a comprehension failure.
-* **integrity** — did the file change *only* where the journal said? Entity
-  population, geometry and every bystander property are diffed against the
-  untouched source (``ifc_processor.services.ifc_diff``). Also model-independent
-  and expected at 100%.
+* **targets match** — did ``select`` return exactly the entities the corpus
+  names (resolved through the index)? This is what decides the bake-off.
+* **diff match** — does the measured diff contain the rows the corpus expects?
+* **integrity** — nothing outside the selection changed, no geometry moved.
+  The pipeline gates on this, so it is expected at 100%.
+* **reject / no-change** — requests that must be declined, or already hold.
 
-Nothing here writes to a real project file: every case executes against a
-throwaway copy inside a temporary directory.
+Nothing here writes to a real project file: the scratch copy the pipeline
+kept is deleted after scoring, and no proposal row is created.
 """
 
 from .corpus import BenchmarkCase, CorpusError, parse_corpus

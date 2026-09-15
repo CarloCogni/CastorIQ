@@ -1,4 +1,4 @@
-﻿# takeoff/tests/test_qto_measurement11.py
+# takeoff/tests/test_qto_measurement11.py
 """QTO-MEASUREMENT-11 — class source discovery and hierarchy propagation."""
 
 from __future__ import annotations

@@ -402,7 +402,10 @@ def test_boundaries_no_quantity_override_or_forbidden(client):
     if 'data-testid="qty-send-unresolved-to-modify"' in html:
         chunk = html.split('data-testid="qty-send-unresolved-to-modify"', 1)[0]
         assert "disabled" in chunk[chunk.rfind("<button") :]
-    assert "Raw Indexed Quantity Inventory" in html or 'data-testid="quantities-optional-estimate"' in html
+    assert (
+        "Raw Indexed Quantity Inventory" in html
+        or 'data-testid="quantities-optional-estimate"' in html
+    )
     from django.apps import apps
 
     names = {m.__name__ for m in apps.get_app_config("takeoff").get_models()}

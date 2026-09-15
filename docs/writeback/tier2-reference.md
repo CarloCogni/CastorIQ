@@ -1,3 +1,5 @@
+> **Superseded (2026-09-15).** This page describes writeback **V2** (tiers, router, journal), kept as the record of what V3 replaced. The current design is in [`../writeback_V3/`](../writeback_V3/README.md).
+
 # Tier 2 (ORANGE) — Operation Planner Reference
 
 Tier 2 handles requests that require multiple coordinated changes or operations beyond Tier 1's scope. The LLM decomposes the request into an ordered execution plan.

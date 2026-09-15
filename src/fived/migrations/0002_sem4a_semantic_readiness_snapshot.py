@@ -4,15 +4,20 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('fived', '0001_fived_snapshot_f2'),
+        ("fived", "0001_fived_snapshot_f2"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='fivedmodelversion',
-            name='semantic_source_readiness_snapshot',
-            field=models.JSONField(blank=True, default=None, help_text='SEM-4A semantic source readiness frozen at snapshot time (sem4a_readiness_v1). Null on legacy versions that predate capture.', null=True, verbose_name='Semantic source readiness snapshot'),
+            model_name="fivedmodelversion",
+            name="semantic_source_readiness_snapshot",
+            field=models.JSONField(
+                blank=True,
+                default=None,
+                help_text="SEM-4A semantic source readiness frozen at snapshot time (sem4a_readiness_v1). Null on legacy versions that predate capture.",
+                null=True,
+                verbose_name="Semantic source readiness snapshot",
+            ),
         ),
     ]

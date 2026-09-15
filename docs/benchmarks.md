@@ -31,22 +31,26 @@ Setup, flags, and result interpretation: [`benchmarks/ifc_parser/BENCHMARKING.md
 
 ## Harness B — NL writeback benchmark
 
-Every pytest layer mocks the LLM, so the suite can be green while the system fails to understand a sentence a real user would type. `manage.py benchmark_writeback` closes that gap: it runs 92 real prompts through the full Modify pipeline against a real model and a real IFC file, and scores two deliberately separate dimensions:
+Every pytest layer mocks the LLM, so the suite can be green while the system fails to understand a sentence a real user would type. `manage.py benchmark_writeback` closes that gap: it runs 98 real prompts through the V3 Modify pipeline (ground → generate → run → verify) against a real model on a scratch copy of the sample house, and scores:
 
-- **Understanding** — did the pipeline route the request the way the corpus says it should? This varies by model and is the benchmark dimension.
-- **Fidelity** — did the journal it produced actually land in the file, verified by reading the file back? This should stay at 100%; a drop means a writer or executor bug, not a comprehension one.
-- **Integrity** — did the file change *only* where the journal said? The written copy is diffed against the untouched source on entity population, per-product geometry hash, and every bystander property (`ifc_processor/services/ifc_diff.py`). Also expected at 100%; a drop means a save corrupted something the request never mentioned.
+- **Targets match** — did `select()` return exactly the entities the corpus names? Expectations are GlobalId-free (type, count, container, name, property filter) and resolved through the index at run time. This is the bake-off dimension.
+- **Diff match** — does the measured before/after diff (`ifc_processor/services/ifc_diff.py`) contain the expected rows with the expected counts?
+- **Integrity** — nothing changed outside the selection, no geometry moved. The pipeline gates on this, so it is expected at 100%.
+- **Reject / no-change** — requests that must be declined were, and requests that already hold say so.
 
-The corpus lives at `fixtures/benchmark/pipeline-test-prompts.txt` and is bound literally to `fixtures/benchmark/Ifc4_SampleHouse.ifc` (buildingSMART sample house). Assertions are encoded in `router:` comment lines above each prompt — executable grammar, not prose. Runs never touch the project's own IFC file: each case executes against a scratch copy in a temporary directory.
+Also reported: repairs used, latency median and p90, tokens, cost. The corpus lives at `fixtures/benchmark/pipeline-test-prompts.txt` and is bound literally to `fixtures/benchmark/Ifc4_SampleHouse.ifc`. Runs never touch the project's own IFC file and never create a proposal row.
 
 ```bash
 cd src
 uv run manage.py benchmark_writeback --project <uuid> --json ../runs/baseline.json   # save a baseline
 uv run manage.py benchmark_writeback --project <uuid> --baseline ../runs/baseline.json  # regression check
+uv run manage.py benchmark_writeback --project <uuid> --model ollama:qwen2.5-coder:7b \
+    --model anthropic:claude-sonnet-4-6 --repeat 2 --note vram=8GB --json ../runs/bakeoff.json
 ```
 
-- How to run it, model comparison, `--repeat`, safety: [`docs/testing.md` §Natural-Language Benchmark](testing.md#natural-language-benchmark)
+- How to run it, the columns, `--repeat`, safety: [`docs/testing.md` §Natural-Language Benchmark](testing.md#natural-language-benchmark)
 - Corpus grammar and the sample-model contract: [`fixtures/benchmark/README.md`](../fixtures/benchmark/README.md)
+- The design it measures: [`docs/writeback_V3/`](writeback_V3/README.md)
 
 ## Harness D — RAV / conflict-scan benchmark
 
@@ -65,9 +69,9 @@ Corpus conventions and editing rules: [`fixtures/benchmark/rav/README.md`](../fi
 
 ### Related tools
 
-- **`manage.py dry_run_v2_pipeline`** — the single-prompt debugger. It dumps every pipeline stage's output for **one** prompt, which the benchmark deliberately does not. Use it to dissect a failing case the benchmark surfaced; use `benchmark_writeback` for anything batch or scored.
-- **`src/writeback/tests/test_benchmark_corpus.py` / `test_benchmark_verify.py` / `test_benchmark_integrity.py`** — pytest unit tests for the corpus parser, the file-readback verifiers, and the integrity diff. No LLM needed; they run in the normal fast suite.
-- **`src/ifc_processor/tests/test_ifc_round_trip.py`** — standalone round-trip integrity suite: open → save → diff is empty; each Tier 1 writer op changes exactly its target and nothing else; geometry drift and entity loss are detected.
+- **`manage.py time_snapshot`** — measures `ifcopenshell.open()` and the snapshot on the largest processed file (spec P-1); the numbers live in the evaluation record.
+- **`src/writeback/tests/test_benchmark_corpus.py` / `test_benchmark_runner.py` / `test_benchmark_report.py`** — pytest unit tests for the corpus grammar, the index resolution and scoring, and the report columns. No LLM needed; they run in the normal fast suite.
+- **`src/ifc_processor/tests/test_ifc_round_trip.py` / `test_ifc_diff_relationships.py`** — round-trip integrity (open → save → diff is empty) and the relationship-derived diff rows (container move, material, classification, group, typed creation and deletion).
 
 ---
 

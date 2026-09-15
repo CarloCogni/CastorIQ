@@ -341,8 +341,7 @@ def apply_levels_to_ifc(ifc_path: str, levels: list, ifc_file) -> dict:
         git.ensure_repo()
         commit_hash = git.commit_modification(
             ifc_file=ifc_file,
-            message=f"Level Panel: {updated} storey(s) updated, {created} created",
-            tier=1,
+            subject=f"Level Panel: {updated} storey(s) updated, {created} created",
             diff_data={"affected_entities": updated + created},
             author_name="Castor Level Panel",
         )

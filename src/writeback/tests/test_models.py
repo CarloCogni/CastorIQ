@@ -1,9 +1,9 @@
 # writeback/tests/test_models.py
-"""Tests for writeback model __str__ and field defaults."""
+"""Tests for writeback model __str__, defaults and the V3 flagged-row properties."""
 
 import pytest
 
-from writeback.tests.factories import ModificationProposalFactory
+from writeback.tests.factories import ModificationProposalFactory, sample_diff
 
 
 @pytest.mark.django_db
@@ -14,18 +14,34 @@ class TestModificationProposalModel:
         proposal = ModificationProposalFactory(request_text=long_text)
         s = str(proposal)
         assert s.startswith("Proposal: ")
-        # The text portion should be at most 50 chars
-        assert len(s) <= len("Proposal: ") + 50 + 3  # 3 for "..."
+        assert len(s) <= len("Proposal: ") + 50 + 3
 
     def test_default_status_is_pending(self):
         """Default status should be 'pending'."""
-        proposal = ModificationProposalFactory()
-        assert proposal.status == "pending"
+        assert ModificationProposalFactory().status == "pending"
 
     def test_default_verification_status_is_pending(self):
         """Default verification_status should be 'pending'."""
+        assert ModificationProposalFactory().verification_status == "pending"
+
+    def test_v2_columns_are_null_on_a_v3_row(self):
+        """The V2 columns stay nullable and untouched; the V3 row carries its own data."""
         proposal = ModificationProposalFactory()
-        assert proposal.verification_status == "pending"
+        assert proposal.is_v3
+        assert proposal.changes is None
+        assert proposal.diff_preview is None
+        assert proposal.tier is None
+        assert proposal.intent_json is None
+        assert proposal.confidence is None
+        assert proposal.guardian_skipped is False
+        assert proposal.flags_acknowledged_at is None
+
+    def test_has_flagged_rows_follows_the_one_flag_rule(self):
+        """EI120 is in the request → no flags; a value the user never typed → flagged."""
+        assert ModificationProposalFactory().has_flagged_rows is False
+        flagged = ModificationProposalFactory(diff=sample_diff(after="EI999"))
+        assert flagged.has_flagged_rows is True
+        assert len(flagged.flagged_keys) == 1
 
 
 @pytest.mark.django_db

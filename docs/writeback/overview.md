@@ -1,3 +1,5 @@
+> **Superseded (2026-09-15).** This page describes writeback **V2** (tiers, router, journal), kept as the record of what V3 replaced. The current design is in [`../writeback_V3/`](../writeback_V3/README.md).
+
 # Write-Back System
 
 The write-back system is Castor's core innovation: the ability to modify IFC files through natural language with human approval and full traceability.

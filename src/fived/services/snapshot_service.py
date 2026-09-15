@@ -245,9 +245,7 @@ class FiveDPrepSnapshotService:
 
         qty_prep = runtime.get("qty_prep") or {}
         # HIERARCHY-09: freeze instance leaves once — never Class+Type+Instance additive copies.
-        prep_rows = list(
-            qty_prep.get("prep_rows_export") or qty_prep.get("prep_rows") or []
-        )
+        prep_rows = list(qty_prep.get("prep_rows_export") or qty_prep.get("prep_rows") or [])
         known_keys = {str(r.get("row_key") or "") for r in prep_rows if r.get("row_key")}
         if qty_prep.get("hierarchy"):
             settings_hierarchy_note = {
@@ -290,9 +288,7 @@ class FiveDPrepSnapshotService:
         session_annotations_snapshot = {
             "row_reviews": reviews,
             "manual_mappings": mappings,
-            "output_units": dict(
-                (qty_prep.get("output_units") or {}).get("output_units") or {}
-            ),
+            "output_units": dict((qty_prep.get("output_units") or {}).get("output_units") or {}),
             "provenance_note": (
                 "Manual session mapping values (free-text or schema-node) are "
                 "preparation provenance only — not official classification authority "

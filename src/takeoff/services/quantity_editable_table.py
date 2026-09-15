@@ -403,8 +403,7 @@ class QuantityEditableTableService:
 
         mt_by_row = {
             str(r.get("row_key") or ""): (
-                str(r.get("measurement_target_key") or "")
-                or _mt_key_from_row(r, _grain_for_row(r))
+                str(r.get("measurement_target_key") or "") or _mt_key_from_row(r, _grain_for_row(r))
             )
             for r in rows
             if r.get("row_key")
@@ -414,9 +413,7 @@ class QuantityEditableTableService:
         review_ann = load_review_payload(session, self.project.pk).get("annotations") or {}
         measure_choices = load_measurement_payload(session, self.project.pk).get("choices") or {}
         units = QuantityOutputUnitsService(self.project, self.user, session).get_output_units()
-        class_units = QuantityOutputUnitsService(
-            self.project, self.user, session
-        ).get_class_units()
+        class_units = QuantityOutputUnitsService(self.project, self.user, session).get_class_units()
 
         assignments: dict[str, Any] = {}
         unmatched_assignments: list[str] = []
@@ -468,9 +465,7 @@ class QuantityEditableTableService:
             "output_units": {
                 "contract_version": UNITS_CONTRACT,
                 "units": dict(units or {}),
-                "class_units": {
-                    cls: dict(fam) for cls, fam in (class_units or {}).items()
-                },
+                "class_units": {cls: dict(fam) for cls, fam in (class_units or {}).items()},
             },
             "measurements": {
                 "contract_version": MEASUREMENT_CONTRACT,
@@ -824,15 +819,11 @@ class QuantityEditableTableService:
 
         units_raw = state.get("output_units") or {}
         units_map = units_raw.get("units") if isinstance(units_raw, Mapping) else {}
-        class_units_raw = (
-            units_raw.get("class_units") if isinstance(units_raw, Mapping) else {}
-        )
+        class_units_raw = units_raw.get("class_units") if isinstance(units_raw, Mapping) else {}
         session[units_session_key(self.project.pk)] = {
             "contract_version": UNITS_CONTRACT,
             "units": dict(units_map) if isinstance(units_map, Mapping) else {},
-            "class_units": (
-                dict(class_units_raw) if isinstance(class_units_raw, Mapping) else {}
-            ),
+            "class_units": (dict(class_units_raw) if isinstance(class_units_raw, Mapping) else {}),
         }
         if hasattr(session, "modified"):
             session.modified = True

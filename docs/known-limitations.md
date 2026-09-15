@@ -1,3 +1,5 @@
+> **Note (2026-09-15).** The writeback sections below (triage, slots, resolver, tier router, journal) describe **V2** and are kept as history. V3 replaced that pipeline; its limitations are listed in [`writeback_V3/spec.md`](writeback_V3/spec.md) §Non-goals and in the Modify help modal.
+
 # Known Limitations
 
 A running log of observed reliability limits when running Castor on local
@@ -343,6 +345,58 @@ place.
   at all.
 - Add the prompt to `fixtures/benchmark/pipeline-test-prompts.txt` with
   its expected outcome, so the next run regression-tests it.
+
+---
+
+## 4. Base models write weak IfcOpenShell code
+
+### Symptom
+
+Modify V3 has the model write IfcOpenShell code. Small local models make up helpers, use API
+keywords from older IfcOpenShell versions, and misread IFC semantics (a subtype mistaken for its
+parent, a zone treated as a spatial container). The code fails in the sandbox and uses up the
+repair budget, or it selects the wrong entities.
+
+### Why it matters
+
+Local-first means the default Modify model fits in 8–12 GB. IfcOpenShell is a very small, version-drifted
+share of what those models were trained on, so how well they know the API sets the ceiling
+on Modify's pass rate, whatever verification surrounds it.
+
+### Concrete example
+
+Model: `qwen2.5-coder:7b` via local Ollama (decision log, *review 6*). Verbatim prompt:
+
+```
+Create a new IfcZone called "Acoustic Zone 1"
+```
+
+Observed:
+
+```
+AttributeError: IfcZone has no attribute 'ContainsElements'
+```
+
+In the 2026-09-15 bake-off, 15 of the 7B row's 56 failures were rejections after three code errors
+(e.g. a hallucinated `by_guid` helper) and 19 were wrong selections
+([evaluation record](evaluation/2026-09-15-writeback-v3-bakeoff.md)).
+
+### Mitigations in place
+
+The reviewed API sheet (`writeback/services/api_sheet.py`, checked against the installed
+ifcopenshell), exact grounding strings from the index, sheet modules bound in the sandbox, up to two
+repairs that see the real error, and the scope gate. Wrong code ends in a repair or a rejection,
+never in a change outside the selection.
+
+### Residual risk
+
+The pass rate stays bounded by the model. Larger coder models help but need more graphics memory.
+
+### What to do
+
+Use the largest coder model the machine can hold without CPU offload. Fine-tuning a local model on
+execution-verified IfcOpenShell code is **tracked as future work** in
+[`brainstorming/ifc_code_model_training.md`](brainstorming/ifc_code_model_training.md).
 
 ---
 

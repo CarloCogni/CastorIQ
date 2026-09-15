@@ -46,6 +46,17 @@ def scan_service(project, user, mock_llm):
     return ConflictScanService(project, user, skip_low_value=True)
 
 
+# ── _get_llm_model_name ────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_llm_model_name_is_the_resolved_modify_model(scan_service, settings):
+    """The audit label is the Modify model the scan ran on, not the Ask prose model."""
+    settings.OLLAMA_MODEL = "llama3.1:8b"
+    settings.MODIFY_MODEL = "qwen2.5-coder:14b"
+    assert scan_service._get_llm_model_name() == "qwen2.5-coder:14b"
+
+
 # ── _format_properties ─────────────────────────────────────────────────────────
 
 

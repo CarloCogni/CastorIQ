@@ -1,3 +1,5 @@
+> **Superseded (2026-09-15).** This page describes writeback **V2** (tiers, router, journal), kept as the record of what V3 replaced. The current design is in [`../writeback_V3/`](../writeback_V3/README.md).
+
 # Tier 1 (GREEN) — Capabilities, Limitations & Edge Cases
 
 ## Operations

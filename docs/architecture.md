@@ -29,12 +29,12 @@ The system treats IFC files and documents as two representations of the same pro
                    ▼                             ▼
            ┌────────────────┐           ┌────────────────┐
            │   Ask Mode     │           │  Modify Mode   │
-           │  RAG Pipeline  │           │ RSAA Pipeline  │
+           │  RAG Pipeline  │           │ Modify Pipeline│
            └───────┬────────┘           └───────┬────────┘
                    │                             │
                    ▼                             ▼
            ┌────────────────┐           ┌────────────────┐
-           │ Vector Search  │           │ Tier Escalation │
+           │ Vector Search  │           │ code → diff → ok│
            │ IFC + Docs     │           │ 1 → 2 → 3      │
            └───────┬────────┘           └───────┬────────┘
                    │                             │
@@ -53,7 +53,7 @@ The main project navigation surfaces seven tabs, each with a dedicated guide. Th
 | Tab | What it does | Guide |
 |---|---|---|
 | **Ask** | Natural-language Q&A across IFC + documents (RAG) | [rag-pipeline.md](rag-pipeline.md) |
-| **Modify** | Propose IFC modifications via the three-tier RSAA pipeline | [writeback/overview.md](writeback/overview.md) |
+| **Modify** | Propose IFC modifications as generated code, verified by a measured diff | [writeback_V3/overview.md](writeback_V3/overview.md) |
 | **Conflicts** | Cross-source inconsistencies (IFC vs. document requirements) | [writeback/conflict-scan.md](writeback/conflict-scan.md) |
 | **History** | Per-IFC-file commit log with rollback | [history.md](history.md) |
 | **Explore** | IFC spatial hierarchy browser (tree + entity table) | [explore.md](explore.md) |
@@ -125,14 +125,12 @@ Powers natural language queries across IFC entities and documents. Both data typ
 
 ### Write-Back System (Modify Mode)
 
-Proposes IFC modifications through a Risk-Stratified Autonomous Action (RSAA) framework with three escalation tiers (GREEN → ORANGE → RED). The LLM never exercises more power than the task requires.
+Proposes IFC modifications by letting the model write a small piece of IfcOpenShell code and checking, deterministically, what that code did. Authority is maximal; verification is maximal too (V3, September 2026).
 
-Two structural decisions carry most of the safety:
+- **One path, two model calls.** *Ground* reads the storeys, spaces, entity counts and property sets from the index, as exact strings. *Generate* writes `select(model)` and `modify(model, targets)` in one fenced block. *Run* executes both in a child process on a scratch copy and returns the selection and a before/after diff. *Verify* rejects any change outside the selection or any geometry change (a repair, at most two), flags every value that is not in the request, and has a second model explain the diff without seeing the request.
+- **The proposal row is the journal.** Code, targets, diff, the file's fingerprint and the scratch copy's path. Approval checks the fingerprint, swaps the reviewed copy over the original, commits to git with the code in the body, and refreshes the index from the diff. The code never runs a second time; the approved diff is the applied diff by construction.
 
-- **The tier is chosen deterministically.** Four narrow LLM stages (triage → slot extraction → entity resolution, then a code-free router) each do one job. No model decides how much authority it gets — a policy table does.
-- **Every tier produces the same artifact.** A `MutationJournal` — an immutable list of typed mutations pinned to a hash of the file it targets. The diff the user approves is a rendering of that journal, and execution replays exactly it onto a temp copy, swapped over the original only on complete success. A failure leaves the file byte-identical; a file that changed underneath the proposal invalidates it rather than being written to.
-
-→ **[Full documentation](writeback/overview.md)** · **[Pipeline rationale](specs/writeback/pipeline-architecture.md)**
+→ **[Full documentation](writeback_V3/overview.md)** · **[Contract](writeback_V3/spec.md)** · **[What changed from V2](writeback_V3/what-changed.md)**
 
 ### Real-Time Layer
 

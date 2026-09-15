@@ -103,7 +103,7 @@ class TestProposalConsumerMessages:
             "writeback.services.modification_service.ModificationService",
         ) as mock_svc_cls:
             mock_svc = mock_svc_cls.return_value
-            mock_svc.propose.side_effect = ModificationError("No IFC entities found.")
+            mock_svc.propose_in_session.side_effect = ModificationError("No IFC entities found.")
 
             await communicator.send_json_to(
                 {"action": "propose", "message": "Set fire rating to EI120"}
@@ -112,6 +112,56 @@ class TestProposalConsumerMessages:
 
         assert response["type"] == "error"
 
+        await communicator.disconnect()
+
+    async def test_cancel_reaches_a_running_propose_and_a_second_propose_is_refused(
+        self, project, user
+    ):
+        """Stop mid-run: the pipeline stops at its next emit and no proposal frame follows."""
+        import time
+        from unittest.mock import patch
+
+        from writeback.services.emitters import Phase
+
+        def slow_propose(
+            session, text, user, *, conflict_ids="", skip_guardian=False, emitter=None
+        ):
+            emitter.emit(Phase.GROUND, "running", "started")
+            deadline = time.monotonic() + 5
+            while not emitter.is_cancelled() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            emitter.emit(Phase.GENERATE, "running", "after the cancel")  # raises CancellationError
+            raise AssertionError("the cancel never reached the pipeline")
+
+        communicator = _make_communicator(ProposalConsumer, project.id, user)
+        connected, _ = await communicator.connect()
+        assert connected
+
+        with patch("writeback.services.modification_service.ModificationService") as mock_svc_cls:
+            mock_svc_cls.return_value.propose_in_session.side_effect = slow_propose
+            await communicator.send_json_to({"action": "propose", "message": "Set FireRating"})
+            first = await communicator.receive_json_from()
+            assert first == {
+                "type": "phase",
+                "phase": "ground",
+                "status": "running",
+                "message": "started",
+            }
+
+            await communicator.send_json_to({"action": "propose", "message": "another one"})
+            refused = await communicator.receive_json_from()
+            assert refused["type"] == "error" and "already running" in refused["message"]
+
+            await communicator.send_json_to({"action": "cancel"})
+            frames = []
+            while True:
+                frame = await communicator.receive_json_from(timeout=5)
+                frames.append(frame)
+                if frame["type"] != "phase":
+                    break
+
+        assert frames[-1] == {"type": "cancelled"}
+        assert not any(f["type"] == "proposal" for f in frames)
         await communicator.disconnect()
 
 
@@ -286,36 +336,42 @@ class TestScanConsumerMessages:
 class TestSerializeResult:
     """Tests for ProposalConsumer._serialize_result() helper."""
 
-    async def test_serialize_single_proposal_returns_proposal_key(self, project, user, ifc_file):
-        """Single proposal result has 'proposal' key (not 'proposals')."""
+    async def test_serialize_returns_the_card_dict_with_rendered_html(
+        self, project, user, ifc_file
+    ):
+        """The consumer uses the one serialiser and ships the rendered card partial."""
         from writeback.tests.factories import ModificationProposalFactory
 
         proposal = await sync_to_async(ModificationProposalFactory)(
-            ifc_file=ifc_file,
-            created_by=user,
-            diff_preview='[{"field": "FireRating"}]',
+            ifc_file=ifc_file, created_by=user
         )
 
         consumer = ProposalConsumer()
-        result = await consumer._serialize_result(proposal, [proposal])
+        result = await consumer._serialize_result(proposal)
 
-        assert "proposal" in result
         assert result["status"] == "proposed"
+        card = result["proposal"]
+        assert card["id"] == str(proposal.id)
+        assert card["rows"][0]["label"] == "Pset_WallCommon.FireRating"
+        assert f'id="proposal-card-{proposal.id}"' in card["html"]
+        assert "chain" not in result
 
-    async def test_serialize_chain_proposals_returns_chain_key(self, project, user, ifc_file):
-        """Chain result (list of proposals) has 'chain': True and 'proposals' list."""
-        from writeback.tests.factories import ModificationProposalFactory
 
-        p1 = await sync_to_async(ModificationProposalFactory)(
-            ifc_file=ifc_file, created_by=user, diff_preview="[]"
-        )
-        p2 = await sync_to_async(ModificationProposalFactory)(
-            ifc_file=ifc_file, created_by=user, diff_preview="[]"
-        )
+# ── disconnect ────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+class TestProposalConsumerDisconnect:
+    async def test_disconnect_sets_cancel_event(self, project, user):
+        """A closed tab flips the cancel event so the running pipeline stops at its next emit."""
+        import threading
 
         consumer = ProposalConsumer()
-        result = await consumer._serialize_result([p1, p2], [p1, p2])
+        consumer.user = user
+        consumer.scope = {"url_route": {"kwargs": {"project_id": str(project.id)}}}
+        consumer._cancel_event = threading.Event()
 
-        assert result["chain"] is True
-        assert "proposals" in result
-        assert len(result["proposals"]) == 2
+        await consumer.disconnect(close_code=1000)
+
+        assert consumer._cancel_event.is_set()

@@ -109,6 +109,17 @@ class TestSettingsView:
         assert b"LLM Configuration" in response.content
         assert b"Ollama endpoint" in response.content
 
+    def test_settings_page_shows_resolved_modify_model(self, client, settings):
+        """The 'About this build' block names the tag Modify will actually run on."""
+        settings.MODIFY_MODEL = "qwen2.5-coder:14b"
+        _login(client, UserFactory())
+
+        response = client.get(reverse("core:settings"))
+
+        assert response.status_code == 200
+        assert response.context["modify_route_model"] == "qwen2.5-coder:14b"
+        assert b"qwen2.5-coder:14b" in response.content
+
 
 # ── OllamaModelsAPIView ─────────────────────────────────────────────────────
 

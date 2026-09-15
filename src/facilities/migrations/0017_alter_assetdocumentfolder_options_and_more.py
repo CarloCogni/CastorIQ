@@ -5,40 +5,78 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('environments', '0008_alter_project_owner'),
-        ('facilities', '0016_asset_folders_permit_assets'),
+        ("environments", "0008_alter_project_owner"),
+        ("facilities", "0016_asset_folders_permit_assets"),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='assetdocumentfolder',
-            options={'ordering': ['name'], 'verbose_name': 'Document Folder', 'verbose_name_plural': 'Document Folders'},
+            name="assetdocumentfolder",
+            options={
+                "ordering": ["name"],
+                "verbose_name": "Document Folder",
+                "verbose_name_plural": "Document Folders",
+            },
         ),
         migrations.AddField(
-            model_name='assetdocumentfolder',
-            name='action_request',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='document_folders', to='facilities.actionrequest', verbose_name='Action Request'),
+            model_name="assetdocumentfolder",
+            name="action_request",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="document_folders",
+                to="facilities.actionrequest",
+                verbose_name="Action Request",
+            ),
         ),
         migrations.AddField(
-            model_name='assetdocumentfolder',
-            name='permit',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='document_folders', to='facilities.permit', verbose_name='Permit'),
+            model_name="assetdocumentfolder",
+            name="permit",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="document_folders",
+                to="facilities.permit",
+                verbose_name="Permit",
+            ),
         ),
         migrations.AddField(
-            model_name='assetdocumentfolder',
-            name='project',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='document_folders', to='environments.project', verbose_name='Project'),
+            model_name="assetdocumentfolder",
+            name="project",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="document_folders",
+                to="environments.project",
+                verbose_name="Project",
+            ),
         ),
         migrations.AddField(
-            model_name='assetdocumentfolder',
-            name='work_order',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='document_folders', to='facilities.workorder', verbose_name='Work Order'),
+            model_name="assetdocumentfolder",
+            name="work_order",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="document_folders",
+                to="facilities.workorder",
+                verbose_name="Work Order",
+            ),
         ),
         migrations.AlterField(
-            model_name='assetdocumentfolder',
-            name='asset',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='document_folders', to='facilities.facilityasset', verbose_name='Asset'),
+            model_name="assetdocumentfolder",
+            name="asset",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="document_folders",
+                to="facilities.facilityasset",
+                verbose_name="Asset",
+            ),
         ),
     ]

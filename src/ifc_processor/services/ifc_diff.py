@@ -1,11 +1,11 @@
 # ifc_processor/services/ifc_diff.py
 """Round-trip integrity check for IFC files: snapshot, re-read, diff.
 
-The writeback pipeline promises to change *only* what the journal says and to
-leave the rest of the model untouched. ``verify_journal`` confirms the first
-half (the requested change is present); this module confirms the second half
-(nothing else moved). Together they turn "write, re-read, confirm nothing
-degraded" into a measured column rather than a claim.
+The writeback pipeline promises to change *only* the entities the generated
+``select`` returned and to leave the rest of the model untouched. This module
+measures that: a snapshot before the code runs, a snapshot after, and a diff
+whose ``unexpected`` rows are scope violations. The same diff feeds the card,
+the commit, the index refresh and the benchmark.
 
 A snapshot captures three things that a lossy save would corrupt:
 
@@ -16,16 +16,23 @@ A snapshot captures three things that a lossy save would corrupt:
   including a coordinate rounding change, flips the hash. Geometry is out of
   scope for writeback, so this must be identical before and after.
 * **Properties** — the flattened property sets of every rooted entity, plus
-  the safe attributes writeback may set. This is what *should* differ, and
-  only where the journal says.
+  the tracked attributes and, for objects and type objects (never the
+  project context), the relationship-derived values (container, materials,
+  classifications, groups, type object) that a modification changes without
+  touching a property. This is what *should* differ, and only on the selected entities.
+  A snapshot holds each entity's **own** values only: property sets and
+  materials inherited from the type object belong to the type's row, so
+  editing a type pset or assigning a material to a type is one change on
+  the type, not one on every occurrence. A property set that appears or
+  vanishes with no properties in it is one row with an empty property name.
 
 Typical use::
 
-    before = IfcSnapshot.from_file(path)
-    ... apply journal ...
-    after = IfcSnapshot.from_file(path)
+    before = IfcSnapshot.from_model(model)
+    ... targets = select(model); modify(model, targets) ...
+    after = IfcSnapshot.from_model(model)
     diff = diff_snapshots(before, after)
-    unexpected = diff.unexpected(allowed=journal.affected_global_ids)
+    unexpected = diff.unexpected(allowed=target_global_ids, allow_population_change=True)
 """
 
 from __future__ import annotations
@@ -38,11 +45,28 @@ from pathlib import Path
 
 import ifcopenshell
 import ifcopenshell.util.element as element_util
+import ifcopenshell.util.placement as placement_util
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# Attributes writeback is allowed to set (mirrors Tier1Validator.SAFE_ATTRIBUTES).
+# Attributes the diff tracks on every rooted entity.
 TRACKED_ATTRIBUTES = ("Name", "Description", "ObjectType", "Tag", "LongName")
+# Relationship-derived values tracked on every IfcObject and IfcTypeObject,
+# so a container move, a re-parenting (a space moved to another storey), a
+# material or classification assignment or a group membership shows up in
+# the diff as an attribute change on the entity itself. The project context
+# is not tracked: registering a classification system associates it with the
+# project, which is bookkeeping, not a change a user asked for. Container,
+# Parent and TypeObject only exist on occurrences; a type object reports None.
+RELATIONSHIP_ATTRIBUTES = (
+    "Container",
+    "Parent",
+    "Materials",
+    "Classifications",
+    "Groups",
+    "TypeObject",
+)
 
 
 @dataclass(frozen=True)
@@ -76,6 +100,14 @@ class IfcSnapshot:
     geometry: dict[str, str]  # GlobalId -> representation hash
     properties: dict[str, dict[str, dict[str, object]]]  # GlobalId -> pset -> prop -> value
     attributes: dict[str, dict[str, object]]  # GlobalId -> attribute -> value
+    types: dict[str, str] = field(default_factory=dict)  # GlobalId -> IFC class
+    # GlobalIds that are IfcObject (products, groups…). Type objects are not
+    # listed: a created type is never "an entity added" on the card.
+    objects: frozenset[str] = frozenset()
+    # IfcObject GlobalId -> GlobalId of what it is attached to: its direct
+    # decomposition parent, else its direct spatial container. What a new
+    # object hangs from must be inside the selection (``IfcDiff.unexpected``).
+    parents: dict[str, str] = field(default_factory=dict)
 
     @property
     def entity_total(self) -> int:
@@ -99,12 +131,23 @@ class IfcSnapshot:
         geometry: dict[str, str] = {}
         properties: dict[str, dict[str, dict[str, object]]] = {}
         attributes: dict[str, dict[str, object]] = {}
+        types: dict[str, str] = {}
+        objects: set[str] = set()
+        parents: dict[str, str] = {}
 
         for entity in model.by_type("IfcRoot"):
             gid = entity.GlobalId
             global_ids.add(gid)
+            types[gid] = entity.is_a()
             properties[gid] = _flatten_psets(entity)
             attributes[gid] = _tracked_attributes(entity)
+            if entity.is_a("IfcObject") or entity.is_a("IfcTypeObject"):
+                attributes[gid].update(_relationship_attributes(entity))
+            if entity.is_a("IfcObject"):
+                objects.add(gid)
+                attached_to = _attachment(entity)
+                if attached_to is not None:
+                    parents[gid] = attached_to.GlobalId
             if entity.is_a("IfcProduct"):
                 geometry[gid] = _geometry_hash(entity)
 
@@ -116,6 +159,9 @@ class IfcSnapshot:
             geometry=geometry,
             properties=properties,
             attributes=attributes,
+            types=types,
+            objects=frozenset(objects),
+            parents=parents,
         )
 
 
@@ -130,6 +176,15 @@ class IfcDiff:
     geometry_changed: frozenset[str] = frozenset()
     property_changes: list[PropertyChange] = field(default_factory=list)
     attribute_changes: list[PropertyChange] = field(default_factory=list)
+    # The IfcObject subset of the population change, with classes: what a
+    # user means by "an entity was created / deleted" (relationships and
+    # property sets that come and go with a change are not listed here).
+    added_objects: dict[str, str] = field(default_factory=dict)
+    removed_objects: dict[str, str] = field(default_factory=dict)
+    # Added object GlobalId -> GlobalId of the pre-existing object it was
+    # attached to (decomposition parent or spatial container), so a creation
+    # hung from something outside the selection is a scope violation.
+    added_attachments: dict[str, str] = field(default_factory=dict)
 
     @property
     def population_ok(self) -> bool:
@@ -158,10 +213,10 @@ class IfcDiff:
     ) -> list[str]:
         """Human-readable list of changes outside what the caller permitted.
 
-        ``allowed`` is the set of GlobalIds the journal declared it would touch.
-        Property and attribute changes on those entities are fine; anything
-        else — geometry anywhere, properties on other entities, population
-        changes unless the journal creates/deletes entities — is reported.
+        ``allowed`` is the set of GlobalIds ``select`` returned. Property and
+        attribute changes on those entities are fine; anything else — geometry
+        anywhere, properties on other entities, population changes unless the
+        caller allows them — is reported.
         """
         problems: list[str] = []
         if self.schema_changed:
@@ -182,7 +237,14 @@ class IfcDiff:
                 continue
             problems.append(
                 f"{change.global_id} {change.pset}.{change.prop}: "
-                f"{change.before!r} -> {change.after!r} (not in journal)"
+                f"{change.before!r} -> {change.after!r} (not in selection)"
+            )
+        for gid, parent in sorted(self.added_attachments.items()):
+            if parent in allowed or parent in self.added_global_ids:
+                continue
+            problems.append(
+                f"new {self.added_objects.get(gid, 'entity')} {gid} attached to {parent}, "
+                "which is outside the selection"
             )
         return problems
 
@@ -195,6 +257,9 @@ class IfcDiff:
             "geometry_changed": sorted(self.geometry_changed),
             "property_changes": [c.as_dict() for c in self.property_changes],
             "attribute_changes": [c.as_dict() for c in self.attribute_changes],
+            "added_objects": dict(sorted(self.added_objects.items())),
+            "removed_objects": dict(sorted(self.removed_objects.items())),
+            "added_attachments": dict(sorted(self.added_attachments.items())),
         }
 
 
@@ -230,14 +295,22 @@ def diff_snapshots(before: IfcSnapshot, after: IfcSnapshot) -> IfcDiff:
         )
     ]
 
+    added = after.global_ids - before.global_ids
+    removed = before.global_ids - after.global_ids
+    added_objects = {gid: after.types[gid] for gid in added if gid in after.objects}
     return IfcDiff(
         schema_changed=before.schema != after.schema,
         type_count_delta=delta,
-        added_global_ids=after.global_ids - before.global_ids,
-        removed_global_ids=before.global_ids - after.global_ids,
+        added_global_ids=added,
+        removed_global_ids=removed,
         geometry_changed=geometry_changed,
         property_changes=property_changes,
         attribute_changes=attribute_changes,
+        added_objects=added_objects,
+        removed_objects={gid: before.types[gid] for gid in removed if gid in before.objects},
+        added_attachments={
+            gid: after.parents[gid] for gid in sorted(added_objects) if gid in after.parents
+        },
     )
 
 
@@ -250,9 +323,13 @@ def diff_files(before: str | Path, after: str | Path) -> IfcDiff:
 
 
 def _flatten_psets(entity) -> dict[str, dict[str, object]]:
-    """Property sets as plain nested dicts; ``id`` bookkeeping keys stripped."""
+    """The entity's own property sets as nested dicts; ``id`` keys stripped.
+
+    ``should_inherit=False``: a type's psets are the type's, so an edit on the
+    type object is a change on the type row only, never on every occurrence.
+    """
     try:
-        psets = element_util.get_psets(entity)
+        psets = element_util.get_psets(entity, should_inherit=False)
     except Exception:  # noqa: BLE001 — a malformed pset must not abort the snapshot
         logger.debug("get_psets failed for %s", entity.GlobalId, exc_info=True)
         return {}
@@ -266,20 +343,105 @@ def _tracked_attributes(entity) -> dict[str, object]:
     return {name: getattr(entity, name) for name in TRACKED_ATTRIBUTES if hasattr(entity, name)}
 
 
-def _geometry_hash(product) -> str:
-    """SHA-256 over the product's placement and representation subtree.
+def _relationship_attributes(entity) -> dict[str, object]:
+    """Container, parent, materials, classifications, groups and type object of one entity.
 
-    Walks every entity reachable from ``ObjectPlacement`` and ``Representation``
-    and feeds the tuple of its non-entity attributes into the digest. Entity
-    references are followed rather than hashed by STEP id, so renumbering on
-    save does not change the hash while any coordinate or parameter does.
+    Each value is a name or a sorted tuple of names, so a diff row reads
+    ``Materials: () -> ('Concrete',)`` rather than a STEP id. Materials are
+    the entity's **own** (``should_inherit=False``): a material assigned to
+    a type is one row on the type, never one on each occurrence. Container,
+    parent (the object this one decomposes, e.g. a space's storey) and type
+    object exist on occurrences only; a type object reports None.
+    """
+    try:
+        is_occurrence = entity.is_a("IfcObject")
+        # Direct containment only: an element hosted in a moved wall keeps its
+        # own storey relation, so the move is one row on the wall, not a
+        # violation on every window in it.
+        container = (
+            element_util.get_container(entity, should_get_direct=True) if is_occurrence else None
+        )
+        type_object = element_util.get_type(entity) if is_occurrence else None
+        parent = _decomposition_parent(entity) if is_occurrence else None
+        return {
+            "Container": getattr(container, "Name", None) if container is not None else None,
+            "Parent": getattr(parent, "Name", None) if parent is not None else None,
+            "Materials": tuple(sorted(_material_names(entity))),
+            "Classifications": tuple(sorted(_classification_refs(entity))),
+            "Groups": tuple(sorted(_group_names(entity))),
+            "TypeObject": getattr(type_object, "Name", None) if type_object is not None else None,
+        }
+    except Exception:  # noqa: BLE001 — a malformed relationship must not abort the snapshot
+        logger.debug("relationship attributes failed for %s", entity.GlobalId, exc_info=True)
+        return {}
+
+
+def _decomposition_parent(entity):
+    """The object ``entity`` directly decomposes (IfcRelAggregates / IfcRelNests), or None."""
+    for rel in getattr(entity, "Decomposes", None) or ():
+        return rel.RelatingObject
+    return None
+
+
+def _attachment(entity):
+    """What a new object hangs from: its decomposition parent, else its direct container."""
+    try:
+        parent = _decomposition_parent(entity)
+        if parent is not None:
+            return parent
+        return element_util.get_container(entity, should_get_direct=True)
+    except Exception:  # noqa: BLE001 — a malformed relationship must not abort the snapshot
+        logger.debug("attachment failed for %s", entity.GlobalId, exc_info=True)
+        return None
+
+
+def _material_names(entity) -> list[str]:
+    try:
+        return [m.Name or "" for m in element_util.get_materials(entity, should_inherit=False)]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _classification_refs(entity) -> list[str]:
+    refs = []
+    for rel in getattr(entity, "HasAssociations", None) or ():
+        if not rel.is_a("IfcRelAssociatesClassification"):
+            continue
+        ref = rel.RelatingClassification
+        ident = getattr(ref, "Identification", None) or getattr(ref, "ItemReference", None)
+        refs.append(str(ident or getattr(ref, "Name", None) or ""))
+    return refs
+
+
+def _group_names(entity) -> list[str]:
+    return [
+        rel.RelatingGroup.Name or ""
+        for rel in getattr(entity, "HasAssignments", None) or ()
+        if rel.is_a("IfcRelAssignsToGroup")
+    ]
+
+
+def _geometry_hash(product) -> str:
+    """SHA-256 over the product's world placement and representation subtree.
+
+    The placement is hashed as the resolved 4×4 world matrix (rounded), so
+    re-parenting an element to another storey while it stays where it is —
+    what ``spatial.assign_container`` does — is not a geometry change, while
+    any move is. The representation is walked entity by entity and every
+    non-entity attribute is fed into the digest; references are followed
+    rather than hashed by STEP id, so renumbering on save does not change the
+    hash while any coordinate or parameter does.
     """
     digest = hashlib.sha256()
     seen: set[int] = set()
-    stack = [
-        getattr(product, "ObjectPlacement", None),
-        getattr(product, "Representation", None),
-    ]
+    placement = getattr(product, "ObjectPlacement", None)
+    stack = [getattr(product, "Representation", None)]
+    if placement is not None:
+        try:
+            matrix = placement_util.get_local_placement(placement)
+            digest.update(np.round(np.asarray(matrix, dtype=float), 6).tobytes())
+        except Exception:  # noqa: BLE001 — fall back to walking the placement tree
+            stack.append(placement)
     while stack:
         node = stack.pop()
         if node is None or not hasattr(node, "id"):
@@ -321,6 +483,8 @@ def _normalise(value):
 def _jsonable(value):
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
     return repr(value)
 
 
@@ -328,9 +492,17 @@ def _jsonable(value):
 
 
 def _diff_nested(gid: str, before: dict, after: dict) -> list[PropertyChange]:
+    """Property rows per pset, plus one presence row for a pset added or removed empty."""
     changes: list[PropertyChange] = []
     for pset in sorted(set(before) | set(after)):
-        changes.extend(_diff_flat(gid, pset, before.get(pset, {}), after.get(pset, {})))
+        rows = _diff_flat(gid, pset, before.get(pset, {}), after.get(pset, {}))
+        if not rows and (pset in before) != (pset in after):
+            rows = [
+                PropertyChange(
+                    gid, pset, "", pset if pset in before else None, pset if pset in after else None
+                )
+            ]
+        changes.extend(rows)
     return changes
 
 

@@ -13,3 +13,9 @@ Rules for this folder:
   existing evidence → open gaps, each with a status marker.
 - Delivery artifacts drafted specifically for submission (report outline,
   figure list) may live here; anything reusable moves to `docs/` proper.
+
+## Future work (not in the FMP scope)
+
+- Fine-tuning a local model on execution-verified IfcOpenShell code, and a training
+  suite that works on any base model (`qwen3-ifc` → `qwen4-ifc`):
+  [`../brainstorming/ifc_code_model_training.md`](../brainstorming/ifc_code_model_training.md).

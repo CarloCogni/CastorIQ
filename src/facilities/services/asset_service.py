@@ -714,12 +714,8 @@ class AssetService:
                     "commissioning_date": (
                         asset.commissioning_date.isoformat() if asset.commissioning_date else ""
                     ),
-                    "warranty_end": (
-                        asset.warranty_end.isoformat() if asset.warranty_end else ""
-                    ),
-                    "classification_system": (
-                        first_ref.classification.name if first_ref else ""
-                    ),
+                    "warranty_end": (asset.warranty_end.isoformat() if asset.warranty_end else ""),
+                    "classification_system": (first_ref.classification.name if first_ref else ""),
                     "classification_code": first_ref.code if first_ref else "",
                 }
             )

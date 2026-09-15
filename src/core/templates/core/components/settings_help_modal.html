@@ -111,7 +111,7 @@
                     System administration <span class="badge bg-secondary bg-opacity-25 text-secondary fs-8">Staff</span>
                 </p>
                 <div class="d-flex flex-column gap-1 fs-8 text-secondary mb-4">
-                    <span><i class="bi bi-dot"></i><strong class="text-body">LLM Configuration.</strong> Pick the active Ollama model for this account. Affects only Ollama-routed requests; cloud providers are governed by <code>SiteLLMConfig</code> in the Django admin.</span>
+                    <span><i class="bi bi-dot"></i><strong class="text-body">LLM Configuration.</strong> Pick your own Ollama model for <em>Ask</em>. The Modify (writeback) model is site-wide and set in Django admin → Site LLM Configuration, where an installed Ollama tag or a cloud model can be chosen per purpose.</span>
                     <span><i class="bi bi-dot"></i><strong class="text-body">Embedding Model.</strong> Read-only — changing it requires re-embedding every project's IFC entities and document chunks.</span>
                     <span><i class="bi bi-dot"></i><strong class="text-body">System Status.</strong> The configured Ollama endpoint and a live connection check.</span>
                 </div>

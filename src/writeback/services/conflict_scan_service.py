@@ -31,7 +31,7 @@ from django.db.models import Q
 from langchain_core.messages import HumanMessage, SystemMessage
 from pgvector.django import CosineDistance
 
-from core.llm import get_llm, safe_invoke
+from core.llm import get_llm, resolve_model_name, safe_invoke
 from documents.models import DocumentChunk
 from ifc_processor.models import IFCEntity
 from writeback.models import Conflict, ScanRun
@@ -290,6 +290,7 @@ class ConflictScanService:
         # somehow doesn't fire.
         self.llm = get_llm(
             user=user,
+            purpose="modify",
             temperature=0.1,
             format_json=True,
             num_predict=self.SCAN_MAX_OUTPUT_TOKENS,
@@ -762,18 +763,8 @@ class ConflictScanService:
         return str(value)
 
     def _get_llm_model_name(self) -> str:
-        """Return the LLM model name for audit logging."""
-        try:
-            from core.models import UserLLMConfig
-
-            config = UserLLMConfig.objects.filter(user=self.user).first()
-            if config and config.model_name:
-                return config.model_name
-        except Exception:
-            pass
-        from django.conf import settings
-
-        return getattr(settings, "OLLAMA_MODEL", "unknown")
+        """The model the scan actually ran on, for ``ScanRun.llm_model_used``."""
+        return resolve_model_name(self.user, "modify")
 
     @staticmethod
     def _format_properties(properties: dict) -> str:

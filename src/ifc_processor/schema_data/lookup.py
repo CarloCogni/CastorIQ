@@ -77,16 +77,27 @@ def is_subtype_of(child: str, ancestor: str, schema: str = "IFC4") -> bool:
 
 @lru_cache(maxsize=1024)
 def psets_for(ifc_type: str, schema: str = "IFC4") -> tuple[str, ...]:
-    """Standard psets applicable to a type, honouring inheritance.
+    """Standard psets applicable to a type, honouring inheritance, most specific first.
 
     Pset_WallCommon lists IfcWall as applicable; IfcWallStandardCase inherits
-    it through the ancestor chain.
+    it through the ancestor chain. Psets applicable to the type itself come
+    before those it inherits (IfcWindow: Pset_WindowCommon before the
+    IfcElement-wide Pset_Condition), so a capped consumer keeps the ones that
+    matter; catalogue order within a rank.
     """
     schema = normalize_schema(schema)
-    lineage = set(ancestors(ifc_type, schema)) or {ifc_type}
-    return tuple(
-        name for name, record in psets(schema).items() if lineage & set(record["applicable"])
-    )
+    lineage = ancestors(schema=schema, ifc_type=ifc_type) or (ifc_type,)
+    rank = {name: depth for depth, name in enumerate(lineage)}
+
+    def specificity(record: dict) -> int:
+        return min((rank[t] for t in record["applicable"] if t in rank), default=len(rank))
+
+    applicable = [
+        (specificity(record), position, name)
+        for position, (name, record) in enumerate(psets(schema).items())
+        if any(t in rank for t in record["applicable"])
+    ]
+    return tuple(name for _, _, name in sorted(applicable))
 
 
 def properties_of(pset_name: str, schema: str = "IFC4") -> dict[str, dict]:

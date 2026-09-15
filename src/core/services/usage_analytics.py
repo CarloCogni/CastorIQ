@@ -27,7 +27,7 @@ from django.db.models import (
     Sum,
     Value,
 )
-from django.db.models.functions import Coalesce, TruncDay
+from django.db.models.functions import Coalesce, TruncDay, TruncWeek
 from django.utils import timezone
 
 from core.models import ErrorLog, LLMCallLog, UserTokenBudget
@@ -492,7 +492,7 @@ def unresolved_error_backlog() -> dict[str, Any]:
 
 
 def failure_record_taxonomy(window_days: int) -> dict[str, Any]:
-    """Writeback ``FailureRecord`` taxonomy: phase × category grid + tier totals.
+    """Writeback ``FailureRecord`` taxonomy: phase × category grid + the top error types.
 
     Returns ``total=0`` (and an empty grid) when nothing has happened in
     the window — the template uses that to render the "quiet" empty state
@@ -508,7 +508,7 @@ def failure_record_taxonomy(window_days: int) -> dict[str, Any]:
     phases = [p.value for p in FailureRecord.FailurePhase]
     categories = [c.value for c in FailureRecord.Category]
     grid = [[0 for _ in categories] for _ in phases]
-    tier_totals: dict[int | None, int] = {1: 0, 2: 0, 3: 0, None: 0}
+    error_types: list[dict[str, Any]] = []
 
     if total:
         rows_by_phase_cat = qs.values("failure_phase", "category").annotate(n=Count("id"))
@@ -520,15 +520,20 @@ def failure_record_taxonomy(window_days: int) -> dict[str, Any]:
             if i is not None and j is not None:
                 grid[i][j] = r["n"] or 0
 
-        for r in qs.values("tier").annotate(n=Count("id")):
-            key = r["tier"]
-            tier_totals[key] = (tier_totals.get(key) or 0) + (r["n"] or 0)
+        # The taxonomy label is what a V3 failure is about (TARGET_NOT_FOUND,
+        # SCOPE_VIOLATION, LLM_TIMEOUT…); the eight most frequent tell the story.
+        error_types = [
+            {"error_type": r["error_type"], "n": r["n"] or 0}
+            for r in qs.values("error_type")
+            .annotate(n=Count("id"))
+            .order_by("-n", "error_type")[:8]
+        ]
 
     return {
         "phases": phases,
         "categories": categories,
         "grid": grid,
-        "tier_totals": tier_totals,
+        "error_types": error_types,
         "total": total,
     }
 
@@ -789,53 +794,67 @@ MODIFY_FUNNEL_STAGES: list[str] = ["pending", "approved", "applied", "rejected",
 
 
 def modify_funnel(window_days: int = 30) -> dict[str, Any]:
-    """Modify-mode funnel: proposal status counts by tier.
+    """Modify-mode funnel: proposal status counts per ISO week of the window.
 
-    Returns ``{"tiers": [1, 2, 3], "stages": [...], "grid": [[counts]],
+    Returns ``{"labels": ["2026-W36", ...], "stages": [...], "grid": [[counts]],
     "totals": {stage: n, ...}, "total": int}``. ``grid[i][j]`` = count for
-    tier ``tiers[i]`` at stage ``stages[j]``. Tier-`None` rows (early
-    validation failures that never picked a tier) collapse into a
-    separate ``"untiered"`` row appended after the numeric tiers when
-    non-zero — keeps the chart honest without inflating the legend in the
-    common case.
+    week ``labels[i]`` at stage ``stages[j]``. Every week of the window is
+    listed, empty or not, so the chart's axis is continuous. V3 has one
+    pipeline and no tiers; the honest second axis is time.
     """
     from writeback.models import ModificationProposal
 
     since = _since(window_days)
     rows = (
         ModificationProposal.objects.filter(created_at__gte=since)
-        .values("tier", "status")
+        .annotate(week=TruncWeek("created_at"))
+        .values("week", "status")
         .annotate(n=Count("id"))
     )
 
-    counts: dict[Any, dict[str, int]] = {1: {}, 2: {}, 3: {}, None: {}}
+    counts: dict[str, dict[str, int]] = {}
     for r in rows:
-        tier_key = r["tier"]
-        if tier_key not in counts:
-            counts[None][r["status"]] = counts[None].get(r["status"], 0) + (r["n"] or 0)
-            continue
-        counts[tier_key][r["status"]] = counts[tier_key].get(r["status"], 0) + (r["n"] or 0)
+        label = _iso_week_label(r["week"])
+        counts.setdefault(label, {})
+        counts[label][r["status"]] = counts[label].get(r["status"], 0) + (r["n"] or 0)
 
-    tiers: list[Any] = [1, 2, 3]
-    if any(counts[None].values()):
-        tiers.append("untiered")
+    labels = _iso_week_labels(since, timezone.now())
+    for label in counts:  # a row outside the computed range (clock skew) is still shown
+        if label not in labels:
+            labels.append(label)
 
-    grid: list[list[int]] = []
-    for t in tiers:
-        key = None if t == "untiered" else t
-        grid.append([counts[key].get(stage, 0) for stage in MODIFY_FUNNEL_STAGES])
-
+    grid = [
+        [counts.get(label, {}).get(stage, 0) for stage in MODIFY_FUNNEL_STAGES] for label in labels
+    ]
     totals = {
-        stage: sum(grid[i][j] for i in range(len(tiers)))
+        stage: sum(grid[i][j] for i in range(len(labels)))
         for j, stage in enumerate(MODIFY_FUNNEL_STAGES)
     }
     return {
-        "tiers": tiers,
+        "labels": labels,
         "stages": MODIFY_FUNNEL_STAGES,
         "grid": grid,
         "totals": totals,
         "total": sum(totals.values()),
     }
+
+
+def _iso_week_label(moment: datetime) -> str:
+    year, week, _ = moment.date().isocalendar()
+    return f"{year}-W{week:02d}"
+
+
+def _iso_week_labels(start: datetime, end: datetime) -> list[str]:
+    """Every ISO week from ``start``'s week to ``end``'s week, in order."""
+    labels: list[str] = []
+    cursor = start - timedelta(days=start.weekday())
+    while cursor <= end:
+        labels.append(_iso_week_label(cursor))
+        cursor += timedelta(days=7)
+    last = _iso_week_label(end)
+    if last not in labels:
+        labels.append(last)
+    return labels
 
 
 def activity_heatmap(window_days: int = 30) -> dict[str, Any]:
@@ -952,53 +971,69 @@ def cohort_retention_grid(weeks: int = 8) -> dict[str, Any]:
 
 # Hypothesis-test acceptance targets, repeated in the help modal so the page
 # can render the bar's status colour without the template carrying numbers.
-ACCEPTANCE_TARGETS: dict[int, float] = {1: 90.0, 2: 70.0, 3: 50.0}
+#: The hypothesis target for the one V3 pipeline: seven proposals in ten land.
+ACCEPTANCE_TARGET_PCT = 70.0
+#: Guardian verdict rows, in display order; ``skipped`` is the recorded per-request skip.
+GUARDIAN_VERDICTS: list[str] = ["verified", "conflict", "unknown", "skipped", "failed", "pending"]
 
 
-def proposal_acceptance_rate_by_tier(window_days: int) -> dict[str, Any]:
-    """Per-tier proposal acceptance — % applied vs total proposals.
+def proposal_acceptance_rate(window_days: int) -> dict[str, Any]:
+    """Proposal acceptance — % accepted of all proposals, overall and by Guardian verdict.
 
-    Returns ``{"by_tier": [{tier, total, applied, accepted_pct, target_pct,
-    meets_target}], "overall_total": int}``. "Accepted" collapses
-    ``approved`` and ``applied`` into a single bucket because the
-    hypothesis target is "the proposal was good enough to land", not "the
-    proposal was clicked twice". Tier-`None` rows are excluded — they
-    represent early-validation failures that never picked a tier.
+    Returns ``{"overall": {total, applied, accepted_pct, target_pct,
+    meets_target}, "by_guardian": [{verdict, total, applied, accepted_pct}],
+    "overall_total": int}``. "Accepted" collapses ``approved`` and ``applied``
+    into one bucket because the hypothesis target is "the proposal was good
+    enough to land", not "the proposal was clicked twice". The Guardian split
+    asks the V3 question the dashboard can answer from the row alone: does a
+    documented conflict lower acceptance? Only verdicts that occurred are
+    listed.
     """
     from writeback.models import ModificationProposal
 
     since = _since(window_days)
     rows = (
-        ModificationProposal.objects.filter(created_at__gte=since, tier__isnull=False)
-        .values("tier", "status")
+        ModificationProposal.objects.filter(created_at__gte=since)
+        .values("verification_status", "guardian_skipped", "status")
         .annotate(n=Count("id"))
     )
-    per_tier: dict[int, dict[str, int]] = {1: {}, 2: {}, 3: {}}
+    per_verdict: dict[str, dict[str, int]] = {}
     for r in rows:
-        t = r["tier"]
-        if t in per_tier:
-            per_tier[t][r["status"]] = per_tier[t].get(r["status"], 0) + (r["n"] or 0)
+        verdict = "skipped" if r["guardian_skipped"] else r["verification_status"]
+        bucket = per_verdict.setdefault(verdict, {})
+        bucket[r["status"]] = bucket.get(r["status"], 0) + (r["n"] or 0)
 
-    by_tier: list[dict[str, Any]] = []
-    overall_total = 0
-    for t in (1, 2, 3):
-        counts = per_tier[t]
+    def _summary(counts: dict[str, int]) -> tuple[int, int, float | None]:
         total = sum(counts.values())
         applied = counts.get("applied", 0) + counts.get("approved", 0)
-        accepted_pct = round(applied / total * 100, 1) if total else None
-        target = ACCEPTANCE_TARGETS[t]
-        by_tier.append(
-            {
-                "tier": t,
-                "total": total,
-                "applied": applied,
-                "accepted_pct": accepted_pct,
-                "target_pct": target,
-                "meets_target": (accepted_pct is not None and accepted_pct >= target),
-            }
+        return total, applied, (round(applied / total * 100, 1) if total else None)
+
+    overall_counts: dict[str, int] = {}
+    for counts in per_verdict.values():
+        for status, n in counts.items():
+            overall_counts[status] = overall_counts.get(status, 0) + n
+    total, applied, accepted_pct = _summary(overall_counts)
+
+    by_guardian: list[dict[str, Any]] = []
+    for verdict in GUARDIAN_VERDICTS + sorted(set(per_verdict) - set(GUARDIAN_VERDICTS)):
+        if verdict not in per_verdict:
+            continue
+        v_total, v_applied, v_pct = _summary(per_verdict[verdict])
+        by_guardian.append(
+            {"verdict": verdict, "total": v_total, "applied": v_applied, "accepted_pct": v_pct}
         )
-        overall_total += total
-    return {"by_tier": by_tier, "overall_total": overall_total}
+
+    return {
+        "overall": {
+            "total": total,
+            "applied": applied,
+            "accepted_pct": accepted_pct,
+            "target_pct": ACCEPTANCE_TARGET_PCT,
+            "meets_target": accepted_pct is not None and accepted_pct >= ACCEPTANCE_TARGET_PCT,
+        },
+        "by_guardian": by_guardian,
+        "overall_total": total,
+    }
 
 
 def provider_mix_summary(window_days: int) -> dict[str, Any]:

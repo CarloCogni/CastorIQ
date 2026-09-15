@@ -130,19 +130,20 @@ class GitService:
     def commit_modification(
         self,
         ifc_file,
-        message: str,
-        tier: int,
-        diff_data: dict,
+        *,
+        subject: str,
+        body: str = "",
+        diff_data: dict | None = None,
         author_name: str = "Castor",
     ) -> str:
         """
         Commit a modified IFC file after an approved modification.
 
         Args:
-            ifc_file: The IFCFile model instance
-            message: Human-readable commit message
-            tier: The tier that executed the modification (1, 2, or 3)
-            diff_data: Semantic diff for the GitCommit model
+            ifc_file:    The IFCFile model instance
+            subject:     First line of the commit message
+            body:        Free-form commit body (V3 puts the generated code here)
+            diff_data:   Semantic diff, used for the "affected entities" trailer
             author_name: The user who approved
 
         Returns:
@@ -154,20 +155,17 @@ class GitService:
         shutil.copy2(src, dst)
         self.repo.index.add([ifc_file.name])
 
-        tier_labels = {1: "GREEN", 2: "ORANGE", 3: "RED"}
-        tier_label = tier_labels.get(tier, "UNKNOWN")
-
+        affected = (diff_data or {}).get("affected_entities", "?")
         full_message = (
-            f"[TIER-{tier} {tier_label}] {message}\n\n"
-            f"Approved by: {author_name}\n"
-            f"Affected entities: {diff_data.get('affected_entities', '?')}"
+            f"[MODIFY] {subject.strip().splitlines()[0] if subject.strip() else 'Modification'}\n\n"
         )
+        full_message += f"Approved by: {author_name}\nAffected entities: {affected}\n"
+        if body:
+            full_message += f"\n{body.rstrip()}\n"
 
         commit = self.repo.index.commit(full_message)
 
-        logger.info(
-            f"Committed modification to {ifc_file.name} → {commit.hexsha[:8]} (Tier {tier})"
-        )
+        logger.info(f"Committed modification to {ifc_file.name} → {commit.hexsha[:8]}")
         return commit.hexsha
 
     # ── Rollback ───────────────────────────────────────────
