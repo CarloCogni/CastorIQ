@@ -8,28 +8,38 @@ it lives (`docs/evaluation/`, `runs/`, `fixtures/`). Updated 2026-09-16.
 - [ ] **Canvas unlock.** Submit the FMP satisfaction survey (Pablo), the M9U4
       survey (Guillermo) and the second group feedback survey. The assignment
       stays locked until all three are in. Do this first.
-- [x] **Memory rebuilt for V3** (2026-09-16). `delivery-docs/CastorIQ_Final_Memory_MAIN_v3.docx`
-      and `…_APPENDICES_v3.docx` are generated from `report-sections/*.md` by
+- [x] **Memory rebuilt for the V3 write path, as v2** (2026-09-16).
+      `delivery-docs/CastorIQ_Final_Memory_MAIN_v2.docx` and
+      `…_APPENDICES_v2.docx` (the team draft is v1) were generated from `report-sections/*.md` by
       `tools/rewrite_memory.py` and `tools/rewrite_appendices.py` (commands in
-      each script's docstring). Edit the Markdown and rerun; a hand edit to a
-      `_v3.docx` is lost on the next rebuild. The memory build refuses to save
+      each script's docstring); the scripts still write `_v3` names, and the
+      files were renamed to `_v2` by hand. The memory build refuses to save
       if a figure in the abstract, §5 or §6 is not in a record under
       `docs/evaluation/`, if a withdrawn figure or V2 term survives, or if the
       body passes 5,000 words (4,977 now; tables, glossary and references
       excluded).
-- [x] **Review copies for the team** (2026-09-16): `…_MAIN_v3_REVIEW.docx`
-      and `…_APPENDICES_v3_REVIEW.docx`, built with `--review`. They restore
+- [x] **Review copies for the team** (2026-09-16): `…_MAIN_v2_REVIEW.docx`
+      and `…_APPENDICES_v2_REVIEW.docx`, built with `--review`. They restore
       the draft's four review colours where they still apply, the colour
       legend, a "what changed and why" table, and Word tracked changes against
       the team's originals; revision tracking is on for teammates' own edits.
       Three of the draft's six footnotes still applied and are back in the
       clean files (STEP format; OCR figures, reworded to the vendor source;
       security test commit); the other three belonged to removed text.
-- [ ] **Team review of the v3 documents.** Send the two `_REVIEW` files.
-      Teammates comment in Word; move accepted wording into
-      `report-sections/*.md` and rebuild (edits made in the docx are not
-      carried over automatically). Submit only the files without `_REVIEW`
-      in their names. Every §8 line was edited; each
+- [x] **The Word files are the master copy now** (decided 2026-09-16).
+      Teammates edit `…_v2.docx` directly; submission is PDF. Do not rerun
+      `tools/rewrite_memory.py` or `rewrite_appendices.py`: they would
+      overwrite the team's edits and write `_v3` names. `report-sections/`
+      stays as the record of the v2 text.
+- [ ] **Team review of the v2 documents.** Send the two `_REVIEW` files for
+      orientation and edit the `_v2` files. Submit only the files without
+      `_REVIEW` in their names, exported to PDF.
+- [ ] **Maria checks the corrected references.** In the review copy each
+      draft reference is struck through beside its replacement (Text2BIM is
+      Du et al.; MCP4IFC is Nithyanantham et al.; the rework paper is Love and
+      Li; the FMI and PlanGrid report says 48 %; OmniDocBench co-authors; the
+      ReAct / LangGraph sentence removed because the code does not use it).
+      If she has a source for 52 %, cite that source instead. Every §8 line was edited; each
       person confirms their own. Pavla: §1, the ISO references, Appendix D.
       Islam: §4.4 (Schedule). Maria: §5.4 (her Solibri rows, `maria.csv`
       row 14). Erez: §5.4, §6.3 and Appendix E (his rows 83–97).
@@ -55,10 +65,9 @@ it lives (`docs/evaluation/`, `runs/`, `fixtures/`). Updated 2026-09-16.
       row is backed by `benchmark_rav --coverage` and the record
       `2026-09-16-rav-retrieval-coverage.md` (11/15 → 15/15 reproduced; 5/15 →
       15/15 by every constraining document added).
-- [ ] **Rebuild both documents on the commit you tag**, because Appendix F's
-      line anchors are read at build time:
-      `uv run --with python-docx python docs/fmp-delivery/tools/rewrite_memory.py --review`
-      and the same for `rewrite_appendices.py`; commit the regenerated files.
+- Appendix F's links point at the tag with line numbers read on 2026-09-16.
+  If `src/` does not change before the tag they open on the right line; if it
+  does, a link may open a few lines off. Accepted; no rebuild rule.
 - [ ] **Cut the tag on the final commit**, after Maria's and Erez's material is in:
       ```bash
       git tag -a fmp-final -m "FMP submission, 27 Sep 2026"
