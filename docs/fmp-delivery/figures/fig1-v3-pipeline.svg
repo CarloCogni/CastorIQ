@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="850" viewBox="0 0 1100 850" font-family="Helvetica, Arial, sans-serif">
+<defs>
+<marker id="arr" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#334155"/></marker>
+<marker id="red" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#b91c1c"/></marker>
+</defs>
+<rect width="1100" height="850" fill="#ffffff"/>
+<rect x="30" y="16" width="220" height="44" rx="22" fill="#f1f5f9" stroke="#475569" stroke-width="2"/>
+<text x="140" y="45" text-anchor="middle" font-size="20" font-weight="normal" fill="#0f172a">user request</text>
+<line x1="140" y1="60" x2="140" y2="96" stroke="#334155" stroke-width="2.5" marker-end="url(#arr)"/>
+<rect x="30" y="100" width="320" height="200" rx="12" fill="#e0f2fe" stroke="#0369a1" stroke-width="2.5"/>
+<text x="190.0" y="136" text-anchor="middle" font-size="26" font-weight="bold" fill="#0c4a6e">1 · ground</text>
+<text x="190.0" y="162" text-anchor="middle" font-size="17" fill="#0369a1">no model call</text>
+<text x="190.0" y="198" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">storeys, spaces, type counts</text>
+<text x="190.0" y="224" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">and property sets, read</text>
+<text x="190.0" y="250" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">from the index as exact</text>
+<text x="190.0" y="276" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">strings</text>
+<line x1="350" y1="200" x2="388" y2="200" stroke="#334155" stroke-width="2.5" marker-end="url(#arr)"/>
+<rect x="390" y="100" width="320" height="200" rx="12" fill="#fef3c7" stroke="#b45309" stroke-width="2.5"/>
+<text x="550.0" y="136" text-anchor="middle" font-size="26" font-weight="bold" fill="#78350f">2 · generate</text>
+<text x="550.0" y="162" text-anchor="middle" font-size="17" fill="#b45309">model call 1</text>
+<text x="550.0" y="198" text-anchor="middle" font-size="19" font-family="DejaVu Sans Mono, Consolas, monospace" font-weight="normal" fill="#0f172a">select(model)</text>
+<text x="550.0" y="224" text-anchor="middle" font-size="19" font-family="DejaVu Sans Mono, Consolas, monospace" font-weight="normal" fill="#0f172a">modify(model, targets)</text>
+<text x="550.0" y="250" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">or one REJECT line</text>
+<text x="550.0" y="276" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">(question, geometry, …)</text>
+<line x1="710" y1="200" x2="748" y2="200" stroke="#334155" stroke-width="2.5" marker-end="url(#arr)"/>
+<rect x="750" y="100" width="320" height="200" rx="12" fill="#e0f2fe" stroke="#0369a1" stroke-width="2.5"/>
+<text x="910.0" y="136" text-anchor="middle" font-size="26" font-weight="bold" fill="#0c4a6e">3 · run</text>
+<text x="910.0" y="162" text-anchor="middle" font-size="17" fill="#0369a1">separate process, once</text>
+<text x="910.0" y="198" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">scratch copy of the file</text>
+<text x="910.0" y="224" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">snapshot → select →</text>
+<text x="910.0" y="250" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">modify → snapshot</text>
+<text x="910.0" y="276" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="bold" fill="#0f172a">= measured diff</text>
+<line x1="1000" y1="300" x2="1000" y2="378" stroke="#334155" stroke-width="2.5" marker-end="url(#arr)"/>
+<rect x="570" y="380" width="500" height="240" rx="12" fill="#dcfce7" stroke="#15803d" stroke-width="2.5"/>
+<text x="820.0" y="416" text-anchor="middle" font-size="26" font-weight="bold" fill="#14532d">4 · verify</text>
+<text x="820.0" y="442" text-anchor="middle" font-size="17" fill="#15803d">deterministic gates, then model call 2</text>
+<text x="820.0" y="478" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">scope gate: nothing outside the selection</text>
+<text x="820.0" y="504" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">changed, no geometry moved</text>
+<text x="820.0" y="530" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">flag rule: value or property not in the</text>
+<text x="820.0" y="556" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">request, or an entity added or removed</text>
+<text x="820.0" y="582" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">blind explanation of the code and diff</text>
+<line x1="650" y1="380" x2="650" y2="304" stroke="#b91c1c" stroke-width="2.5" stroke-dasharray="8,6" marker-end="url(#red)"/>
+<text x="630" y="348" text-anchor="end" font-size="18" font-weight="normal" fill="#b91c1c">scope violation: repair, at most 2</text>
+<rect x="30" y="380" width="500" height="240" rx="12" fill="#ede9fe" stroke="#6d28d9" stroke-width="2.5"/>
+<text x="280.0" y="416" text-anchor="middle" font-size="26" font-weight="bold" fill="#4c1d95">5 · approve</text>
+<text x="280.0" y="442" text-anchor="middle" font-size="17" fill="#6d28d9">human decision, then no model call</text>
+<text x="280.0" y="478" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">fingerprint check: file unchanged</text>
+<text x="280.0" y="504" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">scratch copy replaces the original</text>
+<text x="280.0" y="530" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">git commit with the code in its body</text>
+<text x="280.0" y="556" text-anchor="middle" font-size="19" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">index refreshed from the stored diff</text>
+<rect x="30" y="666" width="1040" height="128" rx="12" fill="#f8fafc" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6,5"/>
+<text x="550" y="700" text-anchor="middle" font-size="22" font-weight="bold" fill="#0f172a">what the human sees before approving</text>
+<text x="550" y="734" text-anchor="middle" font-size="19" font-weight="normal" fill="#0f172a">the request · the blind explanation · the targets with evidence</text>
+<text x="550" y="764" text-anchor="middle" font-size="19" font-weight="normal" fill="#0f172a">the measured diff with flagged rows to tick · the Guardian verdict · the code, collapsed</text>
+<line x1="820" y1="620" x2="820" y2="664" stroke="#334155" stroke-width="2.5" marker-end="url(#arr)"/>
+<line x1="280" y1="666" x2="280" y2="624" stroke="#334155" stroke-width="2.5" marker-end="url(#arr)"/>
+<text x="550" y="832" text-anchor="middle" font-size="18" font-weight="normal" fill="#475569">The code runs once. Blue: deterministic · amber: model call · green: gate · violet: commit.</text>
+</svg>

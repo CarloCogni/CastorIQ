@@ -1,0 +1,3 @@
+# Appendices
+
+The appendices accompanying this memory are delivered as a separate companion document and do not count toward the 5000-word limit. Appendix A: Data Model Reference (auto-generated Django model diagrams for the IFC domain, document ingestion, Ask, Modify and Conflicts, identity and access, Schedule, Facilities, and deployment and observability). Appendix D: Facilities Module Operational Specification. Appendix E: Testing Log, the fourteen findings from testing the rewritten write path, with the row numbers cited in Section 5.4. The complete testing log, every evaluation record and every run artifact are in the repository at the tag `fmp-final`.

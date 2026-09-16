@@ -17,6 +17,18 @@ Rules for this folder:
 - Delivery artifacts drafted specifically for submission (report outline,
   figure list) may live here; anything reusable moves to `docs/` proper.
 
+Layout:
+
+- `delivery-docs/`: what gets submitted. The team's originals
+  (`CastorIQ_Final_Memory_MAIN.docx`, `…_APPENDICES.docx`), the testing
+  spreadsheet, the judging criteria, and the generated `…_v3.docx` files.
+- `report-sections/`: the memory's text, one Markdown file per section, plus
+  `appendix-e.md`. This is where the words are edited.
+- `tools/`: `rewrite_memory.py` and `rewrite_appendices.py` build the
+  `_v3.docx` files from the sections in the originals' own formatting and
+  check every evaluative number against `docs/evaluation/`.
+- `figures/`: Figures 1, 3 and A.7 with the commands that regenerate them.
+
 ## Future work (not in the FMP scope)
 
 - Fine-tuning a local model on execution-verified IfcOpenShell code, and a training

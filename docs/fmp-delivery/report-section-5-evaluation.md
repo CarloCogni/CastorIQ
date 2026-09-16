@@ -1,3 +1,8 @@
+> **Superseded 2026-09-16.** The memory's §5 is now built from
+> [`report-sections/05-results.md`](report-sections/05-results.md), which adds
+> the evidence map (Table 5.1) and the independent testing of §5.4. This draft
+> is kept as history; do not paste from it.
+
 # Report §5 — Evaluation and validation (replacement text)
 
 Drafted 2026-09-15 to replace §5.2 and §5.3 of the final memory. Every number

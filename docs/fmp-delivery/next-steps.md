@@ -1,21 +1,39 @@
 # Next steps to submission — checklist
 
 Owner: Carlo. Due **27 Sep 2026, 15:59**. Tick items here; evidence lives where
-it lives (`docs/evaluation/`, `runs/`, `fixtures/`). Updated 2026-09-15.
+it lives (`docs/evaluation/`, `runs/`, `fixtures/`). Updated 2026-09-16.
 
 ## 1. Things only you can do
 
 - [ ] **Canvas unlock.** Submit the FMP satisfaction survey (Pablo), the M9U4
       survey (Guillermo) and the second group feedback survey. The assignment
       stays locked until all three are in. Do this first.
-- [ ] **Paste the evaluation section into the memory.** Source:
-      `docs/fmp-delivery/report-section-5-evaluation.md` (replaces §5.2 and
-      §5.3 entirely, including the old Table 1). Keep the pointer paragraph at
-      the top; it names the `fmp-final` tag.
-- [ ] **Commit or discard the 33 leftover files** from the V3 docs pass
-      (`git status`: CLAUDE.md, README.md, docs/architecture.md, docs/guardian.md,
-      the two extended rubric maps, …). Nothing in the evaluation work depends
-      on them, but the tag should not sit on a dirty tree.
+- [x] **Memory rebuilt for V3** (2026-09-16). `delivery-docs/CastorIQ_Final_Memory_MAIN_v3.docx`
+      and `…_APPENDICES_v3.docx` are generated from `report-sections/*.md` by
+      `tools/rewrite_memory.py` and `tools/rewrite_appendices.py` (commands in
+      each script's docstring). Edit the Markdown and rerun; a hand edit to a
+      `_v3.docx` is lost on the next rebuild. The memory build refuses to save
+      if a figure in the abstract, §5 or §6 is not in a record under
+      `docs/evaluation/`, if a withdrawn figure or V2 term survives, or if the
+      body passes 5,000 words (4,951 now; tables, glossary and references
+      excluded).
+- [ ] **Team review of the v3 documents.** Every §8 line was edited; each
+      person confirms their own. Pavla: §1, the ISO references, Appendix D.
+      Islam: §4.4 (Schedule). Maria: §5.4 (her Solibri rows, `maria.csv`
+      row 14). Erez: §5.4, §6.3 and Appendix E (his rows 83–97).
+- [ ] **Appendices B and C.** The July memory promised B (screenshots) and C
+      (Scheduling guide); the appendices file holds only A and D. Add them and
+      list them in `report-sections/11-appendices.md`, or leave them out (the
+      current text lists A, D and E only).
+- [x] **References corrected** (checked against the sources 2026-09-16):
+      Text2BIM is Du, Esser, Nousias and Borrmann (2024), not Chen et al.;
+      MCP4IFC is Nithyanantham et al. (2025), not Ning et al.; the rework
+      paper is Love and Li (2000), not Love, Irani and Edwards; the
+      PlanGrid/FMI report gives 48 %, not 52 %; OmniDocBench authors fixed;
+      ReAct dropped (nothing in `src/` uses LangGraph); Cohen (1960),
+      IfcOpenShell and pgvector added.
+- [x] **Leftover files from the V3 docs pass**: none left (`git status`
+      2026-09-16 shows only the delivery work).
 - [ ] **Cut the tag on the final commit**, after Maria's and Erez's material is in:
       ```bash
       git tag -a fmp-final -m "FMP submission, 27 Sep 2026"
@@ -42,19 +60,18 @@ Without the labelled file the row cannot stay in the memory. To keep it:
 - RAV code was untouched by V3, so the set stays valid. It does **not** wait
   on Erez's Modify re-run.
 
-## 3. Erez's V3 re-run (Modify, human row)
+## 3. Erez's V3 testing (Modify, human row)
 
-Send him this: *"Follow `docs/fmp-delivery/expert-rerun-protocol.md`. One row
-per prompt, the columns in the table there. When you're done, upload the sheet
-as `docs/fmp-delivery/erez-v3-rerun.csv` (or .xlsx) in a PR, plus the commit
-hash and the model name from Settings → About this build."*
-
-- [ ] Sheet received and committed.
-- [ ] Tell me; I will score it against the bake-off artifact where prompts
-      overlap the corpus (raw agreement and Cohen's κ), write the dated record
-      in `docs/evaluation/`, and add the human row to the memory's §5.2.1.
-- If his row is weaker than his V2 log, that goes in as stated; V2 and V3 do
-  not measure the same thing and the memory says so in one sentence.
+- [x] Sheet received 2026-09-16 (`delivery-docs/FMP-testing-logs.xlsx`, sheet
+      Erez rows 84–97) and exported with row ids to
+      `docs/evaluation/testing-log/erez.csv`.
+- [x] Record written: `docs/evaluation/2026-09-16-expert-testing-v3.md`.
+      It is a narrative log, not the per-prompt sheet of
+      `expert-rerun-protocol.md`, so **no Cohen's κ** against the bake-off is
+      possible; the record says so and the protocol stays open.
+- [ ] If Erez has time before the tag: the per-prompt sheet from the protocol,
+      on the sample house, gives the κ row. Otherwise the memory cites the
+      record as expert testing and lists κ as open.
 
 ## 4. Still open, not blocking
 
@@ -67,9 +84,12 @@ hash and the model name from Settings → About this build."*
 
 ## 5. Before you press submit
 
-- [ ] Every number in the memory's §5 grep-matches a file under
-      `docs/evaluation/` or `runs/` (the section was written that way; check
-      nothing was retyped while pasting).
+- [ ] `uv run --with python-docx python docs/fmp-delivery/tools/rewrite_memory.py`
+      saves without an UNSOURCED or PROBLEM line on the final sources, and
+      the submitted file is the one it wrote.
+- [ ] Table 5.5 still matches `pytest --collect-only` at the tagged commit
+      (2,672 in `src/` + 19 in `tests/e2e` on 2026-09-16).
 - [ ] `cd src && uv run pytest -q -p no:warnings` is green and
       `uv run ruff check` is clean at the tagged commit.
-- [ ] The memory's pointer URL opens.
+- [ ] The memory's links open (nine: the two tag folders in §5 and the
+      seven record links in Table 5.1). They 404 until the tag is pushed.

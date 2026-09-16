@@ -1,6 +1,6 @@
 # Rubric map — evidence and gaps per criterion
 
-Status: ✅ done · 🔶 in progress · ⬜ open. Updated 2026-09-15 (writeback V3; the
+Status: ✅ done · 🔶 in progress · ⬜ open. Updated 2026-09-16 (writeback V3; the
 2026-08-30 version cited the V2 tier system and is in git history).
 Mentor steer (Pablo, 2026-08-30): validation depth is the gap between 8.5 and
 9.5 — criterion 5 is where the remaining effort pays most.
@@ -42,7 +42,7 @@ harness-computed diff (`ifc_processor/services/code_sandbox.py`, `ifc_diff.py`;
 honest threat model: a speed bump, the diff and the human are the gates); scope
 gate and flag rule (`writeback/services/verifier.py`); locked, fingerprint-checked
 approval with a guarded claim (`execution_service.py`, `proposal_service.py`);
-2,668 collected tests + 19 Playwright e2e (2026-09-15); benchmarks index
+2,672 collected tests + 19 Playwright e2e (2026-09-16); benchmarks index
 `docs/benchmarks.md`.
 
 - ✅ Concurrency on one file: file row and proposal row locked from the
@@ -95,11 +95,16 @@ RAV corpus (`fixtures/benchmark/rav/`); facilities/maintenance surfaces.
 
 **Gaps to close before 27 Sep (priority order):**
 
-- ⬜ **Expert validation** — one domain expert labels ~40 outputs (RAV
-  findings, Ask answers, proposals); report agreement (Cohen's κ). Longest
-  lead time: start outreach now. Per Pablo, moves the grade more than
-  anything else. Protocol for the teammate's V3 re-run:
-  `docs/fmp-delivery/expert-rerun-protocol.md`.
+- 🔶 **Expert validation** — Erez's V3 testing through the UI (14 findings,
+  2026-09-16) is recorded and scored in
+  `docs/evaluation/2026-09-16-expert-testing-v3.md`: blind explanation,
+  file-computed diff and round-trip integrity confirmed by hand; four open
+  defects (subtype resolution, materials not grounded, Guardian verdict is an
+  equality check, scan throughput). It is a narrative log, so no Cohen's κ;
+  the per-prompt protocol (`expert-rerun-protocol.md`) that would give one is
+  still open. Maria's Solibri-referenced planted-conflict set (5/5 at class
+  level, `testing-log/maria.csv` row 14) is the third independent
+  measurement.
 - ⬜ **The 55-item hand-labelled Guardian set** behind the July memory's
   §4.2.2 (68.6 % three-class accuracy, 43 % conflicting recall) is not in the
   repo. Commit it under `fixtures/benchmark/rav/independent-set/` with a

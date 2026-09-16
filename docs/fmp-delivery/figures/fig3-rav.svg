@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="544" viewBox="0 0 1100 544" font-family="Helvetica, Arial, sans-serif">
+<defs>
+<marker id="arr" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#334155"/></marker>
+<marker id="red" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#b91c1c"/></marker>
+</defs>
+<rect width="1100" height="544" fill="#ffffff"/>
+<text x="30" y="40" text-anchor="start" font-size="21" font-weight="bold" fill="#0f172a">Guardian: every proposal, advisory (tested by hand, Section 5.4)</text>
+<rect x="30" y="58" width="184" height="176" rx="12" fill="#f1f5f9" stroke="#475569" stroke-width="2.5"/>
+<text x="122.0" y="94" text-anchor="middle" font-size="22" font-weight="bold" fill="#0f172a">proposal</text>
+<text x="122.0" y="128" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">measured diff,</text>
+<text x="122.0" y="152" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">dominant row</text>
+<rect x="244" y="58" width="184" height="176" rx="12" fill="#e0f2fe" stroke="#0369a1" stroke-width="2.5"/>
+<text x="336.0" y="94" text-anchor="middle" font-size="22" font-weight="bold" fill="#0c4a6e">query</text>
+<text x="336.0" y="128" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">entity type +</text>
+<text x="336.0" y="152" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">property +</text>
+<text x="336.0" y="176" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">new value</text>
+<rect x="458" y="58" width="184" height="176" rx="12" fill="#e0f2fe" stroke="#0369a1" stroke-width="2.5"/>
+<text x="550.0" y="94" text-anchor="middle" font-size="22" font-weight="bold" fill="#0c4a6e">search</text>
+<text x="550.0" y="128" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">top 5 document</text>
+<text x="550.0" y="152" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">chunks within</text>
+<text x="550.0" y="176" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">distance 0.45</text>
+<rect x="672" y="58" width="184" height="176" rx="12" fill="#fef3c7" stroke="#b45309" stroke-width="2.5"/>
+<text x="764.0" y="94" text-anchor="middle" font-size="22" font-weight="bold" fill="#78350f">verdict</text>
+<text x="764.0" y="120" text-anchor="middle" font-size="17" fill="#b45309">model call</text>
+<text x="764.0" y="154" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">confirms, possible</text>
+<text x="764.0" y="178" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">conflict or no</text>
+<text x="764.0" y="202" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">relevant docs</text>
+<rect x="886" y="58" width="184" height="176" rx="12" fill="#ede9fe" stroke="#6d28d9" stroke-width="2.5"/>
+<text x="978.0" y="94" text-anchor="middle" font-size="22" font-weight="bold" fill="#4c1d95">card</text>
+<text x="978.0" y="128" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">beside the diff;</text>
+<text x="978.0" y="152" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">never blocks;</text>
+<text x="978.0" y="176" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">can be skipped</text>
+<line x1="214" y1="146" x2="242" y2="146" stroke="#334155" stroke-width="2.5" marker-end="url(#arr)"/>
+<line x1="428" y1="146" x2="456" y2="146" stroke="#334155" stroke-width="2.5" marker-end="url(#arr)"/>
+<line x1="642" y1="146" x2="670" y2="146" stroke="#334155" stroke-width="2.5" marker-end="url(#arr)"/>
+<line x1="856" y1="146" x2="884" y2="146" stroke="#334155" stroke-width="2.5" marker-end="url(#arr)"/>
+<text x="30" y="290" text-anchor="start" font-size="21" font-weight="bold" fill="#0f172a">Conflict scanner: the whole model, on demand (harness, Table 5.3)</text>
+<rect x="30" y="308" width="184" height="176" rx="12" fill="#f1f5f9" stroke="#475569" stroke-width="2.5"/>
+<text x="122.0" y="344" text-anchor="middle" font-size="22" font-weight="bold" fill="#0f172a">requirements</text>
+<text x="122.0" y="378" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">document chunks</text>
+<text x="122.0" y="402" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">that say shall,</text>
+<text x="122.0" y="426" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">must, EI, U-value</text>
+<rect x="244" y="308" width="184" height="176" rx="12" fill="#e0f2fe" stroke="#0369a1" stroke-width="2.5"/>
+<text x="336.0" y="344" text-anchor="middle" font-size="22" font-weight="bold" fill="#0c4a6e">entity map</text>
+<text x="336.0" y="370" text-anchor="middle" font-size="17" fill="#0369a1">three passes</text>
+<text x="336.0" y="404" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">1 reference quoted</text>
+<text x="336.0" y="428" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">2 class + property</text>
+<text x="336.0" y="452" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">3 embedding</text>
+<rect x="458" y="308" width="184" height="176" rx="12" fill="#fef3c7" stroke="#b45309" stroke-width="2.5"/>
+<text x="550.0" y="344" text-anchor="middle" font-size="22" font-weight="bold" fill="#78350f">compare</text>
+<text x="550.0" y="370" text-anchor="middle" font-size="17" fill="#b45309">model call</text>
+<text x="550.0" y="404" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">one call per</text>
+<text x="550.0" y="428" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">matched entity:</text>
+<text x="550.0" y="452" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">conflict findings</text>
+<rect x="672" y="308" width="184" height="176" rx="12" fill="#dcfce7" stroke="#15803d" stroke-width="2.5"/>
+<text x="764.0" y="344" text-anchor="middle" font-size="22" font-weight="bold" fill="#14532d">verify</text>
+<text x="764.0" y="378" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">current value from</text>
+<text x="764.0" y="402" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">the index; finding</text>
+<text x="764.0" y="426" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">filed to its clause</text>
+<rect x="886" y="308" width="184" height="176" rx="12" fill="#ede9fe" stroke="#6d28d9" stroke-width="2.5"/>
+<text x="978.0" y="344" text-anchor="middle" font-size="22" font-weight="bold" fill="#4c1d95">Conflicts</text>
+<text x="978.0" y="378" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">severity, clause</text>
+<text x="978.0" y="402" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">and suggested fix</text>
+<text x="978.0" y="426" text-anchor="middle" font-size="17" font-family="Helvetica, Arial, sans-serif" font-weight="normal" fill="#0f172a">per entity</text>
+<line x1="214" y1="396" x2="242" y2="396" stroke="#334155" stroke-width="2.5" marker-end="url(#arr)"/>
+<line x1="428" y1="396" x2="456" y2="396" stroke="#334155" stroke-width="2.5" marker-end="url(#arr)"/>
+<line x1="642" y1="396" x2="670" y2="396" stroke="#334155" stroke-width="2.5" marker-end="url(#arr)"/>
+<line x1="856" y1="396" x2="884" y2="396" stroke="#334155" stroke-width="2.5" marker-end="url(#arr)"/>
+<text x="550" y="522" text-anchor="middle" font-size="17" font-weight="normal" fill="#475569">Grey: input · blue: retrieval · amber: model call · green: deterministic check · violet: shown to the user</text>
+</svg>
