@@ -42,8 +42,11 @@ def squash(text: str) -> str:
 def canonical_property(name: str) -> str:
     """Normalise a property label to its canonical spelling.
 
-    Strips spaces, hyphens, underscores and case, then looks the result up in
+    Drops a property-set prefix (``Pset_SlabCommon.ThermalTransmittance`` is
+    the property ``ThermalTransmittance``; models return both spellings),
+    strips spaces, hyphens, underscores and case, then looks the result up in
     ``PROPERTY_ALIASES``. Unknown names come back stripped but otherwise as-is,
     so a property the table never mentions is still a clean string.
     """
-    return PROPERTY_ALIASES.get(squash(name), name.strip())
+    bare = name.strip().rsplit(".", 1)[-1]
+    return PROPERTY_ALIASES.get(squash(bare), bare)

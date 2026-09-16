@@ -73,6 +73,13 @@ def test_canonical_property_maps_aliases_to_key_spelling():
     assert canonical_property("load_bearing") == "LoadBearing"
 
 
+def test_canonical_property_drops_a_pset_prefix():
+    """A model that answers 'Pset_SlabCommon.ThermalTransmittance' names ThermalTransmittance."""
+    assert canonical_property("Pset_SlabCommon.ThermalTransmittance") == "ThermalTransmittance"
+    assert canonical_property("Pset_WallCommon.Fire Rating") == "FireRating"
+    assert canonical_property("Pset_DoorCommon.Reference") == "Reference"
+
+
 def test_canonical_property_passes_unknown_names_through():
     """A property the key never mentions stays itself — no silent collapsing."""
     assert canonical_property("PitchAngle") == "PitchAngle"

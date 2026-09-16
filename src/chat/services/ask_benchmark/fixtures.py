@@ -41,6 +41,9 @@ class FixtureSpec:
 
 # Chosen for schema and discipline spread: IFC4 house, small IFC4 sample,
 # IFC2X3 office, IFC2X3 residential duplex (the classic FM handover model).
+# Hashes are pinned to the upstream file as of the date noted; when upstream
+# edits a fixture the old pin fails loudly and is re-pinned here on purpose,
+# never silently (open-house and duplex re-pinned 2026-09-15).
 FIXTURES: dict[str, FixtureSpec] = {
     "fzk-haus": FixtureSpec(
         filename="AC20-FZK-Haus.ifc",
@@ -49,8 +52,8 @@ FIXTURES: dict[str, FixtureSpec] = {
     ),
     "open-house": FixtureSpec(
         filename="IfcOpenHouse_IFC4.ifc",
-        sha256="6f79a3ded398d19220723897f4b7ea4bd3d8f2a586f7df5253a716e1722a0e2c",
-        size_bytes=116_158,
+        sha256="71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737dfa34c9",
+        size_bytes=113_264,
     ),
     "office-a": FixtureSpec(
         filename="Office_A_20110811.ifc",
@@ -59,8 +62,8 @@ FIXTURES: dict[str, FixtureSpec] = {
     ),
     "duplex": FixtureSpec(
         filename="duplex.ifc",
-        sha256="8355749520aa37e6b7596870b2ea92bc534a0f144c016d197c89946e19f7da34",
-        size_bytes=2_419_670,
+        sha256="b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+        size_bytes=2_380_763,
     ),
 }
 

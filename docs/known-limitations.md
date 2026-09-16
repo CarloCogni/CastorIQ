@@ -400,6 +400,68 @@ execution-verified IfcOpenShell code is **tracked as future work** in
 
 ---
 
+## 5. Conflict-scan recall is bounded by retrieval, then by the model's reading of absence
+
+### Symptom
+
+The conflict scanner (the RAV surface, `docs/conflict-scan.md`) misses planted
+contradictions. The first measured run found 5 of 25 conflict triples
+(recall 0.20) and only 1 of 11 clear-cut ones, on a corpus where every
+conflict is a single property on a single element.
+
+### Why it matters
+
+RAV is advisory and never blocks, so a miss costs nothing at approval time;
+but a scanner that reports "no conflicts" on a model with planted ones gives
+false comfort, and the panel's question is whether the number moves when the
+cause is addressed, not whether it is known.
+
+### Concrete example
+
+Model: `qwen2.5-coder:7b` via local Ollama, corpus `fixtures/benchmark/rav/`,
+three runs. The thermal specification says external cavity walls
+(`Wall-Ext_102Bwk-75Ins-100LBlk-12P`) shall not exceed 0.18 W/m²K; the three
+walls carry 0.2359. Before the retrieval fix no thermal chunk ever reached a
+wall: embedding top-K per chunk returned the nearest five entities, three
+near-identical walls crowded each other out, and the case was never shown to
+the model. After the fix the walls are reached by the chunk that quotes their
+reference and the conflict is found on every run
+([record](evaluation/2026-09-15-rav-retrieval-fix.md)).
+
+### Mitigations in place
+
+Retrieval by lookup before retrieval by embedding (reference pass, label pass,
+then top-K), verification of the current value a finding claims against the
+indexed properties (a value the entity does not carry is stored as `(not set)`,
+never invented), attribution of a finding to the chunk that quotes the
+requirement, and the Modify context size passed on every call so a longer
+prompt is not truncated. Measured on 2026-09-15, three repeats against a
+three-repeat baseline: precision 0.60 → 0.70, recall 0.16 → 0.65, F1 0.25 →
+0.68 on the coder model, and precision 0.29 → 0.71, recall 0.20 → 0.77, F1
+0.24 → 0.74 on `llama3.1:8b`; clear-conflict recall 1/11 → 6–8/11 and
+9–10/11; every key entity reached by its right document (11/15 → 15/15). The recall and F1 deltas exceed the
+baseline's spread by more than an order of magnitude; precision did not fall.
+
+### Residual risk
+
+What still fails is the model, not retrieval: an absent property the
+requirement targets (acoustic rating on doors, fire rating on a slab) is read
+as "not applicable"; the one marginal case (0.117 against ≤ 0.10) is rounded
+away; two documents that disagree about the same walls are not both reported;
+"as designed" values in the same excerpt as a limit are compared against the
+limit. Aligned requirements held on 18–23 of 26 after the fix (21–25 of 26
+before): the price of reaching more entities is a few more chances to
+misapply a requirement. The corpus is small and self-labelled.
+
+### What to do
+
+Treat RAV output as a checklist for a person, not a verdict. Cite elements in
+specifications by their model reference; the reference pass depends on it.
+Expert labelling of a larger set is the open validation item
+(`docs/fmp-delivery/rubric-map.md` §5).
+
+---
+
 ## How to add an entry
 
 When you observe a reproducible failure that is **inherent to the
