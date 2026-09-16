@@ -1,21 +1,28 @@
-<!-- takeoff/components/quantities_batch_mapping_modal.html — MAP-BIG-1/2 batch schema mapping -->
+<!-- takeoff/components/quantities_batch_mapping_modal.html — TABLE-04 Assign values -->
 <div class="modal fade" id="qtyBatchMappingModal" tabindex="-1"
      aria-labelledby="qtyBatchMappingModalLabel" aria-hidden="true"
      data-testid="qty-batch-mapping-modal">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header py-2">
-        <h5 class="modal-title" id="qtyBatchMappingModalLabel">Batch schema mapping</h5>
+        <h5 class="modal-title" id="qtyBatchMappingModalLabel">Assign values</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
+        <p class="small text-secondary mb-2" data-testid="qty-batch-mapping-openbim-note">
+          Assign Classification, Package, and Work Package for selected rows.
+          These are Castor schema targets — not IFC Classification Reference and not
+          exported authoring properties.
+        </p>
         <p class="qty-builder-note mb-2" data-testid="qty-batch-mapping-boundary">
-          This updates the current preparation session. Freeze a snapshot to review the updated 5D coverage.
-          Existing mapped rows will be overwritten only after preview.
-          Mapping applies only to selected visible rows on the current page — not all filtered rows.
+          Applies to selected rows on the current page.
+          Saved in the current working session only — not an editable saved workspace.
+          Does not write back to the IFC and does not change project source configuration.
+          Use Save version only when you want a read-only copy for review.
         </p>
         <p class="small mb-3" data-testid="qty-batch-selected-summary">
-          You are mapping <strong id="qty-batch-selected-count">0</strong> selected visible rows from the current page.
+          Assigning to <strong id="qty-batch-selected-count">0</strong> selected
+          {% if qty_prep.hierarchy.enabled %}element(s) — parent rows include all matching descendants{% else %}row(s) (current page){% endif %}.
           <span id="qty-batch-selected-classes" class="text-secondary ms-1"></span>
         </p>
 
@@ -55,7 +62,7 @@
           </div>
           {% empty %}
           <p class="text-secondary small" data-testid="qty-batch-mapping-unavailable">
-            Manual mapping values are available only for fields configured as Manual field.
+            Assign values is available for included Classification, Package, and Work Package fields.
           </p>
           {% endfor %}
 
@@ -65,7 +72,7 @@
                     value="preview"
                     class="btn btn-sm btn-outline-primary"
                     data-testid="qty-batch-preview-btn">
-              Preview mapping
+              Preview assignment
             </button>
             <button type="submit"
                     name="action"

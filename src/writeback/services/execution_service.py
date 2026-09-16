@@ -2,53 +2,59 @@
 """
 Applies approved proposals to the IFC file and records the result.
 
-Owns everything after human approval: the git safety snapshot, the write
-itself, the git commit, the proposal status transition, and the DB re-sync
-that keeps the queryable index aligned with the file.
+Approval is a swap, not a second run (spec A-3): the fingerprint of the
+original is compared with the one taken at proposal time; on a match the
+reviewed scratch copy replaces the original atomically, the change is
+committed to git with the generated code in the body, and the index is
+refreshed for exactly the GlobalIds the stored diff names. The approved diff
+and the applied diff are the same bytes by construction.
 
-Every tier writes through the MutationJournal, so there is one execution
-path. Proposals are still checked for the ``schema_version`` key their
-``changes`` payload carries — a proposal without one predates the cutover
-and is refused rather than silently mis-executed.
+Approvals on one file are serialised: the file row and the proposal row are
+locked from the fingerprint check through the commit, so two overlapping
+approve requests (a double-click, or two proposals on the same file) cannot
+both reach the swap. The loser sees the winner's outcome instead of racing it.
 """
 
 from __future__ import annotations
 
 import logging
+import os
+from dataclasses import dataclass
+from pathlib import Path
 
-import ifcopenshell
 from django.db import transaction
 from django.utils import timezone
 
-from ifc_processor.models import IFCEntity, IFCSpatialElement
-from ifc_processor.services.ifc_writer import EntityChange, IFCWriteError
-from ifc_processor.services.journal import (
-    AppliedJournal,
-    MutationJournal,
-    MutationOp,
-    applied_to_entity_changes,
-)
-from ifc_processor.services.journal_executor import JournalExecutor
+from ifc_processor.models import IFCFile
+from ifc_processor.services.fingerprint import compute_fingerprint
+from ifc_processor.services.index_refresh import refresh_entities
 from ifc_processor.services.processor import IFCProcessingService
 from writeback.models import GitCommit, ModificationProposal
 
 from .errors import ModificationError
 from .git_service import GitService
+from .proposal_service import delete_scratch
+from .verifier import aggregate_rows, population_ids
 
 logger = logging.getLogger(__name__)
 
-#: IFC classes that get an IFCSpatialElement node alongside their entity row.
-_SPATIAL_TYPE_MAP = {
-    "IfcSite": "site",
-    "IfcBuilding": "building",
-    "IfcBuildingStorey": "building_storey",
-    "IfcSpace": "space",
-    "IfcFacility": "facility",
-    "IfcFacilityPart": "facility_part",
-}
+STALE_MESSAGE = (
+    "The IFC file changed since this proposal was made: file changed, please re-propose."
+)
 
-#: Classes with no GlobalId — they never enter the IFCEntity index.
-_NON_ROOTED_CLASSES = frozenset({"IfcMaterial", "IfcClassification"})
+
+@dataclass(frozen=True)
+class _Refusal:
+    """Why an approval cannot proceed, decided under the file lock.
+
+    ``mark_failed`` is False when the refusal is not the row's own fault (a
+    wrong status); ``drop_scratch`` deletes the reviewed copy when it can
+    never be applied (the file moved underneath it).
+    """
+
+    message: str
+    mark_failed: bool = True
+    drop_scratch: bool = False
 
 
 class ExecutionService:
@@ -63,126 +69,64 @@ class ExecutionService:
 
     def execute(self, proposal: ModificationProposal) -> GitCommit:
         """
-        Execute an approved modification proposal.
+        Apply an approved proposal: lock → fingerprint check → swap → commit → index.
 
-        Steps:
-            1. Safety snapshot (git)
-            2. Write changes to IFC file
-            3. Commit to git
-            4. Update proposal status
-            5. Update entity properties in DB
+        The status is read from the locked row, never from the instance the
+        caller holds, so a proposal another request already applied, failed or
+        rejected is refused here even if the caller's copy still says pending.
 
-        Returns:
-            GitCommit record.
+        Every failure after the view's claim, including an unreadable original
+        or an unusable git repository, ends as FAILED with the scratch deleted,
+        so the row never stays claimed with no way to approve or reject it.
 
         Raises:
-            ModificationError if execution fails (auto-rollback attempted).
+            ModificationError: wrong status, incomplete row, stale file, or a
+            failed swap/commit (rolled back through git where possible).
         """
-        if proposal.status not in (
-            ModificationProposal.Status.PENDING,
-            ModificationProposal.Status.APPROVED,
-        ):
+        refusal = failure = git_commit = None
+        parent_hash = ""
+        with transaction.atomic():
+            IFCFile.objects.select_for_update().get(pk=proposal.ifc_file_id)
+            proposal = (
+                ModificationProposal.objects.select_for_update()
+                .select_related("ifc_file", "created_by")
+                .get(pk=proposal.pk)
+            )
+            try:
+                refusal = self._refusal(proposal)
+                if refusal is None:
+                    git_commit, failure, parent_hash = self._apply(proposal)
+            except Exception as e:  # noqa: BLE001 — a missing file or an unusable repo must not strand the claimed row
+                failure = e
+
+        # The failure-path writes run outside the lock: a raise inside the
+        # atomic block would roll the FAILED status back with it.
+        if refusal is not None:
+            self._refuse(proposal, refusal)
+        if failure is not None:
+            self._fail(proposal, failure, parent_hash)
             raise ModificationError(
-                f"Proposal {proposal.id} is '{proposal.status}', expected 'pending' or 'approved'."
-            )
+                f"Execution failed: {failure}",
+                failure_record_id=self._failure_record(proposal, failure),
+            ) from failure
 
-        ifc_file = proposal.ifc_file
-
-        # Refuse pre-journal proposals BEFORE snapshotting: nothing has been
-        # written, so the failure branch below (rollback + commit) must not run.
-        if not self._is_journal_proposal(proposal):
-            message = (
-                f"Proposal {proposal.id} predates the mutation-journal pipeline and "
-                f"can no longer be executed. Please make the request again."
-            )
-            proposal.status = ModificationProposal.Status.FAILED
-            proposal.error_message = message
-            proposal.save()
-            raise ModificationError(message)
-
-        # 1. Safety snapshot
-        self.git.ensure_repo()
-        parent_hash = self.git.snapshot(ifc_file) or self.git.get_parent_hash()
-
-        # 2. Execute the write operation — every tier writes through the journal.
+        diff_data = git_commit.diff_data
+        touched = (
+            diff_data["modified_global_ids"]
+            + diff_data["added_global_ids"]
+            + diff_data["removed_global_ids"]
+        )
         try:
-            changes, applied = self._execute_journal(proposal)
-        except (IFCWriteError, Exception) as e:
-            proposal.status = ModificationProposal.Status.FAILED
-            proposal.error_message = str(e)
-            proposal.save()
-
-            if parent_hash:
-                self.git.rollback(ifc_file, parent_hash)
-                logger.warning(f"Auto-rolled back after failure: {e}")
-
-            from metacastor.services.failure_classifier import create_failure_record
-
-            failure_rec = create_failure_record(
-                e,
-                phase="EXECUTION",
-                project=self.project,
-                query_text=proposal.request_text,
-                intent_json=proposal.intent_json,
-                proposal=proposal,
-            )
-            failure_id = str(failure_rec.id) if failure_rec else None
-            raise ModificationError(f"Execution failed: {e}", failure_record_id=failure_id)
-
-        # 3. Build semantic diff
-        diff_data = {
-            "tier": proposal.tier,
-            "operation": proposal.operation,
-            "affected_entities": len(changes),
-            "changes": [
-                {
-                    "entity": c.global_id,
-                    "name": c.entity_name,
-                    "ifc_type": c.ifc_type,
-                    "pset": c.pset,
-                    "property": c.property,
-                    "old": c.old_value,
-                    "new": c.new_value,
-                }
-                for c in changes
-            ],
-        }
-
-        # 4. Git commit
-        commit_hash = self.git.commit_modification(
-            ifc_file=ifc_file,
-            message=proposal.explanation,
-            tier=proposal.tier,
-            diff_data=diff_data,
-            author_name=proposal.created_by.username,
-        )
-
-        # 5. Create GitCommit record
-        git_commit = GitCommit.objects.create(
-            ifc_file=ifc_file,
-            commit_hash=commit_hash,
-            parent_hash=parent_hash,
-            message=proposal.explanation,
-            author=proposal.created_by,
-            entities_modified=len(changes),
-            diff_data=diff_data,
-        )
-
-        # 6. Update proposal status + link to commit
-        proposal.status = ModificationProposal.Status.APPLIED
-        proposal.applied_at = timezone.now()
-        proposal.git_commit = git_commit
-        proposal.save()
-
-        # 7. Sync the DB index to the new file state. The lifecycle-aware
-        # sync needs the AppliedJournal rather than the flattened
-        # EntityChange rows, which drop the typed ops and their results.
-        self._sync_journal(applied, ifc_file)
+            refresh_entities(proposal.ifc_file, touched)
+        except Exception as e:  # noqa: BLE001 — the file is applied and committed; the index can be reprocessed
+            logger.exception("Index refresh failed after applying proposal %s: %s", proposal.id, e)
 
         logger.info(
-            f"Proposal {proposal.id} applied → commit {commit_hash[:8]} ({len(changes)} changes)"
+            "Proposal %s applied → commit %s (%d touched)",
+            proposal.id,
+            git_commit.commit_hash[:8],
+            len(touched),
         )
-
         return git_commit
 
     # ── Restore / time machine ─────────────────────────────
@@ -196,7 +140,6 @@ class ExecutionService:
         2. Create a Django GitCommit record for this new state.
         3. CRITICAL: Re-run the full IFC parsing pipeline to sync the DB with the file.
         """
-        # 1. Fetch Target
         try:
             target_commit = GitCommit.objects.get(id=commit_id, ifc_file__project=self.project)
         except GitCommit.DoesNotExist:
@@ -204,28 +147,23 @@ class ExecutionService:
 
         ifc_file = target_commit.ifc_file
 
-        # 2. Git Level Revert
-        # This checks out the file and commits the result as a NEW commit.
         success = self.git.rollback(ifc_file, target_commit.commit_hash)
-
         if not success:
             raise ModificationError("Failed to revert file in git repository.")
 
-        # 3. Get the new HEAD hash (git.rollback created a new commit).
         new_head_hash = self.git.get_parent_hash()
 
-        # 4. Create Audit Record (The 'Revert' Commit)
         new_commit = GitCommit.objects.create(
             ifc_file=ifc_file,
             commit_hash=new_head_hash,
-            parent_hash=target_commit.commit_hash,  # The source we reverted TO
+            parent_hash=target_commit.commit_hash,
             message=(
                 f"Restored version from "
                 f"{target_commit.created_at.strftime('%Y-%m-%d %H:%M')} - "
                 f"{target_commit.commit_hash[:8]}"
             ),
             author=user,
-            entities_modified=0,  # Unknown until we re-parse
+            entities_modified=0,
             diff_data={
                 "operation": "ROLLBACK",
                 "restored_from_hash": target_commit.commit_hash,
@@ -234,15 +172,9 @@ class ExecutionService:
             rolled_back=True,
         )
 
-        # 5. DB Synchronization — the file on disk is now completely different
-        # from what the DB thinks it is, so re-parse it wholesale.
         logger.info(f"Re-parsing IFC file {ifc_file.name} after restore...")
-
         processor = IFCProcessingService(ifc_file)
-        pipeline_success = processor.run_pipeline()
-
-        if not pipeline_success:
-            # Parsing failed — we are in a dangerous state (File != DB).
+        if not processor.run_pipeline():
             logger.error("Restore succeeded in Git but DB sync failed.")
             ifc_file.status = "failed"
             ifc_file.error_message = "File restored, but database sync failed. Please re-process."
@@ -251,278 +183,145 @@ class ExecutionService:
 
         return new_commit
 
-    # ── Write paths ────────────────────────────────────────
+    # ── Internals ──────────────────────────────────────────
 
     @staticmethod
-    def _is_journal_proposal(proposal: ModificationProposal) -> bool:
-        """Journal proposals carry a ``schema_version`` key in ``changes``."""
-        changes = proposal.changes
-        return isinstance(changes, dict) and "schema_version" in changes
+    def _refusal(proposal: ModificationProposal) -> _Refusal | None:
+        """None when the locked row can be applied, else why not."""
+        if proposal.status not in (
+            ModificationProposal.Status.PENDING,
+            ModificationProposal.Status.APPROVED,
+        ):
+            return _Refusal(
+                f"Proposal {proposal.id} is '{proposal.status}', expected 'pending' or 'approved'.",
+                mark_failed=False,
+            )
+        complete = (
+            proposal.code
+            and proposal.target_global_ids
+            and isinstance(proposal.diff, dict)
+            and proposal.base_fingerprint
+            and proposal.scratch_path
+        )
+        if not complete:
+            return _Refusal(
+                f"Proposal {proposal.id} carries no reviewed change and cannot be applied. "
+                "Please make the request again."
+            )
+        if not Path(proposal.scratch_path).exists():
+            return _Refusal(
+                "The reviewed copy for this proposal no longer exists; please re-propose."
+            )
+        if compute_fingerprint(proposal.ifc_file.file.path) != proposal.base_fingerprint:
+            return _Refusal(STALE_MESSAGE, drop_scratch=True)
+        return None
 
-    def _execute_journal(
+    def _refuse(self, proposal: ModificationProposal, refusal: _Refusal) -> None:
+        if refusal.mark_failed:
+            self._mark_failed(proposal, refusal.message)
+        if refusal.drop_scratch:
+            delete_scratch(proposal)
+        raise ModificationError(refusal.message)
+
+    def _apply(
         self, proposal: ModificationProposal
-    ) -> tuple[list[EntityChange], AppliedJournal]:
-        """Execute a journal proposal via the unified JournalExecutor.
+    ) -> tuple[GitCommit | None, Exception | None, str]:
+        """Swap, commit and record; returns ``(commit, failure, parent_hash)``.
 
-        The journal is decoded from ``proposal.changes``, replayed onto a
-        temp copy, and atomically swapped over the original. Old values are
-        re-read from the model at apply time.
-
-        Returns both the flattened ``EntityChange`` rows (for GitCommit) and
-        the ``AppliedJournal`` itself — entity-lifecycle sync needs the typed
-        ops and their execution-time results, which the flattened rows drop.
+        Runs under the file lock. A failure is returned, not raised, so the
+        caller can leave the transaction before writing the FAILED status.
         """
-        journal = MutationJournal.from_json_dict(proposal.changes)
-        executor = JournalExecutor(proposal.ifc_file.file.path)
-        applied = executor.apply(journal)
-        if applied.stale_count:
-            logger.warning(
-                "Proposal %s: %d journal mutation(s) had drifted old values.",
-                proposal.id,
-                applied.stale_count,
-            )
-        return applied_to_entity_changes(applied), applied
-
-    # ── DB sync ────────────────────────────────────────────
-
-    @transaction.atomic
-    def _sync_journal(self, applied: AppliedJournal, ifc_file) -> None:
-        """Sync the DB index after a journal ran, lifecycle ops included.
-
-        The file has already been replaced by the time this runs and there is
-        no git safety net for the database, so the whole sync is atomic: a
-        half-applied lifecycle would leave the index lying about the model.
-        """
-        passthrough: list[EntityChange] = []
-        code_touched: list[str] = []
-
-        for item in applied.applied:
-            op = item.mutation.op
-            if op == MutationOp.CREATE_ENTITY:
-                self._sync_created(item, ifc_file)
-            elif op == MutationOp.DELETE_ENTITY:
-                self._sync_deleted(item, ifc_file)
-            elif op == MutationOp.ASSIGN_RELATIONSHIP:
-                self._sync_relationship(item, ifc_file)
-            elif op == MutationOp.RUN_CODE:
-                # Generated code reports every entity it touched; refresh
-                # exactly those from the file rather than re-parsing it all.
-                global_id = (item.result or {}).get("global_id") or ""
-                if global_id:
-                    code_touched.append(global_id)
-            else:
-                passthrough.extend(
-                    applied_to_entity_changes(
-                        AppliedJournal(journal=applied.journal, applied=(item,))
-                    )
-                )
-
-        if passthrough:
-            self._sync_entity_properties(passthrough, ifc_file)
-
-        if code_touched:
-            self._sync_run_code(code_touched, ifc_file)
-
-    def _sync_created(self, item, ifc_file) -> None:
-        """Insert the DB row (and spatial node) for a newly created entity."""
-        result = item.result or {}
-        mutation = item.mutation
-        global_id = result.get("global_id") or ""
-
-        if not global_id:
-            if mutation.ifc_type in _NON_ROOTED_CLASSES:
-                # Materials and classifications have no GlobalId and never
-                # enter the entity index — nothing to sync.
-                logger.info(
-                    "Skipping DB sync for non-rooted %s %r",
-                    mutation.ifc_type,
-                    mutation.entity_name,
-                )
-                return
-            raise ModificationError(
-                f"Created {mutation.ifc_type} has no GlobalId — the DB index "
-                f"cannot be synced. This is a bug in the executor."
-            )
-
-        entity, _created = IFCEntity.objects.update_or_create(
-            ifc_file=ifc_file,
-            global_id=global_id,
-            defaults={
-                "ifc_type": mutation.ifc_type,
-                "name": mutation.entity_name,
-                "ifc_description": (mutation.params or {}).get("description", ""),
-                "properties": {},
-            },
-        )
-
-        spatial_type = _SPATIAL_TYPE_MAP.get(mutation.ifc_type)
-        if not spatial_type:
-            return
-
-        parent_global_id = (mutation.params or {}).get("parent_global_id") or ""
-        parent_node = (
-            IFCSpatialElement.objects.filter(
-                ifc_file=ifc_file, entity__global_id=parent_global_id
-            ).first()
-            if parent_global_id
-            else None
-        )
-        IFCSpatialElement.objects.update_or_create(
-            ifc_file=ifc_file,
-            entity=entity,
-            defaults={
-                "spatial_type": spatial_type,
-                "parent": parent_node,
-                "long_name": (mutation.params or {}).get("long_name", ""),
-            },
-        )
-
-    def _sync_deleted(self, item, ifc_file) -> None:
-        """Drop the DB row for a deleted entity.
-
-        The spatial node follows via the OneToOne CASCADE, and other
-        entities' ``spatial_container`` is SET_NULL, so nothing dangles.
-        """
-        global_id = item.mutation.global_id
-        deleted, _ = IFCEntity.objects.filter(ifc_file=ifc_file, global_id=global_id).delete()
-        if not deleted:
-            logger.warning("Deleted entity %s was not in the DB index", global_id)
-
-    def _sync_relationship(self, item, ifc_file) -> None:
-        """Repoint ``IFCEntity.spatial_container`` after a container move.
-
-        Without this the file says the element sits on the new storey while
-        the index still says the old one — and Explore, spatial filters and
-        the resolver all read the index, not the file.
-        """
-        result = item.result or {}
-        global_id = item.mutation.global_id
-        destination_global_id = result.get("destination_global_id") or (
-            item.mutation.params or {}
-        ).get("destination_global_id", "")
-
-        entity = IFCEntity.objects.filter(ifc_file=ifc_file, global_id=global_id).first()
-        if entity is None:
-            logger.warning("Moved entity %s was not in the DB index", global_id)
-            return
-
-        destination_node = IFCSpatialElement.objects.filter(
-            ifc_file=ifc_file, entity__global_id=destination_global_id
-        ).first()
-        if destination_node is None:
-            raise ModificationError(
-                f"Destination {destination_global_id} has no spatial node in the index — "
-                f"the container move cannot be recorded."
-            )
-
-        entity.spatial_container = destination_node
-        entity.save(update_fields=["spatial_container"])
-
-    def _sync_run_code(self, global_ids: list[str], ifc_file) -> None:
-        """Refresh only the entities generated code reported touching.
-
-        Re-opens the modified file once and re-reads each reported entity,
-        upserting the row from the file itself. Property extraction reuses
-        :meth:`IFCParser._get_properties`, so the shape is identical to a
-        full parse (``Pset.Prop`` keys, ``Type.Pset.Prop`` fallbacks, the
-        same value coercion) — no bespoke second implementation to drift.
-
-        This deliberately replaces a full ``run_pipeline()`` re-index, which
-        re-parses every entity AND regenerates every embedding (hundreds of
-        sequential Ollama calls — minutes on a real model, synchronously,
-        inside the approve request).
-
-        Two accepted limitations, both bounded by the human code-review gate
-        that generated code still has to pass:
-
-        * It trusts the code's self-reported change list. Code that mutates
-          something it does not report leaves that row stale.
-        * Embeddings are NOT regenerated, so an entity whose description
-          changed keeps a stale vector until the file is processed again.
-        """
-        from ifc_processor.services.parser import IFCParser
-
+        ifc_file = proposal.ifc_file
+        self.git.ensure_repo()
+        parent_hash = self.git.snapshot(ifc_file) or self.git.get_parent_hash()
         try:
-            model = ifcopenshell.open(ifc_file.file.path)
-        except Exception as e:  # noqa: BLE001 — the write already succeeded
-            logger.error("Could not re-open %s to sync code changes: %s", ifc_file.name, e)
-            return
-
-        # Constructor just stores the file — cheap to build purely for its
-        # property-extraction logic.
-        parser = IFCParser(ifc_file)
-        refreshed = removed = 0
-
-        for global_id in dict.fromkeys(global_ids):  # de-dupe, keep order
-            element = self._find_element(model, global_id)
-            if element is None:
-                deleted, _ = IFCEntity.objects.filter(
-                    ifc_file=ifc_file, global_id=global_id
-                ).delete()
-                removed += deleted
-                continue
-
-            IFCEntity.objects.update_or_create(
-                ifc_file=ifc_file,
-                global_id=global_id,
-                defaults={
-                    "ifc_type": element.is_a(),
-                    "name": getattr(element, "Name", None) or "",
-                    "ifc_description": getattr(element, "Description", None) or "",
-                    "tag": getattr(element, "Tag", None) or "",
-                    "properties": parser._get_properties(element),
-                },
+            os.replace(proposal.scratch_path, ifc_file.file.path)
+            diff_data = self._diff_data(proposal)
+            commit_hash = self.git.commit_modification(
+                ifc_file,
+                subject=proposal.explanation or proposal.request_text,
+                body=self._commit_body(proposal),
+                diff_data=diff_data,
+                author_name=proposal.created_by.username,
             )
-            refreshed += 1
-
-        logger.info(
-            "RUN_CODE sync on %s: %d entit%s refreshed, %d removed",
-            ifc_file.name,
-            refreshed,
-            "y" if refreshed == 1 else "ies",
-            removed,
-        )
+            # A savepoint: the commit row, the status and the file hash land
+            # together or not at all.
+            with transaction.atomic():
+                git_commit = GitCommit.objects.create(
+                    ifc_file=ifc_file,
+                    commit_hash=commit_hash,
+                    parent_hash=parent_hash,
+                    message=proposal.explanation or proposal.request_text,
+                    author=proposal.created_by,
+                    entities_modified=len(diff_data["modified_global_ids"]),
+                    entities_added=len(diff_data["added_global_ids"]),
+                    entities_removed=len(diff_data["removed_global_ids"]),
+                    diff_data=diff_data,
+                )
+                proposal.status = ModificationProposal.Status.APPLIED
+                proposal.applied_at = timezone.now()
+                proposal.git_commit = git_commit
+                proposal.save()
+                ifc_file.file_hash = compute_fingerprint(ifc_file.file.path)
+                ifc_file.save(update_fields=["file_hash"])
+        except Exception as e:  # noqa: BLE001 — every failure is recorded and rolled back by the caller
+            return None, e, parent_hash
+        return git_commit, None, parent_hash
 
     @staticmethod
-    def _find_element(model, global_id: str):
-        """Resolve a GlobalId in the model, or None when it is gone."""
-        try:
-            return model.by_guid(global_id)
-        except (RuntimeError, KeyError):
-            return None
+    def _mark_failed(proposal: ModificationProposal, message: str) -> None:
+        proposal.status = ModificationProposal.Status.FAILED
+        proposal.error_message = message
+        proposal.save(update_fields=["status", "error_message", "updated_at"])
 
-    def _sync_entity_properties(self, changes: list[EntityChange], ifc_file) -> None:
+    def _fail(self, proposal: ModificationProposal, error: Exception, parent_hash: str) -> None:
+        self._mark_failed(proposal, str(error))
+        delete_scratch(proposal)
+        if parent_hash:
+            self.git.rollback(proposal.ifc_file, parent_hash)
+            logger.warning("Auto-rolled back after failure: %s", error)
+
+    def _failure_record(self, proposal: ModificationProposal, error: Exception) -> str | None:
+        from metacastor.services.failure_classifier import create_failure_record
+
+        record = create_failure_record(
+            error,
+            phase="EXECUTION",
+            project=self.project,
+            query_text=proposal.request_text,
+            proposal=proposal,
+        )
+        return str(record.id) if record else None
+
+    @staticmethod
+    def _diff_data(proposal: ModificationProposal) -> dict:
+        """The commit's semantic diff: objects only, never psets or relationships.
+
+        ``added_global_ids`` / ``removed_global_ids`` are the IfcObjects that
+        appeared or vanished (what a user calls "an entity"); the property
+        sets and relationship entities that come and go with a change are
+        visible through the rows, and must never reach the index refresh,
+        which would otherwise upsert them as entities. Each row carries its
+        card label so the History tab renders it without recomputing.
         """
-        Update entity properties in the database after a successful write.
+        diff = proposal.diff or {}
+        rows = aggregate_rows(diff)
+        modified = sorted(
+            {gid for row in rows if row.kind in ("property", "attribute") for gid in row.global_ids}
+        )
+        return {
+            "affected_entities": len(proposal.target_global_ids),
+            "target_global_ids": list(proposal.target_global_ids),
+            "modified_global_ids": modified,
+            "added_global_ids": population_ids(diff, "added"),
+            "removed_global_ids": population_ids(diff, "removed"),
+            "rows": [{**row.as_dict(), "label": row.label} for row in rows],
+        }
 
-        This keeps the DB in sync with the IFC file so that
-        subsequent queries and validations reflect the new state.
-        """
-        for change in changes:
-            try:
-                entity = IFCEntity.objects.get(
-                    ifc_file=ifc_file,
-                    global_id=change.global_id,
-                )
-
-                if change.pset == "(attribute)":
-                    # Direct attribute change — mirror the modeled IFC attributes
-                    # to their dedicated columns. ObjectType / LongName remain in
-                    # the properties JSON since they aren't first-class on the model.
-                    if change.property == "Name":
-                        entity.name = change.new_value
-                    elif change.property == "Description":
-                        entity.ifc_description = change.new_value
-                    elif change.property == "Tag":
-                        entity.tag = change.new_value
-                elif change.new_value == "(removed)":
-                    key = f"{change.pset}.{change.property}"
-                    entity.properties.pop(key, None)
-                else:
-                    key = f"{change.pset}.{change.property}"
-                    entity.properties[key] = change.new_value
-
-                entity.save(update_fields=["properties", "name", "ifc_description", "tag"])
-
-            except IFCEntity.DoesNotExist:
-                logger.warning(f"Could not sync entity {change.global_id} — not in DB")
+    @staticmethod
+    def _commit_body(proposal: ModificationProposal) -> str:
+        return (
+            f"Request: {proposal.request_text.strip()}\n"
+            f"Targets: {len(proposal.target_global_ids)}\n\n"
+            f"{proposal.code.rstrip()}"
+        )

@@ -6,10 +6,10 @@ Pure library code — no LLM, no Django, no per-caller context. Any Castor
 service that needs to modify an IFC file should drive these writers:
 writeback proposals, FM export reconciliation, future ingest-side patches.
 
-The class is still called ``Tier1Writer`` because writeback classifies the
-operations it exposes (SET_PROPERTY, ADD_PROPERTY, REMOVE_PROPERTY,
-SET_ATTRIBUTE) as its GREEN tier. The writer itself has no knowledge of
-that tier system — it is a neutral IFC-write primitive.
+The class is still called ``Tier1Writer`` from the V2 writeback pipeline, which
+classified the operations it exposes (SET_PROPERTY, ADD_PROPERTY, REMOVE_PROPERTY,
+SET_ATTRIBUTE) as its lowest tier. Writeback V3 no longer uses it; Facilities and
+Model Quality do. The writer is a neutral IFC-write primitive with no tier notion.
 """
 
 import logging

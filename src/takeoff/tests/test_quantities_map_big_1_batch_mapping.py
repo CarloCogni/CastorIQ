@@ -299,8 +299,8 @@ def test_quantities_page_renders_batch_controls(client):
     assert 'data-testid="qty-batch-mapping-toolbar"' in html
     assert 'data-testid="qty-batch-row-check"' in html
     assert 'data-testid="qty-batch-mapping-modal"' in html
-    assert "Batch schema mapping" in html
-    assert "Map selected visible rows" in html
+    assert "Assign values" in html
+    assert "Map selected visible rows" not in html
     prep_chunk = html.split('data-testid="quantities-prep-table"', 1)[1][:12000]
     assert "manual_session_schema_node" not in prep_chunk
     assert "model volume units" not in prep_chunk.lower()
@@ -336,7 +336,7 @@ def test_batch_preview_and_apply_endpoints(client):
     assert preview.status_code == 200
     body = preview.content.decode()
     assert 'data-testid="qty-batch-mapping-preview-result"' in body
-    assert "Freeze updated 5D snapshot" in body or "Freeze a snapshot" in body
+    assert "Save version" in body or "working session" in body.lower()
 
     apply = client.post(
         url,
@@ -470,8 +470,7 @@ def test_batch_modal_apply_disabled_and_freeze_reminder(client):
     assert 'data-qty-batch-apply-requires-preview="1"' in html
     assert 'data-testid="qty-batch-apply-gate-hint"' in html
     assert "Preview required before Apply" in html
-    assert 'data-testid="qty-schema-insight-freeze-reminder"' in html
-    assert "Freeze updated 5D snapshot" in html or "new freeze" in html.lower()
+    assert "Save version" in html
     # Apply button markup includes disabled attribute in initial HTML
     apply_idx = html.find('data-testid="qty-batch-apply-btn"')
     apply_chunk = html[apply_idx : apply_idx + 400]

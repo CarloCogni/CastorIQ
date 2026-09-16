@@ -3,7 +3,7 @@
 Sandbox primitives for executing generated IfcOpenShell code.
 
 Pure library code — no Django, no LLM. It lives in ``ifc_processor`` so the
-journal executor (also pure library) can run generated code without importing
+sandbox child (also pure library) can run generated code without importing
 from ``writeback``.
 
 This module owns the ONE definition of :data:`FORBIDDEN_PATTERNS`. The code
@@ -13,14 +13,19 @@ between "what we told the model not to write" and "what we refuse to run".
 **On the strength of this sandbox:** it is a speed bump, not a jail. The code
 runs in-process with a curated ``__builtins__`` and an import whitelist, but
 ``type`` is reachable and Python's object graph is not sealed, so a determined
-prompt-injection could plausibly escape. The load-bearing protections are
-elsewhere: the code only ever touches a *copy* of the IFC file, its return
-value is schema-validated, it runs in a subprocess with a hard timeout, and a
-human must acknowledge the code before it executes at all.
+prompt-injection could plausibly escape. ``getattr`` and ``hasattr`` are
+allowed for that reason: attribute access is unrestricted anyway, and both
+are ordinary idioms in the code the model writes. The load-bearing protections are
+elsewhere: the code only ever touches a *copy* of the IFC file, what it did
+to that copy is measured by the harness as a before/after diff, it runs in a
+subprocess with a hard timeout, and a human approves the diff before the copy
+replaces the original.
 """
 
 from __future__ import annotations
 
+import builtins
+import importlib
 import json
 import logging
 import math
@@ -33,11 +38,16 @@ import ifcopenshell
 import ifcopenshell.api
 import ifcopenshell.util.element
 
-from .ifc_writer import EntityChange
+from . import castor_select
 
 logger = logging.getLogger(__name__)
 
+#: Budget for the generated code itself on a small file.
 DEFAULT_TIMEOUT_SECONDS = 30
+#: Added per MiB of IFC: the child also opens the file, snapshots it twice and
+#: writes it back, and each of those scales with the file (measured about
+#: 0.5 s per MiB for open + two snapshots on the sample house).
+SECONDS_PER_MIB = 2
 MAX_CODE_LENGTH = 15_000
 
 #: Extra wall-clock allowance for interpreter startup + the ifcopenshell
@@ -64,14 +74,31 @@ FORBIDDEN_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"\beval\s*\(", "eval()"),
     (r"\bcompile\s*\(", "compile()"),
     (r"\bglobals\s*\(", "globals()"),
-    (r"\bgetattr\s*\(", "getattr()"),
     (r"\bsetattr\s*\(", "setattr()"),
     (r"(?<!\w)open\s*\(", "open()"),
     (r"\bmodel\.write\b", "model.write()"),
+    (
+        r"\bmodel\.create_entity\s*\(",
+        "model.create_entity() (no GlobalId; use root.create_entity(ifc_class=..., name=...))",
+    ),
 )
 
-#: Keys every entry of a result's ``changes`` list must carry.
-REQUIRED_CHANGE_KEYS = ("global_id", "entity_name", "ifc_type", "description")
+#: The ifcopenshell.api modules the api sheet names, bound in the child by these
+#: names with the model implied, so a call written as the sheet writes it runs.
+API_MODULES = (
+    "pset",
+    "root",
+    "spatial",
+    "aggregate",
+    "type",
+    "attribute",
+    "classification",
+    "material",
+    "group",
+)
+
+#: Both entry points the generated block must define.
+REQUIRED_FUNCTIONS = ("select", "modify")
 
 
 class CodeSandboxError(Exception):
@@ -86,7 +113,7 @@ def validate_code(code: str) -> None:
     """Static checks before the code is ever compiled.
 
     Raises :class:`CodeSandboxError` on empty/oversized code, a missing
-    ``modify_ifc`` entry point, or any forbidden pattern.
+    ``select`` / ``modify`` entry point, or any forbidden pattern.
     """
     if not code or not isinstance(code, str):
         raise CodeSandboxError("Code is empty or not a string")
@@ -94,75 +121,62 @@ def validate_code(code: str) -> None:
     if len(code) > MAX_CODE_LENGTH:
         raise CodeSandboxError(f"Code too long ({len(code)} chars, max {MAX_CODE_LENGTH})")
 
-    if "def modify_ifc" not in code:
-        raise CodeSandboxError("Code must define a 'modify_ifc' function")
+    for name in REQUIRED_FUNCTIONS:
+        if f"def {name}(" not in code:
+            raise CodeSandboxError(f"Code must define a '{name}' function")
 
     for pattern, label in FORBIDDEN_PATTERNS:
         if re.search(pattern, code):
             raise CodeSandboxError(f"Code contains forbidden pattern: {label}")
 
 
-def validate_result(result: object) -> None:
-    """Check the dict ``modify_ifc`` returned matches the required schema."""
-    if not isinstance(result, dict):
-        raise CodeSandboxError(f"modify_ifc() must return a dict, got {type(result).__name__}")
-
-    if "summary" not in result:
-        raise CodeSandboxError("Result missing required key: 'summary'")
-
-    changes = result.get("changes")
-    if not isinstance(changes, list):
-        raise CodeSandboxError("Result 'changes' must be a list")
-
-    for index, item in enumerate(changes):
-        if not isinstance(item, dict):
-            raise CodeSandboxError(f"Change #{index} must be a dict")
-        for key in REQUIRED_CHANGE_KEYS:
-            if key not in item:
-                raise CodeSandboxError(f"Change #{index} missing required key: {key!r}")
+def _shadowing_hint(error_type: str, detail: str) -> str:
+    """Name the api module a local variable shadowed (``pset = pset.add_pset(...)``)."""
+    if error_type != "UnboundLocalError":
+        return detail
+    shadowed = next((m for m in API_MODULES if f"'{m}'" in detail), None)
+    if shadowed is None:
+        return detail
+    return (
+        f"{detail} (the variable '{shadowed}' shadows the api module '{shadowed}'; "
+        "give the variable another name)"
+    )
 
 
-def result_to_changes(result: dict) -> list[EntityChange]:
-    """Map a validated result dict onto legacy ``EntityChange`` rows."""
-    return [
-        EntityChange(
-            global_id=str(item.get("global_id", "UNKNOWN")),
-            entity_name=str(item.get("entity_name", "")),
-            ifc_type=str(item.get("ifc_type", "UNKNOWN")),
-            pset="(code)",
-            property=str(item.get("description", "")),
-            old_value=str(item.get("old_value", "")),
-            new_value=str(item.get("new_value", "")),
-        )
-        for item in result.get("changes", [])
-    ]
+def budget_for(ifc_path: str | Path) -> int:
+    """Wall-clock seconds for a run on ``ifc_path``: the base budget plus a per-MiB share."""
+    size_mib = Path(ifc_path).stat().st_size / 1_048_576
+    return DEFAULT_TIMEOUT_SECONDS + math.ceil(size_mib * SECONDS_PER_MIB)
 
 
 def run_code_subprocess(
     ifc_path: str | Path,
     code: str,
     *,
-    timeout: int = DEFAULT_TIMEOUT_SECONDS,
+    timeout: int | None = None,
 ) -> dict:
-    """Run generated code against ``ifc_path`` in a separate process.
+    """Run a generated ``select`` / ``modify`` block against ``ifc_path`` in a child process.
 
-    The child opens the file, runs ``modify_ifc(model)``, and writes the file
-    back — so nothing unpicklable (an ``ifcopenshell.file``) has to cross the
-    process boundary; only paths and strings do.
+    The child opens the file, snapshots it, runs ``targets = select(model)``
+    then ``modify(model, targets)``, snapshots again, diffs, and writes the
+    file back — so nothing unpicklable (an ``ifcopenshell.file``) has to cross
+    the process boundary; only paths and strings do.
 
     ``subprocess.run(timeout=…)`` is the real, cross-platform wall-clock
     bound. The previous in-process ``signal.SIGALRM`` guard silently did
     nothing on Windows, so runaway code could hang forever.
 
     Args:
-        ifc_path: The file the child should open and modify (a temp copy —
+        ifc_path: The file the child should open and modify (the scratch copy —
                   never the original).
-        code:     Generated source defining ``modify_ifc(model)``.
-        timeout:  Budget for the code itself; interpreter startup and the
+        code:     Generated source defining ``select(model)`` and ``modify(model, targets)``.
+        timeout:  Budget for open + snapshots + code + write; defaults to
+                  :func:`budget_for` (size-aware). Interpreter startup and the
                   ifcopenshell import get ``_SPAWN_BUDGET_SECONDS`` on top.
 
     Returns:
-        The validated result dict the generated code returned.
+        ``{"targets": [GlobalId, ...], "diff": IfcDiff.as_dict()}`` — the
+        selection and what the run did to the file, measured by the harness.
 
     Raises:
         CodeSandboxTimeoutError: the child exceeded its budget (it is killed).
@@ -170,6 +184,8 @@ def run_code_subprocess(
     """
     ifc_path = Path(ifc_path)
     validate_code(code)  # fail before paying for a process spawn
+    if timeout is None:
+        timeout = budget_for(ifc_path)
 
     result_path = ifc_path.with_suffix(ifc_path.suffix + ".sandbox-result.json")
     job = json.dumps(
@@ -205,11 +221,13 @@ def run_code_subprocess(
         error_type = payload.get("error_type") or "Error"
         if payload.get("traceback"):
             logger.error("Sandboxed code failed:\n%s", payload["traceback"])
+        detail = _shadowing_hint(error_type, detail)
         raise CodeSandboxError(f"Generated code failed: {error_type}: {detail}")
 
-    result = payload.get("result")
-    validate_result(result)
-    return result
+    targets, diff = payload.get("targets"), payload.get("diff")
+    if not isinstance(targets, list) or not isinstance(diff, dict):
+        raise CodeSandboxError("Sandbox result is missing 'targets' or 'diff'")
+    return {"targets": targets, "diff": diff}
 
 
 def _read_result_file(result_path: Path, completed) -> dict:
@@ -226,8 +244,72 @@ def _read_result_file(result_path: Path, completed) -> dict:
         raise CodeSandboxError(f"Sandbox result file was unreadable: {e}") from e
 
 
+class BoundApiModule:
+    """One ``ifcopenshell.api`` module with the model implied.
+
+    ``spatial.assign_container(products=[e], relating_structure=s)`` runs
+    ``ifcopenshell.api.spatial.assign_container(model, products=[e], relating_structure=s)``;
+    the model may also be passed explicitly as the first argument. The ``type``
+    module doubles as the builtin: ``type(x)`` still answers the class, because
+    binding the sheet's name must not break ordinary Python.
+    """
+
+    def __init__(self, model, name: str) -> None:
+        self._model = model
+        self._name = name
+
+    def __getattr__(self, function: str):
+        module = importlib.import_module(f"ifcopenshell.api.{self._name}")
+        target = getattr(module, function)
+
+        def call(*args, **kwargs):
+            if args and args[0] is self._model:
+                args = args[1:]
+            return target(self._model, *args, **kwargs)
+
+        return call
+
+    def __call__(self, *args):
+        if self._name != "type":
+            raise TypeError(f"'{self._name}' is an api module, not a function")
+        return builtins.type(*args)
+
+
+def bound_api_modules(model) -> dict:
+    """``{module name: BoundApiModule}`` for every module the api sheet names."""
+    return {name: BoundApiModule(model, name) for name in API_MODULES}
+
+
+def prebound_names() -> dict:
+    """Names generated code may use without importing them.
+
+    The eight ``castor_select`` helpers, ``ifcopenshell`` (with ``.api`` and
+    ``.util.element`` loaded), ``api`` and ``element`` as short aliases. Small
+    models copy the shape of the prompt's example and drop its import lines;
+    binding these keeps that from being a NameError. The api modules need the
+    open model and are bound by :func:`bound_api_modules` once it exists.
+    """
+    names = {name: getattr(castor_select, name) for name in castor_select.__all__}
+    names.update(
+        {
+            "ifcopenshell": ifcopenshell,
+            "api": ifcopenshell.api,
+            "element": ifcopenshell.util.element,
+        }
+    )
+    return names
+
+
 def build_restricted_globals() -> dict:
-    """Globals for ``exec()`` — only whitelisted modules are importable."""
+    """Globals for ``exec()`` with a whitelist-enforcing ``__import__``.
+
+    The whitelist gates the ``import`` statement, not attribute access:
+    ``from ifcopenshell.util import unit`` resolves when that submodule was
+    already loaded by ``ifcopenshell.api``, because Python fetches it from
+    the package object the whitelist returned. Every module reachable that
+    way is ifcopenshell's own; the guard exists to refuse ``os``, ``sys``,
+    ``django`` and friends, and does.
+    """
     allowed_modules = {
         "ifcopenshell": ifcopenshell,
         "ifcopenshell.api": ifcopenshell.api,
@@ -235,6 +317,9 @@ def build_restricted_globals() -> dict:
         "ifcopenshell.util.element": ifcopenshell.util.element,
         "ifcopenshell.guid": _try_import("ifcopenshell.guid"),
         "ifcopenshell.util.placement": _try_import("ifcopenshell.util.placement"),
+        "ifcopenshell.util.selector": _try_import("ifcopenshell.util.selector"),
+        "castor_select": castor_select,
+        "ifc_processor.services.castor_select": castor_select,
         "math": math,
         "re": re,
         "json": json,
@@ -285,6 +370,8 @@ _SAFE_BUILTIN_NAMES = (
     "print",
     "isinstance",
     "issubclass",
+    "hasattr",
+    "getattr",
     "id",
     "hash",
     # Exceptions

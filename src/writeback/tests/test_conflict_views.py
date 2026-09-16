@@ -389,11 +389,7 @@ class TestAutoResolveOnApproval:
             created_by=user,
             request_text="Fix fire rating",
             explanation="Correct FireRating values",
-            changes=[],
-            diff_preview="EI60 → EI120",
             status="pending",
-            tier=1,
-            operation="SET_PROPERTY",
             linked_conflict_ids=[str(c.pk) for c in conflicts_batch],
         )
 
@@ -433,11 +429,7 @@ class TestAutoResolveOnApproval:
             created_by=user,
             request_text="Fix fire rating",
             explanation="Correct FireRating values",
-            changes=[],
-            diff_preview="EI60 → EI120",
             status="pending",
-            tier=1,
-            operation="SET_PROPERTY",
             linked_conflict_ids=[str(c.pk) for c in conflicts_batch],
         )
 

@@ -20,7 +20,7 @@ Castor ships a curated short-list of models per provider in the Settings dropdow
 3. Pick a curated model for that provider. The defaults are a sensible starting point.
 4. Set the **per-purpose override**:
    - **Ask** — which provider runs the RAG response stage
-   - **Modify** — which provider runs the V2 writeback pipeline stages
+   - **Modify** — which provider runs the Modify pipeline's model calls (code, explanation, Guardian)
    You can mix and match: Anthropic for Ask quality, Groq for Modify speed, or anything else.
 
 The provider badge on each LLM response shows which key actually answered, so you can confirm routing at a glance.

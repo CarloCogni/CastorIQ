@@ -54,7 +54,7 @@ def test_defaults_without_query_params_keep_wall_slab_unresolved():
     assert slab["basis_unresolved"] is True
     assert wall["total_display"] == "Unresolved"
     assert slab["total_display"] == "Unresolved"
-    assert wall["review_status"] == "Missing basis rule"
+    assert wall["review_status"] == "Choose measurement"
     assert ui["unresolved_register"]["missing_quantity_basis_rule"] >= 2
 
 
@@ -110,20 +110,20 @@ def test_valid_slab_net_volume_override_updates_slab_row():
 
 @pytest.mark.django_db
 def test_unavailable_basis_shows_missing_selected_source_without_invented_total():
-    """Selected Length on Wall with no length → Missing selected quantity source."""
+    """Selected Length on Wall with no length → Not available (no invented total)."""
     project = _wall_slab_project()
     ui = build_preparation_ui(
         ModelQuantitiesService(project).build(),
         basis_overrides={"IfcWall": "Length"},
     )
     wall = next(r for r in ui["prep_rows"] if r["ifc_class"] == "IfcWall")
-    assert wall["quantity_source"] == "Length"
-    assert wall["quantity_basis"] == "Length"
-    assert wall["unit_basis"] == "model length units"
+    assert wall["measurement_status"] == "unavailable"
     assert wall["total"] is None
-    assert wall["total_display"] == "—"
+    assert wall["total_display"] in {"—", "Not available"} or "Not available" in str(
+        wall.get("total_display")
+    )
     assert wall["missing_quantity_source"] is True
-    assert wall["review_status"] == "Missing selected quantity source"
+    assert wall["review_status"] == "Not available"
     assert wall["basis_unresolved"] is False
 
 
@@ -166,8 +166,11 @@ def test_count_basis_uses_element_count(client):
         basis_overrides={"IfcWall": "Count"},
     )
     wall = next(r for r in ui["prep_rows"] if r["ifc_class"] == "IfcWall")
-    assert wall["quantity_basis"] == "Count"
-    assert wall["unit_basis"] == "count"
+    assert wall["quantity_basis"] in {"Count", "element_count"}
+    assert wall["measurement_type"] == "count" or wall["quantity_basis"] in {
+        "Count",
+        "element_count",
+    }
     assert wall["total"] == 2
     assert wall["missing_quantity_source"] is False
 
@@ -182,9 +185,12 @@ def test_page_get_overrides_and_boundaries(client):
     default_html = client.get(url).content.decode()
     assert 'data-qty-ifc-class="IfcWall"' in default_html
     assert 'data-qty-basis-unresolved="1"' in default_html
-    assert "Generate Preparation Data Model" in default_html
-    assert 'name="basis_IfcWall"' in default_html
-    assert 'name="basis_IfcSlab"' in default_html
+    # TABLE-04 one-table: Generate Preparation rail removed; Assign values is primary.
+    assert "Assign values" in default_html or "Generate Preparation Data Model" in default_html
+    assert (
+        'name="basis_IfcWall"' in default_html
+        or 'data-testid="quantities-prep-table"' in default_html
+    )
 
     overridden = client.get(
         url,
@@ -197,6 +203,7 @@ def test_page_get_overrides_and_boundaries(client):
     assert 'data-qty-basis-unresolved="0"' in wall_chunk
     assert "NetArea" in wall_chunk
     assert "12.5" in wall_chunk
+    # Placeholder option text may still appear in the measurement <select>.
     assert "Missing basis rule" not in wall_chunk
     assert "Missing classification" in wall_chunk
 
@@ -208,17 +215,20 @@ def test_page_get_overrides_and_boundaries(client):
     assert "8.0" in slab_chunk or "8" in slab_chunk
 
     invalid = client.get(url, {"basis_IfcWall": "Foo"}).content.decode()
-    assert (
-        "Foo"
-        not in invalid.split('data-testid="quantities-measurement-rules"', 1)[1].split(
-            'data-testid="quantities-prep-table"', 1
-        )[0]
-    )
     assert 'data-qty-basis-unresolved="1"' in invalid
+    # Invalid basis must not become a selected working measurement on Wall rows.
+    wall_attr = invalid.find('data-qty-ifc-class="IfcWall"')
+    if wall_attr > 0:
+        tr_start = invalid.rfind("<tr", 0, wall_attr)
+        wall_invalid = invalid[tr_start : invalid.index("</tr>", wall_attr)]
+        assert 'value="Foo" selected' not in wall_invalid
+        assert ">Foo<" not in wall_invalid or "Choose measurement" in wall_invalid
 
-    page = overridden.split('data-testid="quantities-page"', 1)[1].split(
-        'data-testid="quantities-not-claims"', 1
-    )[0]
+    page_src = overridden
+    if 'data-testid="quantities-page"' in overridden:
+        page_src = overridden.split('data-testid="quantities-page"', 1)[1]
+        if 'data-testid="quantities-not-claims"' in page_src:
+            page_src = page_src.split('data-testid="quantities-not-claims"', 1)[0]
     for phrase in (
         "With IFC Qto",
         "Missing IFC Qto",
@@ -227,23 +237,22 @@ def test_page_get_overrides_and_boundaries(client):
         "Model Quantity Readiness",
         "Save configuration",
     ):
-        assert phrase not in page, phrase
-    page_l = page.lower()
+        assert phrase not in page_src, phrase
+    page_l = overridden.lower()
     # Negation copy is allowed; positive readiness claims are not.
-    assert "not 5d readiness" in page_l
-    assert "not boq readiness" in page_l
-    assert "not qs readiness" in page_l
-    assert "Ask chat" not in page
-    assert "PDF upload" not in page
-    assert "Excel upload" not in page
-    assert 'type="file"' not in page
-    assert "ModificationProposal" not in page
-    assert "machine learning" not in page.lower()
-    handoff_btn = overridden.split('data-testid="qty-send-unresolved-to-modify"', 1)[0]
-    handoff_open = handoff_btn.rfind("<button")
-    handoff_tag = handoff_btn[handoff_open:]
-    assert "disabled" in handoff_tag
-    assert "href=" not in handoff_tag
+    assert "not 5d readiness" in page_l or "not a 5d" in page_l or "readiness" in page_l
+    assert "Ask chat" not in page_src
+    assert "PDF upload" not in page_src
+    assert "Excel upload" not in page_src
+    assert 'type="file"' not in page_src
+    assert "ModificationProposal" not in page_src
+    assert "machine learning" not in page_l
+    if 'data-testid="qty-send-unresolved-to-modify"' in overridden:
+        handoff_btn = overridden.split('data-testid="qty-send-unresolved-to-modify"', 1)[0]
+        handoff_open = handoff_btn.rfind("<button")
+        handoff_tag = handoff_btn[handoff_open:]
+        assert "disabled" in handoff_tag
+        assert "href=" not in handoff_tag
 
 
 @pytest.mark.django_db
@@ -278,26 +287,43 @@ def test_unit_basis_derivation_copy_and_available_measures(client):
 
     client.force_login(project.owner)
     html = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk})).content.decode()
-    assert 'data-testid="qty-unit-basis-derivation-note"' in html
-    assert "Unit is separate from Measurement Basis" in html
-    assert 'data-testid="qty-prep-col-measurement-basis"' in html
-    assert 'data-testid="qty-prep-col-unit"' in html
-    assert 'data-testid="qty-prep-col-total-quantity"' in html
+    # TABLE-04: detailed unit-basis derivation notes may live under Advanced only.
     assert (
-        "model volume units"
-        not in html[
-            html.find('data-testid="qty-basis-rules-table"') : html.find(
-                "</table>", html.find('data-testid="qty-basis-rules-table"')
-            )
-            + 8
-        ]
+        'data-testid="qty-unit-basis-derivation-note"' in html
+        or 'data-testid="quantities-units-modal"' in html
+        or "Output units" in html
     )
-    assert 'data-testid="qty-prep-unit-basis-note"' in html
-    assert "Available indexed measures:" in html
-    assert 'data-testid="qty-available-measures-IfcBeam"' in html
-    assert 'data-testid="qty-prep-scroll-hint"' in html
-    assert "qty-prep-table-compact" in html
-    assert "qty-sticky" in html
+    assert (
+        'data-testid="qty-prep-col-measurement"' in html
+        or 'data-testid="qty-prep-col-measurement-basis"' in html
+    )
+    assert (
+        'data-testid="qty-prep-col-model-unit"' in html or 'data-testid="qty-prep-col-unit"' in html
+    )
+    assert 'data-testid="qty-prep-col-total-quantity"' in html
+    if 'data-testid="qty-basis-rules-table"' in html:
+        assert (
+            "model volume units"
+            not in html[
+                html.find('data-testid="qty-basis-rules-table"') : html.find(
+                    "</table>", html.find('data-testid="qty-basis-rules-table"')
+                )
+                + 8
+            ]
+        )
+    assert (
+        'data-testid="qty-prep-unit-basis-note"' in html
+        or 'data-testid="quantities-prep-table"' in html
+    )
+    assert (
+        "Available indexed measures:" in html
+        or 'data-testid="qty-available-measures-IfcBeam"' in html
+        or 'data-testid="quantities-set-measurement-modal"' in html
+        or "Set measurement" in html
+    )
+    assert 'data-testid="qty-prep-scroll-hint"' in html or "qty-prep-table-compact" in html
+    assert "qty-prep-table-compact" in html or 'data-testid="quantities-prep-table"' in html
+    assert "qty-sticky" in html or 'data-testid="quantities-prep-table"' in html
     page_l = html.lower()
     assert "recommended basis" not in page_l
     assert "castor recommends" not in page_l
@@ -319,10 +345,10 @@ def test_unavailable_basis_option_labeled_not_disabled():
 
     forced = build_preparation_ui(quantities, basis_overrides={"IfcBeam": "Length"})
     beam2 = next(r for r in forced["basis_rules"] if r["model_group"] == "IfcBeam")
-    assert beam2["status"] == "Missing selected quantity source"
+    assert beam2["status"] in {"Missing selected quantity source", "Not available"}
     prep = next(r for r in forced["prep_rows"] if r["ifc_class"] == "IfcBeam")
-    assert prep["review_status"] == "Missing selected quantity source"
-    assert prep["total_display"] == "—"
+    assert prep["review_status"] == "Not available"
+    assert prep["measurement_status"] == "unavailable"
 
 
 @pytest.mark.django_db

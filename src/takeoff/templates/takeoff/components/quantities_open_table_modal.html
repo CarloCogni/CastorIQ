@@ -1,0 +1,146 @@
+<!-- takeoff/components/quantities_open_table_modal.html — WORKSPACE-05 Open table -->
+<div class="modal fade" id="qtyOpenTableModal" tabindex="-1"
+     aria-labelledby="qtyOpenTableModalLabel" aria-hidden="true"
+     data-testid="qty-open-table-modal"
+     data-qty-editable-dirty="{% if qty_editable_status == 'unsaved' %}1{% else %}0{% endif %}">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title" id="qtyOpenTableModalLabel">Open table</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body py-2">
+        <p class="small text-secondary mb-2" data-testid="qty-open-table-help">
+          Reopen a saved editable table for this project.
+        </p>
+        <div class="list-group list-group-flush" data-testid="qty-open-table-list">
+          {% for t in qty_editable_tables %}
+          <button type="button"
+                  class="list-group-item list-group-item-action d-flex justify-content-between align-items-center px-0 py-2 qty-open-table-row"
+                  data-testid="qty-open-table-row"
+                  data-table-id="{{ t.id }}"
+                  data-table-name="{{ t.name }}">
+            <span class="text-truncate me-2">{{ t.name }}</span>
+            <span class="small text-secondary text-nowrap"
+                  data-testid="qty-open-table-updated">{{ t.updated_at|date:"Y-m-d H:i" }}</span>
+          </button>
+          {% empty %}
+          <p class="c5d-helper mb-0 py-3" data-testid="qty-open-table-empty">No saved tables yet</p>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Unsaved changes guard before opening another table -->
+<div class="modal fade" id="qtyUnsavedOpenGuardModal" tabindex="-1"
+     aria-labelledby="qtyUnsavedOpenGuardLabel" aria-hidden="true"
+     data-testid="qty-unsaved-open-guard-modal">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title" id="qtyUnsavedOpenGuardLabel">Unsaved changes</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small mb-0" data-testid="qty-unsaved-open-guard-copy">
+          You have unsaved changes. Save before opening another table, discard them, or cancel.
+        </p>
+      </div>
+      <div class="modal-footer py-2 flex-wrap gap-1">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal"
+                data-testid="qty-unsaved-cancel">Cancel</button>
+        <button type="button" class="btn btn-sm btn-outline-danger" data-testid="qty-unsaved-discard-open">
+          Discard and open
+        </button>
+        <button type="button" class="btn btn-sm btn-primary" data-testid="qty-unsaved-save-open">
+          Save and open
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<form method="post" action="{{ qty_editable_table_open_url }}" id="qty-open-table-form" class="d-none"
+      data-testid="qty-open-table-form">
+  {% csrf_token %}
+  <input type="hidden" name="table_id" id="qty-open-table-id" value="">
+</form>
+
+<script>
+(function () {
+  var openModal = document.getElementById("qtyOpenTableModal");
+  var guardModalEl = document.getElementById("qtyUnsavedOpenGuardModal");
+  var openForm = document.getElementById("qty-open-table-form");
+  var openId = document.getElementById("qty-open-table-id");
+  var saveForm = document.getElementById("qty-save-table-form");
+  var pendingId = "";
+
+  function isDirty() {
+    return openModal && openModal.getAttribute("data-qty-editable-dirty") === "1";
+  }
+
+  function submitOpen(tableId) {
+    if (!openForm || !openId || !tableId) return;
+    openId.value = tableId;
+    openForm.submit();
+  }
+
+  function openGuard(tableId) {
+    pendingId = tableId;
+    if (window.bootstrap && guardModalEl) {
+      window.bootstrap.Modal.getOrCreateInstance(guardModalEl).show();
+    }
+  }
+
+  document.querySelectorAll(".qty-open-table-row").forEach(function (row) {
+    row.addEventListener("click", function () {
+      var id = row.getAttribute("data-table-id") || "";
+      if (!id) return;
+      if (isDirty()) {
+        if (window.bootstrap && openModal) {
+          window.bootstrap.Modal.getOrCreateInstance(openModal).hide();
+        }
+        openGuard(id);
+        return;
+      }
+      submitOpen(id);
+    });
+  });
+
+  var discardBtn = document.querySelector('[data-testid="qty-unsaved-discard-open"]');
+  if (discardBtn) {
+    discardBtn.addEventListener("click", function () {
+      submitOpen(pendingId);
+    });
+  }
+
+  var saveOpenBtn = document.querySelector('[data-testid="qty-unsaved-save-open"]');
+  if (saveOpenBtn && saveForm) {
+    saveOpenBtn.addEventListener("click", function () {
+      if (!pendingId) return;
+      var nameInput = document.getElementById("qty-save-table-name");
+      if (nameInput && !(nameInput.value || "").trim()) {
+        if (window.bootstrap && guardModalEl) {
+          window.bootstrap.Modal.getOrCreateInstance(guardModalEl).hide();
+        }
+        if (window.bootstrap) {
+          window.bootstrap.Modal.getOrCreateInstance(document.getElementById("qtySaveTableModal")).show();
+        }
+        nameInput.focus();
+        return;
+      }
+      var hiddenOpen = document.createElement("input");
+      hiddenOpen.type = "hidden";
+      hiddenOpen.name = "open_after_save";
+      hiddenOpen.value = pendingId;
+      saveForm.appendChild(hiddenOpen);
+      saveForm.submit();
+    });
+  }
+})();
+</script>

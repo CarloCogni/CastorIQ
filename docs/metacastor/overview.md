@@ -6,7 +6,7 @@ Plain-English reference for the MetaCastor app.
 
 ## What MetaCastor Is
 
-When a writeback proposal fails — at validation, at execution, or inside a Tier 3 sandbox — MetaCastor captures **what went wrong** in a structured, queryable form. The Modify chat surfaces that record as a help card so the user gets an actionable retry path instead of a raw stack trace.
+When a Modify request fails — declined by the model, rejected after three code attempts, or failed at approval — MetaCastor captures **what went wrong** in a structured, queryable form. The Modify chat surfaces that record as a help card so the user gets an actionable retry path instead of a raw stack trace.
 
 The user-visible surface is that Modify failure card. The raw `FailureRecord` rows are also available to staff at the Django admin (`/admin/metacastor/failurerecord/`) for triage and pattern detection — there is no public URL.
 
@@ -14,7 +14,7 @@ That's the entire scope. Three concrete surfaces:
 
 1. **`FailureRecord` model** — one row per caught failure, with deterministic taxonomy (`error_type`, `failure_phase`, `category`), human-readable `diagnosis`, and a 1024-d query embedding when Ollama is reachable.
 2. **`failure_classifier.create_failure_record(...)`** — the factory used by `ModificationService` and the writeback consumer to capture failures.
-3. **Retry feedback via `propose(retry_of=record)`** — when a boundary stage fails, its structured `{code, path, hint}` errors are stored on the record's `intent_json`; a retry feeds them back into exactly the stage that failed.
+3. **The failure card's retry path** — the record keeps the last code block the model wrote in `ifc_context["code"]` (V3), so a failure can be read back with the code that caused it; `intent_json` and `tier` stay empty on V3 rows and hold the V2 history.
 
 MetaCastor does not touch IFC geometry, does not change the approval flow, does not run any LLM other than the optional embedding for retrieval, and does not hold deferred behaviour behind feature flags.
 

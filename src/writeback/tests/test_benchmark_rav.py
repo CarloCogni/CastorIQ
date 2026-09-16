@@ -73,6 +73,13 @@ def test_canonical_property_maps_aliases_to_key_spelling():
     assert canonical_property("load_bearing") == "LoadBearing"
 
 
+def test_canonical_property_drops_a_pset_prefix():
+    """A model that answers 'Pset_SlabCommon.ThermalTransmittance' names ThermalTransmittance."""
+    assert canonical_property("Pset_SlabCommon.ThermalTransmittance") == "ThermalTransmittance"
+    assert canonical_property("Pset_WallCommon.Fire Rating") == "FireRating"
+    assert canonical_property("Pset_DoorCommon.Reference") == "Reference"
+
+
 def test_canonical_property_passes_unknown_names_through():
     """A property the key never mentions stays itself — no silent collapsing."""
     assert canonical_property("PitchAngle") == "PitchAngle"
@@ -212,6 +219,9 @@ def test_settings_label_names_the_ablated_knobs():
     assert ScanSettings().label() == "default"
     assert ScanSettings(type_gate=False).label() == "no-type-gate"
     assert (
+        ScanSettings(entity_first=False, verify_values=False).label() == "no-entity-first+no-verify"
+    )
+    assert (
         ScanSettings(keyword_filter=False, confidence_threshold=0.0).label()
         == "no-keyword-filter+conf=0"
     )
@@ -227,3 +237,95 @@ def test_relaxed_matching_ignores_misattributed_document():
 
     assert strict.true_positives == 0 and strict.false_positives == 1
     assert relaxed.true_positives == 1 and relaxed.false_positives == 0
+
+
+# ── Repeats: aggregate and the variance-floor verdict ───────────
+
+
+def _run_dict(label: str, precision: float, recall: float, f1: float) -> dict:
+    return {
+        "label": label,
+        "scores": {
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+            "true_positives": 5,
+            "false_positives": 12,
+            "false_negatives": 20,
+            "negatives_held": 22,
+            "recall_by_severity": {"clear": {"hits": 1, "of": 11}},
+        },
+    }
+
+
+def test_aggregate_runs_reports_mean_and_spread_per_label():
+    """Three repeats of one label collapse to n=3 with mean, min and max."""
+    from writeback.services.benchmark.rav import aggregate_runs
+
+    runs = [
+        _run_dict("default", 0.29, 0.20, 0.24),
+        _run_dict("default", 0.31, 0.20, 0.24),
+        _run_dict("default", 0.33, 0.24, 0.28),
+        _run_dict("no-type-gate", 0.29, 0.20, 0.24),
+    ]
+
+    aggregate = aggregate_runs(runs)
+
+    assert aggregate["default"]["n"] == 3
+    assert aggregate["default"]["precision"] == {"mean": 0.31, "min": 0.29, "max": 0.33}
+    assert aggregate["default"]["recall_by_severity"] == {"clear": {"hits_mean": 1.0, "of": 11}}
+    assert aggregate["no-type-gate"]["n"] == 1
+
+
+def test_aggregate_diff_judges_delta_against_baseline_spread():
+    """A recall gain larger than the baseline's min-max range is called out; a smaller one is not."""
+    from writeback.services.benchmark.rav import diff_rav_aggregates
+    from writeback.services.benchmark.rav.report import RavReport
+    from writeback.services.benchmark.rav.runner import ScanSettings, ScoreSheet
+
+    baseline = {
+        "runs": [
+            _run_dict("default", 0.29, 0.20, 0.24),
+            _run_dict("default", 0.31, 0.20, 0.24),
+        ]
+    }
+    sheet = ScoreSheet(case_scores=[], unmatched=[], findings=[])
+    report = RavReport(settings=ScanSettings(), sheet=sheet, run_stats={}, started_at="")
+    report.as_dict = lambda: _run_dict("default", 0.31, 0.60, 0.41)  # type: ignore[method-assign]
+
+    text = diff_rav_aggregates(baseline, [report])
+
+    assert "recall     0.20 -> 0.60 (+0.40; spread 0.00) exceeds baseline spread" in text
+    assert "precision  0.30 -> 0.31 (+0.01; spread 0.02) within baseline spread" in text
+    assert "unmeasured" not in text
+
+
+def test_aggregate_diff_flags_a_single_run_baseline():
+    """Against an n=1 baseline every delta 'exceeds' a zero spread; the line must say the floor is unmeasured."""
+    from writeback.services.benchmark.rav import diff_rav_aggregates
+    from writeback.services.benchmark.rav.report import RavReport
+    from writeback.services.benchmark.rav.runner import ScanSettings, ScoreSheet
+
+    baseline = {"runs": [_run_dict("default", 0.29, 0.20, 0.24)]}
+    sheet = ScoreSheet(case_scores=[], unmatched=[], findings=[])
+    report = RavReport(settings=ScanSettings(), sheet=sheet, run_stats={}, started_at="")
+    report.as_dict = lambda: _run_dict("default", 0.30, 0.21, 0.25)  # type: ignore[method-assign]
+
+    text = diff_rav_aggregates(baseline, [report])
+
+    assert "baseline spread unmeasured: n=1" in text
+
+
+def test_report_column_suffixes_repeats_after_the_first():
+    """The summary table header stays 'default' for the first run and gains #2, #3 after."""
+    from writeback.services.benchmark.rav.report import RavReport
+    from writeback.services.benchmark.rav.runner import ScanSettings, ScoreSheet
+
+    sheet = ScoreSheet(case_scores=[], unmatched=[], findings=[])
+    first = RavReport(settings=ScanSettings(), sheet=sheet, run_stats={}, started_at="")
+    second = RavReport(
+        settings=ScanSettings(), sheet=sheet, run_stats={}, started_at="", repeat_index=1
+    )
+
+    assert first.column == "default"
+    assert second.column == "default#2"

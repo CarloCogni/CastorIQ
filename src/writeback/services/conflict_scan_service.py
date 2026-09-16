@@ -9,9 +9,22 @@ specification requirements.
 
 Pipeline:
     1. Gather requirement chunks — filter DocumentChunks by AEC compliance keywords
-    2. Build entity-chunk map — for each req chunk, vector-search top-K IFC entities
+    2. Build entity-chunk map — three passes per requirement chunk, union of:
+         a. reference pass — entities whose model reference or name segment the
+            chunk quotes verbatim ("Wall-Ext_102Bwk-75Ins-100LBlk-12P");
+         b. label pass — every entity of the element classes the chunk names
+            ("external walls", "windows"), capped per class, when the chunk
+            also mentions a property;
+         c. embedding pass — top-K nearest entities by cosine distance.
+       (a) and (b) are lookups, not retrieval: they exist because per-chunk
+       top-K is a lottery among near-identical embeddings (three identical
+       walls crowd each other out) and left whole conflict cases unreachable
+       (docs/evaluation/2026-08-30-rav-benchmark.md).
     3. LLM compare — one call per entity that has at least one relevant chunk
-    4. Persist — upsert Conflict records with content_hash deduplication
+    4. Verify — the current value a finding claims is checked against the
+       entity's indexed properties before anything is stored; a value the
+       entity does not carry is stored as "(not set)", never as invented
+    5. Persist — upsert Conflict records with content_hash deduplication
 
 Design mirrors guardian_service.py: same LLM factory, same chunk formatting,
 same JSON parse safety. The difference is directionality — the Guardian checks a
@@ -22,6 +35,7 @@ import concurrent.futures
 import hashlib
 import json
 import logging
+import re
 import time
 from collections import defaultdict
 
@@ -31,11 +45,13 @@ from django.db.models import Q
 from langchain_core.messages import HumanMessage, SystemMessage
 from pgvector.django import CosineDistance
 
-from core.llm import get_llm, safe_invoke
+from core.llm import get_llm, resolve_model_name, safe_invoke
 from documents.models import DocumentChunk
 from ifc_processor.models import IFCEntity
 from writeback.models import Conflict, ScanRun
 from writeback.services.emitters import CancellationError, NullEmitter
+from writeback.services.generator import NUM_CTX
+from writeback.services.property_aliases import PROPERTY_ALIASES, canonical_property, squash
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +117,48 @@ ELEMENT_TYPE_MAP: dict[str, set[str]] = {
 
 # Labels that explicitly bypass the gate (generic/applies-to-all requirements).
 ELEMENT_TYPE_ANY_LABELS = {"any", "all", "", "element", "any element"}
+
+# ────────────────────────────────────────────────────────────
+# Entity-first retrieval: the element nouns a requirement sentence
+# uses and the IFC classes each one names. Deliberately narrower
+# than ELEMENT_TYPE_MAP (the post-LLM gate): "wall" here does not
+# pull in curtain walls — a requirement that means them says so.
+# Plurals are matched by the regex in _label_types.
+# ────────────────────────────────────────────────────────────
+
+ENTITY_FIRST_LABELS: dict[str, frozenset[str]] = {
+    "wall": frozenset({"IfcWall", "IfcWallStandardCase"}),
+    "partition": frozenset({"IfcWall", "IfcWallStandardCase"}),
+    "curtain wall": frozenset({"IfcCurtainWall"}),
+    "door": frozenset({"IfcDoor"}),
+    "window": frozenset({"IfcWindow"}),
+    "slab": frozenset({"IfcSlab"}),
+    "floor": frozenset({"IfcSlab"}),
+    "deck": frozenset({"IfcSlab"}),
+    "roof": frozenset({"IfcRoof"}),
+    "beam": frozenset({"IfcBeam"}),
+    "column": frozenset({"IfcColumn"}),
+    "stair": frozenset({"IfcStair", "IfcStairFlight"}),
+    "railing": frozenset({"IfcRailing"}),
+    "covering": frozenset({"IfcCovering"}),
+    "ceiling": frozenset({"IfcCovering"}),
+}
+
+# A reference must read like a model type code, not a word: at least this long
+# and carrying a digit, an underscore or a hyphen ("Wall-Ext_102Bwk", "1810x1210mm"),
+# or a multi-word name of at least MIN_PHRASE_LENGTH ("Simple floor"). "Glazed"
+# or "Floor" would match ordinary prose.
+MIN_REFERENCE_LENGTH = 6
+MIN_PHRASE_LENGTH = 10
+
+# Short property aliases that need a word boundary rather than substring search
+# ("rw" is inside too many words).
+_SHORT_PROPERTY_RE = re.compile(r"\b(r'?w|u-?value)\b", re.IGNORECASE)
+_LONG_PROPERTY_ALIASES = tuple(alias for alias in PROPERTY_ALIASES if len(alias) >= 4)
+
+# The LLM's way of saying "the entity has no such property"; not a fabricated value.
+_ABSENCE_RE = re.compile(r"absent|not set|none|null|missing|n/a|no propert", re.IGNORECASE)
+_NEGATION_RE = re.compile(r"\b(non|not|no)\b|non-", re.IGNORECASE)
 
 
 # ────────────────────────────────────────────────────────────
@@ -216,7 +274,12 @@ class ConflictScanService:
     """
 
     ENTITY_RELEVANCE_THRESHOLD = 0.45
-    ENTITY_TOP_K = 5  # IFC entities to retrieve per requirement chunk
+    ENTITY_TOP_K = 5  # IFC entities to retrieve per requirement chunk (embedding pass)
+    ENTITY_TYPE_QUOTA = 25  # entities per IFC class per chunk (label pass)
+    # Excerpts per LLM call. Ordered by pass (reference, label, embedding) then
+    # cosine distance, so the chunks that name the entity come first and a
+    # requirement-heavy corpus cannot push the prompt past the context window.
+    MAX_CHUNKS_PER_ENTITY = 8
 
     # IFC types that rarely carry property requirements worth checking
     LOW_VALUE_IFC_TYPES = {
@@ -254,6 +317,8 @@ class ConflictScanService:
         keyword_filter: bool = True,
         entity_relevance_threshold: float | None = None,
         entity_top_k: int | None = None,
+        entity_first: bool = True,
+        verify_values: bool = True,
     ):
         """
         Args:
@@ -266,6 +331,11 @@ class ConflictScanService:
                 candidate — many more LLM calls.
             entity_relevance_threshold / entity_top_k: Override the vector
                 search cutoffs. ``None`` keeps the class defaults.
+            entity_first: Run the reference and label passes before the
+                embedding pass (see ``_build_entity_chunk_map``). Off is the
+                pre-2026-09 behaviour: embedding top-K only.
+            verify_values: Check the current value a finding claims against
+                the entity's indexed properties before storing it.
 
         The keyword-only knobs exist so the RAV benchmark can ablate each
         mitigation independently; production callers leave them at defaults.
@@ -276,6 +346,10 @@ class ConflictScanService:
         self.confidence_threshold = confidence_threshold
         self.type_gate = type_gate
         self.keyword_filter = keyword_filter
+        self.entity_first = entity_first
+        self.verify_values = verify_values
+        self.retrieval_stats: dict[str, int] = {}
+        self.value_stats: dict[str, int] = {"values_corrected": 0, "values_unset": 0}
         if entity_relevance_threshold is not None:
             self.ENTITY_RELEVANCE_THRESHOLD = entity_relevance_threshold
         if entity_top_k is not None:
@@ -288,10 +362,17 @@ class ConflictScanService:
         # `num_predict` caps Ollama's output tokens at the model layer so
         # the model can't generate for 30 minutes even if the timeout
         # somehow doesn't fire.
+        # `num_ctx` is the Modify context size: the scanner runs on the Modify
+        # model, and a different num_ctx makes Ollama reload it. Without it a
+        # prompt with several excerpts exceeds Ollama's default window and is
+        # truncated from the front, which silently drops the entity's own
+        # properties (the 2026-09-15 retrieval fix found this).
         self.llm = get_llm(
             user=user,
+            purpose="modify",
             temperature=0.1,
             format_json=True,
+            num_ctx=NUM_CTX,
             num_predict=self.SCAN_MAX_OUTPUT_TOKENS,
             client_kwargs={"timeout": self.SCAN_LLM_TIMEOUT_SECONDS},
         )
@@ -380,6 +461,7 @@ class ConflictScanService:
 
         # Step 3: LLM compare per entity
         stats = {"entities_scanned": 0, "conflicts_found": 0, "conflicts_updated": 0}
+        self.value_stats = {"values_corrected": 0, "values_unset": 0}
 
         for i, (entity, chunks) in enumerate(entity_chunk_map.items(), 1):
             # Explicit pre-LLM cancel check. The emit() right below also
@@ -431,8 +513,7 @@ class ConflictScanService:
                 stats["entities_scanned"] += 1
 
                 for finding in findings:
-                    chunk_idx = finding.get("source_chunk_index", 0)
-                    chunk = chunks[min(chunk_idx, len(chunks) - 1)]
+                    chunk = self._attribute_chunk(finding, chunks)
                     result = self._upsert_conflict(entity, chunk, finding, scan_run)
                     if result == "created":
                         stats["conflicts_found"] += 1
@@ -488,6 +569,8 @@ class ConflictScanService:
             stats["conflicts_found"],
             stats["conflicts_updated"],
         )
+        stats.update(self.value_stats)
+        stats["retrieval"] = dict(self.retrieval_stats)
         return stats
 
     def _get_requirement_chunks(self) -> list[DocumentChunk]:
@@ -515,10 +598,17 @@ class ConflictScanService:
         self, req_chunks: list[DocumentChunk]
     ) -> dict[IFCEntity, list[DocumentChunk]]:
         """
-        For each requirement chunk, vector-search top-K IFC entities.
+        For each requirement chunk, find the IFC entities it constrains.
 
-        Returns a mapping entity → [list of relevant chunks], deduplicating
-        entities that appear across multiple chunks.
+        Three passes, unioned per entity in this order: reference (the chunk
+        quotes the entity's model reference or name), label (the chunk names
+        the entity's element class and a property), embedding (top-K nearest).
+        The first two are exact lookups and run only when ``entity_first`` is
+        on; the third is the original vector search and always runs.
+
+        Returns a mapping entity → [chunks], deduplicating entities that
+        appear across multiple chunks. ``retrieval_stats`` records how many
+        (entity, chunk) pairs each pass contributed.
         """
         entity_qs = IFCEntity.objects.filter(
             ifc_file__project=self.project,
@@ -528,20 +618,184 @@ class ConflictScanService:
         if self.skip_low_value:
             entity_qs = entity_qs.exclude(ifc_type__in=self.LOW_VALUE_IFC_TYPES)
 
-        entity_chunk_map: dict = defaultdict(list)
+        # entity → {chunk: (pass rank, cosine distance)}; the lowest rank wins
+        # when several passes find the same pair.
+        pairs: dict[IFCEntity, dict[DocumentChunk, tuple[int, float]]] = defaultdict(dict)
+        self.retrieval_stats = {"by_reference": 0, "by_label": 0, "by_embedding": 0}
+        reference_index = self._reference_index(entity_qs) if self.entity_first else []
+        passes = (
+            ("by_reference", 0),
+            ("by_label", 1),
+            ("by_embedding", 2),
+        )
+
+        def add(entity: IFCEntity, chunk: DocumentChunk, pass_name: str, rank: int) -> None:
+            if chunk in pairs[entity]:
+                return
+            pairs[entity][chunk] = (rank, self._cosine_distance(entity, chunk))
+            self.retrieval_stats[pass_name] += 1
 
         for chunk in req_chunks:
-            if chunk.embedding is None:
-                continue
-            nearby = list(
-                entity_qs.annotate(distance=CosineDistance("embedding", chunk.embedding))
-                .filter(distance__lte=self.ENTITY_RELEVANCE_THRESHOLD)
-                .order_by("distance")[: self.ENTITY_TOP_K]
-            )
-            for entity in nearby:
-                entity_chunk_map[entity].append(chunk)
+            text = chunk.content or ""
+            if self.entity_first:
+                for entity in self._by_reference(text, reference_index):
+                    add(entity, chunk, *passes[0])
+                for entity in self._by_label(text, chunk, entity_qs):
+                    add(entity, chunk, *passes[1])
+            for entity in self._by_embedding(chunk, entity_qs):
+                add(entity, chunk, *passes[2])
 
-        return dict(entity_chunk_map)
+        return {
+            entity: [
+                chunk
+                for chunk, _ in sorted(found.items(), key=lambda item: item[1])[
+                    : self.MAX_CHUNKS_PER_ENTITY
+                ]
+            ]
+            for entity, found in pairs.items()
+        }
+
+    @staticmethod
+    def _cosine_distance(entity: IFCEntity, chunk: DocumentChunk) -> float:
+        """1 - cosine similarity of the two stored vectors; 1.0 when either is missing."""
+        a, b = entity.embedding, chunk.embedding
+        if a is None or b is None:
+            return 1.0
+        dot = sum(x * y for x, y in zip(a, b, strict=False))
+        norm = (sum(x * x for x in a) ** 0.5) * (sum(y * y for y in b) ** 0.5)
+        return 1.0 - dot / norm if norm else 1.0
+
+    # ── Retrieval passes ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _reference_index(entity_qs) -> list[tuple[IFCEntity, tuple[re.Pattern, ...]]]:
+        """Each entity with the word-bounded patterns that identify it in prose.
+
+        Sources: every ``*.Reference`` property value and every ``:``-separated
+        segment of the name except a trailing number (the Revit export id).
+        """
+        index = []
+        for entity in entity_qs:
+            strings: set[str] = set()
+            for key, value in (entity.properties or {}).items():
+                if key.endswith(".Reference") and isinstance(value, str):
+                    strings.add(value.strip())
+            segments = [part.strip() for part in (entity.name or "").split(":")]
+            strings.update(part for part in segments if not part.isdigit())
+            patterns = tuple(
+                re.compile(rf"(?<![\w]){re.escape(text)}(?![\w])", re.IGNORECASE)
+                for text in strings
+                if ConflictScanService._is_reference_like(text)
+            )
+            if patterns:
+                index.append((entity, patterns))
+        return index
+
+    @staticmethod
+    def _is_reference_like(text: str) -> bool:
+        """Does this string identify a model type rather than read as a word?"""
+        if len(text) < MIN_REFERENCE_LENGTH or text.isdigit():
+            return False
+        if any(ch.isdigit() or ch in "_-" for ch in text):
+            return True
+        return " " in text.strip() and len(text) >= MIN_PHRASE_LENGTH
+
+    @staticmethod
+    def _by_reference(text: str, reference_index) -> list[IFCEntity]:
+        """Entities whose reference or name the chunk quotes."""
+        return [
+            entity
+            for entity, patterns in reference_index
+            if any(pattern.search(text) for pattern in patterns)
+        ]
+
+    def _by_label(self, text: str, chunk: DocumentChunk, entity_qs) -> list[IFCEntity]:
+        """Every entity of each element class the chunk names, capped per class.
+
+        Requires the chunk to mention a property as well ("U-value", "fire
+        resistance"), so a sentence that merely says "walls" pulls nothing in.
+        Within a class the nearest entities by embedding come first.
+        """
+        if not self._mentions_property(text):
+            return []
+        found: list[IFCEntity] = []
+        for ifc_type in sorted(self._label_types(text)):
+            typed = entity_qs.filter(ifc_type=ifc_type)
+            if chunk.embedding is not None:
+                typed = typed.annotate(
+                    distance=CosineDistance("embedding", chunk.embedding)
+                ).order_by("distance")
+            else:
+                typed = typed.order_by("name")
+            found.extend(typed[: self.ENTITY_TYPE_QUOTA])
+        return found
+
+    def _by_embedding(self, chunk: DocumentChunk, entity_qs) -> list[IFCEntity]:
+        """The original pass: top-K nearest entities under the distance cut."""
+        if chunk.embedding is None:
+            return []
+        return list(
+            entity_qs.annotate(distance=CosineDistance("embedding", chunk.embedding))
+            .filter(distance__lte=self.ENTITY_RELEVANCE_THRESHOLD)
+            .order_by("distance")[: self.ENTITY_TOP_K]
+        )
+
+    @staticmethod
+    def _label_types(text: str) -> set[str]:
+        """IFC classes for every element noun (singular or plural) the text uses."""
+        lowered = text.casefold()
+        types: set[str] = set()
+        for label, ifc_types in ENTITY_FIRST_LABELS.items():
+            if re.search(rf"\b{re.escape(label)}s?\b", lowered):
+                types |= ifc_types
+        return types
+
+    @staticmethod
+    def _mentions_property(text: str) -> bool:
+        squashed = squash(text)
+        if any(alias in squashed for alias in _LONG_PROPERTY_ALIASES):
+            return True
+        return bool(_SHORT_PROPERTY_RE.search(text))
+
+    @staticmethod
+    def _attribute_chunk(finding: dict, chunks: list[DocumentChunk]) -> DocumentChunk:
+        """The chunk a finding cites: the one that quotes the requirement, else the LLM's index.
+
+        The model's ``source_chunk_index`` is sometimes wrong (a fire-rating
+        conflict cited to the thermal spec). Every chunk is scored by how many
+        tokens of the finding's document value it contains, plus a bonus for
+        naming the property; the best chunk wins only when it beats the one
+        the model named, so a tie keeps the model's choice.
+        """
+        try:
+            index = int(finding.get("source_chunk_index") or 0)
+        except (TypeError, ValueError):
+            index = 0
+        fallback = chunks[min(max(index, 0), len(chunks) - 1)]
+        if len(chunks) == 1:
+            return fallback
+
+        document_value = str(finding.get("document_value") or "")
+        canonical = canonical_property(str(finding.get("property_name") or ""))
+        aliases = [
+            alias
+            for alias, target in PROPERTY_ALIASES.items()
+            if target == canonical and len(alias) >= 4
+        ]
+        tokens = [t for t in re.findall(r"[A-Za-z0-9.']+", document_value) if len(t) >= 2]
+
+        def score(chunk: DocumentChunk) -> float:
+            squashed = squash(chunk.content or "")
+            total = 0.0
+            for token in tokens:
+                if squash(token) in squashed:
+                    total += 1.0 if (len(token) >= 3 or not token.isdigit()) else 0.5
+            if any(alias in squashed for alias in aliases):
+                total += 2.0
+            return total
+
+        best = max(chunks, key=score)
+        return best if score(best) > score(fallback) else fallback
 
     def _evaluate_entity(self, entity: IFCEntity, chunks: list[DocumentChunk]) -> list[dict]:
         """
@@ -677,11 +931,14 @@ class ConflictScanService:
         """
         property_name = self._finding_str(finding, "property_name")[:255]
 
+        if self.verify_values:
+            finding = self._verify_ifc_value(entity, finding)
+
         # Hard guard: never store a conflict where IFC value equals document value.
         # The LLM sometimes flags these despite explicit prompt instructions not to.
-        ifc_val = str(finding.get("ifc_value", "")).strip().upper().replace(" ", "")
-        doc_val = str(finding.get("document_value", "")).strip().upper().replace(" ", "")
-        if ifc_val and doc_val and ifc_val == doc_val:
+        ifc_val = self._finding_str(finding, "ifc_value")
+        doc_val = self._finding_str(finding, "document_value")
+        if ifc_val and doc_val and self._values_equivalent(ifc_val, doc_val):
             logger.info(
                 "Skipping false positive: IFC value '%s' already matches document value '%s' for entity %s",
                 ifc_val,
@@ -745,6 +1002,112 @@ class ConflictScanService:
         )
         return "created"
 
+    # ── Value verification ─────────────────────────────────────────────────────
+
+    def _verify_ifc_value(self, entity: IFCEntity, finding: dict) -> dict:
+        """Replace the current value the model claims with the value the index holds.
+
+        The model reads the entity's properties from the prompt and still
+        invents current values (``EI60`` on a wall with no FireRating). The
+        index is the truth: a property the entity carries overrides the claim;
+        a property it does not carry is stored as ``(not set)``. Counts land in
+        ``value_stats`` so a benchmark can report how often this fired.
+        """
+        canonical = canonical_property(self._finding_str(finding, "property_name"))
+        claimed = self._finding_str(finding, "ifc_value")
+        found, actual = self._lookup_property(entity.properties or {}, canonical)
+
+        if not found:
+            if claimed and not _ABSENCE_RE.search(claimed):
+                self.value_stats["values_unset"] += 1
+                logger.info(
+                    "Finding claimed %s=%r on entity %s which carries no such property; stored as not set",
+                    canonical,
+                    claimed,
+                    entity.id,
+                )
+            return {**finding, "ifc_value": "(not set)"}
+
+        actual_text = self._value_text(actual)
+        if claimed and not self._same_value(claimed, actual):
+            self.value_stats["values_corrected"] += 1
+            logger.info(
+                "Finding claimed %s=%r on entity %s; index holds %r, stored the index value",
+                canonical,
+                claimed,
+                entity.id,
+                actual_text,
+            )
+        return {**finding, "ifc_value": actual_text}
+
+    @staticmethod
+    def _lookup_property(properties: dict, canonical: str) -> tuple[bool, object]:
+        """(found, value) for the property in a flat ``Pset.Name`` dict.
+
+        Keys are matched on their last segment through the alias table, so
+        ``Pset_WallCommon.FireRating`` answers a finding about "fire class".
+        A ``Pset_*`` key wins over a ``Type.*`` or vendor key when both exist.
+        """
+        if not canonical:
+            return False, None
+        matches = [
+            (key, value)
+            for key, value in properties.items()
+            if canonical_property(key.rsplit(".", 1)[-1]) == canonical
+        ]
+        if not matches:
+            return False, None
+        matches.sort(key=lambda kv: (not kv[0].startswith("Pset_"), kv[0]))
+        return True, matches[0][1]
+
+    @classmethod
+    def _same_value(cls, claimed: str, actual: object) -> bool:
+        """Is the claim the indexed value, allowing for float formatting?"""
+        if squash(claimed) == squash(cls._value_text(actual)):
+            return True
+        if isinstance(actual, (int, float)) and not isinstance(actual, bool):
+            try:
+                return abs(float(claimed) - float(actual)) <= 1e-6 * max(1.0, abs(float(actual)))
+            except ValueError:
+                return False
+        return False
+
+    @staticmethod
+    def _value_text(value: object) -> str:
+        if isinstance(value, bool):
+            return "True" if value else "False"
+        if isinstance(value, float):
+            return f"{value:.6g}"
+        return str(value)
+
+    @classmethod
+    def _values_equivalent(cls, ifc_value: str, document_value: str) -> bool:
+        """Does the document's value describe the entity's current value?
+
+        Exact after squashing; numerically equal at the document's own
+        precision ("0.35 as designed" describes 0.350998); or a boolean that
+        the document's wording asserts ("non-load-bearing" describes False).
+        """
+        if squash(ifc_value) == squash(document_value):
+            return True
+        number = cls._first_number(document_value)
+        if number is not None:
+            try:
+                current = float(ifc_value)
+            except ValueError:
+                return False
+            decimals = len(number.split(".")[1]) if "." in number else 0
+            return round(current, decimals) == float(number)
+        if ifc_value in {"True", "False"}:
+            negated = bool(_NEGATION_RE.search(document_value))
+            return (ifc_value == "False") == negated
+        return False
+
+    @staticmethod
+    def _first_number(text: str) -> str | None:
+        match = re.search(r"\d+(?:\.\d+)?", text)
+        return match.group(0) if match else None
+
     # ── Helpers ────────────────────────────────────────────────────────────────
 
     @staticmethod
@@ -762,18 +1125,8 @@ class ConflictScanService:
         return str(value)
 
     def _get_llm_model_name(self) -> str:
-        """Return the LLM model name for audit logging."""
-        try:
-            from core.models import UserLLMConfig
-
-            config = UserLLMConfig.objects.filter(user=self.user).first()
-            if config and config.model_name:
-                return config.model_name
-        except Exception:
-            pass
-        from django.conf import settings
-
-        return getattr(settings, "OLLAMA_MODEL", "unknown")
+        """The model the scan actually ran on, for ``ScanRun.llm_model_used``."""
+        return resolve_model_name(self.user, "modify")
 
     @staticmethod
     def _format_properties(properties: dict) -> str:

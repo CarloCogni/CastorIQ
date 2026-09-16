@@ -1,0 +1,216 @@
+<!-- takeoff/components/quantities_prep_cell.html — one layout column cell -->
+{% load dict_filters %}
+{% if col.key == "ifc_class" %}
+<td class="qty-col-ifc-class text-start"
+    data-testid="qty-prep-ifc-class-cell"
+    data-ifc-class-value="{{ row.ifc_class|default:'' }}">
+  {% if row.level == "class" or not row.hierarchy %}
+  <span class="qty-ifc-class-label">{{ row.ifc_class|default:"—" }}</span>
+  {% else %}
+  <!-- Inherited class kept for a11y/export; visually suppressed on Type/Instance -->
+  <span class="visually-hidden">{{ row.ifc_class|default:"" }}</span>
+  <span class="qty-ifc-class-inherited" aria-hidden="true"></span>
+  {% endif %}
+</td>
+{% elif col.key == "name" %}
+<td class="qty-col-type qty-col-name text-start" data-testid="qty-prep-name-cell"
+    title="{% if row.hierarchy %}{% if row.level == 'class' %}{{ row.element_count }} elements{% if row.type_count != None %} · {{ row.type_count }} types{% endif %}{% else %}{{ row.primary_name|default:row.display_name }}{% endif %}{% else %}{{ row.type_name }}{% endif %}">
+  {% if row.is_load_more %}
+  <span class="qty-hierarchy-loadmore text-secondary" data-testid="qty-hierarchy-load-more">
+    {% if row.has_more %}
+    <a class="qty-hierarchy-load-more-link"
+       data-testid="qty-hierarchy-load-more-link"
+       data-load-more-kind="{{ row.load_more_kind }}"
+       data-parent-key="{{ row.parent_key }}"
+       href="#">{{ row.display_name }}</a>
+    {% else %}
+    {{ row.display_name }}
+    {% endif %}
+  </span>
+  {% elif row.hierarchy %}
+  <div class="qty-hierarchy-name depth-{{ row.depth|default:0 }}"
+       data-testid="qty-hierarchy-name"
+       data-hierarchy-level="{{ row.level }}">
+    {% if row.expandable %}
+    <button type="button"
+            class="qty-hierarchy-toggle btn btn-link btn-sm p-0"
+            data-testid="qty-hierarchy-toggle"
+            data-node-key="{{ row.node_key }}"
+            data-hierarchy-level="{{ row.level }}"
+            aria-expanded="{% if row.aria_expanded %}true{% else %}false{% endif %}"
+            aria-label="{% if row.aria_expanded %}Collapse{% else %}Expand{% endif %} {{ row.level_label }} {{ row.primary_name|default:row.display_name }}">
+      <i class="bi {% if row.aria_expanded %}bi-chevron-down{% else %}bi-chevron-right{% endif %}" aria-hidden="true"></i>
+    </button>
+    {% else %}
+    <span class="qty-hierarchy-leaf-spacer" aria-hidden="true"></span>
+    {% endif %}
+    <span class="qty-hierarchy-level-icon" aria-hidden="true" title="{{ row.level_label }}">
+      {% if row.level == "class" %}<i class="bi bi-diagram-3"></i>
+      {% elif row.level == "type" %}<i class="bi bi-collection"></i>
+      {% else %}<i class="bi bi-box"></i>{% endif %}
+    </span>
+    {% if row.level == "class" %}
+    <!-- Class name lives in IFC Class column; Name shows counts only -->
+    <span class="visually-hidden">{{ row.primary_name|default:row.display_name }}</span>
+    <span class="qty-hierarchy-count text-secondary" data-testid="qty-hierarchy-element-count">
+      {% if row.element_count != None %}{{ row.element_count }} el{% if row.type_count != None %} · {{ row.type_count }} groups{% endif %}{% else %}—{% endif %}
+    </span>
+    {% else %}
+    <span class="qty-name-text qty-hierarchy-primary"
+          tabindex="0"
+          title="{{ row.primary_name|default:row.display_name }}">{{ row.primary_name|default:row.display_name|default:"—" }}</span>
+    {% if row.level == "type" and row.element_count != None %}
+    <span class="qty-hierarchy-count text-secondary" data-testid="qty-hierarchy-element-count">
+      {{ row.element_count }} el
+    </span>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% else %}
+  <span class="qty-name-text" tabindex="0" title="{{ row.type_name }}">
+    {% if row.type_name %}{{ row.type_name }}{% else %}—{% endif %}
+  </span>
+  {% endif %}
+</td>
+{% elif col.key == "quantity" %}
+<td class="text-end qty-col-total qty-col-numeric"
+    data-testid="qty-prep-total-cell"
+    {% if row.quantity_coverage_label %}data-qty-coverage-label="{{ row.quantity_coverage_label }}"{% endif %}
+    {% if row.model_value_hint %}title="{{ row.model_value_hint }}"{% endif %}>
+  {% if row.measurement_status == "unavailable" %}
+  <span class="qty-missing-marker text-secondary" data-testid="qty-prep-not-available">—</span>
+  {% elif row.measurement_status == "choice_required" %}
+  <span class="qty-missing-marker text-secondary" title="Choose IFC source">—</span>
+  {% elif row.total_display == "Unresolved" or row.basis_unresolved and not row.measurement_type %}
+  <span class="qty-missing-marker text-secondary" title="Unresolved">—</span>
+  {% elif row.total != None and row.total != "" %}
+  <span class="qty-total-value{% if row.level == 'class' or row.level == 'type' %} qty-total-value--subtotal{% endif %}">{{ row.total_display|default:row.total }}</span>
+  {% if row.model_value_hint %}
+  <span class="qty-mapping-hint d-block" data-testid="qty-prep-model-value-hint">{{ row.model_value_hint }}</span>
+  {% endif %}
+  {% else %}
+  <span class="qty-missing-marker text-secondary">—</span>
+  {% endif %}
+  <!-- CLOSURE-14: coverage is Status-only; metadata stays on the cell data attribute -->
+</td>
+{% elif col.key == "measurement" %}
+<td class="text-start" data-testid="qty-prep-measurement-cell">
+  {% if row.measurement_type_label %}
+  <span data-testid="qty-prep-measurement-value">{{ row.measurement_type_label }}</span>
+  {% elif row.measurement_type %}
+  <span data-testid="qty-prep-measurement-value">{{ row.measurement_type }}</span>
+  {% else %}
+  <span class="text-secondary">—</span>
+  {% endif %}
+</td>
+{% elif col.key == "ifc_source" %}
+<td class="text-start" data-testid="qty-prep-ifc-source-cell">
+  {% if row.measurement_status == "unavailable" %}
+  <span class="qty-pill qty-pill-unresolved" data-testid="qty-prep-ifc-source-unavailable">Unavailable</span>
+  {% elif row.source_choice_required or row.measurement_status == "choice_required" %}
+  <span class="qty-pill qty-pill-review" data-testid="qty-prep-ifc-source-required">Choose source</span>
+  {% elif row.ifc_quantity_source %}
+  <span class="qty-pill qty-pill-source" data-testid="qty-prep-ifc-source-value">
+    {% if row.ifc_quantity_source == "element_count" %}Element count{% else %}{{ row.ifc_quantity_source }}{% endif %}
+  </span>
+  {% else %}
+  <span class="text-secondary">—</span>
+  {% endif %}
+</td>
+{% elif col.key == "unit" %}
+<td class="text-start qty-col-unit" data-testid="qty-prep-model-unit-cell">
+  {% if row.output_unit_label %}{{ row.output_unit_label }}{% elif row.model_unit_label %}{{ row.model_unit_label }}{% else %}—{% endif %}
+</td>
+{% elif col.key == "status" %}
+<td class="text-start qty-col-status" data-testid="qty-prep-review-status-cell">
+  {% if row.session_review %}
+  <span class="qty-pill qty-pill-ok"
+        data-testid="qty-session-review-status">{{ row.review_status_display }}</span>
+  <span class="qty-mapping-hint d-block"
+        data-testid="qty-session-review-badge">Session review</span>
+  {% elif row.quantity_coverage_partial or row.review_status_display == "Partial" %}
+  <span class="qty-pill qty-pill-partial"
+        data-testid="qty-prep-status-partial"
+        title="Quantity resolved with incomplete source coverage">Partial</span>
+  {% if row.quantity_coverage_label %}
+  <span class="qty-mapping-hint d-block"
+        data-testid="qty-prep-status-coverage">{{ row.quantity_coverage_label }}</span>
+  {% endif %}
+  {% elif row.review_status_display == "Resolved" %}
+  <span class="qty-pill qty-pill-ok" title="Quantity basis resolved — not classification or review complete">Resolved</span>
+  {% elif "Missing" in row.review_status_display or "Choose" in row.review_status_display %}
+  <span class="qty-pill qty-pill-review">{{ row.review_status_display }}</span>
+  {% else %}
+  <span class="qty-pill qty-pill-muted">{{ row.review_status_display|default:"—" }}</span>
+  {% endif %}
+</td>
+{% elif col.key == "actions" %}
+<td class="text-center qty-col-actions" data-testid="qty-prep-actions-cell">
+  {% if not row.is_load_more %}
+  <button type="button"
+          class="btn btn-sm btn-outline-secondary qty-row-details-btn"
+          data-testid="qty-review-row-btn"
+          data-bs-toggle="offcanvas"
+          data-bs-target="#qtyRowReviewDrawer"
+          data-qty-row-key="{{ row.row_key }}"
+          data-qty-node-key="{{ row.node_key }}"
+          data-qty-hierarchy-level="{{ row.level }}"
+          data-qty-global-id="{{ row.global_id }}"
+          data-qty-type-global-id="{{ row.element_type_global_id }}"
+          data-qty-technical-type-count="{{ row.technical_type_count|default:'' }}"
+          data-qty-technical-type-gids="{{ row.technical_type_global_ids|join:', '|default:'' }}"
+          data-qty-display-name="{{ row.primary_name|default:row.display_name|escape }}"
+          data-qty-model-group="{{ row.model_group }}"
+          data-qty-type-name="{{ row.type_name }}"
+          data-qty-basis="{{ row.quantity_basis }}"
+          data-qty-computed-status="{{ row.computed_review_status }}"
+          data-qty-session-status="{{ row.session_review_status }}"
+          data-qty-session-note="{{ row.session_review_note|escape }}"
+          data-qty-map-classification="{{ row.classification_code|escape }}"
+          data-qty-map-package="{{ row.package_boq_mapping|escape }}"
+          data-qty-map-work="{{ row.work_package|escape }}"
+          data-qty-map-classification-node="{{ row.classification_node_id|default:'' }}"
+          data-qty-map-package-node="{{ row.package_mapping_node_id|default:'' }}"
+          data-qty-map-work-node="{{ row.work_package_node_id|default:'' }}"
+          data-qty-map-classification-backed="{% if row.classification_is_schema_backed %}1{% else %}0{% endif %}"
+          data-qty-map-package-backed="{% if row.package_mapping_is_schema_backed %}1{% else %}0{% endif %}"
+          data-qty-map-work-backed="{% if row.work_package_is_schema_backed %}1{% else %}0{% endif %}">
+    Details
+  </button>
+  {% endif %}
+</td>
+{% elif col.key == "classification_code" %}
+<td class="qty-col-secondary text-secondary text-start" data-testid="qty-prep-classification-cell"
+    title="{{ row.classification_hint }}">
+  {% if row.classification_code %}<span data-testid="qty-manual-mapping-value">{{ row.classification_code }}</span>{% else %}—{% endif %}
+</td>
+{% elif col.key == "package_boq_mapping" %}
+<td class="qty-col-secondary text-secondary text-start" data-testid="qty-prep-package-cell"
+    title="{{ row.package_boq_mapping_hint }}">
+  {% if row.package_boq_mapping %}<span data-testid="qty-manual-mapping-value">{{ row.package_boq_mapping }}</span>{% else %}—{% endif %}
+</td>
+{% elif col.key == "work_package" %}
+<td class="qty-col-secondary text-secondary text-start" data-testid="qty-prep-work-package-cell"
+    title="{{ row.work_package_hint }}">
+  {% if row.work_package %}<span data-testid="qty-manual-mapping-value">{{ row.work_package }}</span>{% else %}—{% endif %}
+</td>
+{% else %}
+{% with cell=row.prop_column_by_key|get_item:col.key %}
+<td class="qty-col-secondary{% if cell.status == 'ok' and cell.display != '—' %} text-end qty-col-numeric{% else %} text-start{% endif %}"
+    data-testid="qty-prep-prop-cell"
+    data-prop-key="{{ col.key }}"
+    data-prop-status="{{ cell.status }}"
+    {% if cell.status == "mixed" %}title="{{ cell.detail_values|join:', ' }}"{% elif cell.detail_values %}title="{{ cell.detail_values.0 }}"{% endif %}>
+  {% if cell %}
+    {% if cell.status == "mixed" %}
+    <span data-testid="qty-prep-prop-multiple">{{ cell.display }}</span>
+    <span class="visually-hidden">Distinct values: {{ cell.detail_values|join:", " }}</span>
+    {% else %}
+    {{ cell.display }}
+    {% endif %}
+  {% else %}
+  —
+  {% endif %}
+</td>
+{% endwith %}
+{% endif %}

@@ -214,9 +214,7 @@ def _dashboard_live_context(project) -> dict:
 
     now = timezone.now()
 
-    open_wos = WorkOrder.objects.filter(
-        project=project, status__lt=WorkOrderStatus.COMPLETED
-    )
+    open_wos = WorkOrder.objects.filter(project=project, status__lt=WorkOrderStatus.COMPLETED)
     # "Needs renewal attention" — ACTIVE permits whose validity ends within
     # the next 90 days *or already ended* (an expired-but-still-ACTIVE permit
     # is the most urgent case of all, so no lower bound on valid_until).
@@ -306,9 +304,7 @@ def _dashboard_live_context(project) -> dict:
 
     return {
         "facilities_open_wo_count": open_wos.count(),
-        "facilities_critical_wo_count": open_wos.filter(
-            priority=WorkOrderPriority.P1
-        ).count(),
+        "facilities_critical_wo_count": open_wos.filter(priority=WorkOrderPriority.P1).count(),
         "facilities_permits_expiring_count": permits_expiring.count(),
         "facilities_requests_open_count": requests_open.count(),
         "facilities_recent_activity": activity[:8],
@@ -747,9 +743,7 @@ class AssetFolderDocumentLinkView(ProjectModifyAccessMixin, View):
             asset__pk=asset_pk,
             asset__project=project,
         )
-        document = get_object_or_404(
-            project.documents, pk=request.POST.get("document_id")
-        )
+        document = get_object_or_404(project.documents, pk=request.POST.get("document_id"))
         folder.documents.add(document)
         return _asset_documents_response(request, project, folder.asset)
 
@@ -765,14 +759,13 @@ class AssetFolderDocumentUnlinkView(ProjectModifyAccessMixin, View):
             asset__pk=asset_pk,
             asset__project=project,
         )
-        document = get_object_or_404(
-            project.documents, pk=request.POST.get("document_id")
-        )
+        document = get_object_or_404(project.documents, pk=request.POST.get("document_id"))
         folder.documents.remove(document)
         return _asset_documents_response(request, project, folder.asset)
 
 
 # ── Central folder management (Documents tab) — folders on any card ──────────
+
 
 class DocumentFolderCreateView(ProjectModifyAccessMixin, View):
     """Create a document folder attached to any Facilities card (asset, work
@@ -797,8 +790,12 @@ class DocumentFolderCreateView(ProjectModifyAccessMixin, View):
                 folder.action_request = ActionRequest.objects.get(pk=card_id, project=project)
             else:
                 return toast_response("Unknown card type.", "error", status=400)
-        except (FacilityAsset.DoesNotExist, WorkOrder.DoesNotExist,
-                Permit.DoesNotExist, ActionRequest.DoesNotExist):
+        except (
+            FacilityAsset.DoesNotExist,
+            WorkOrder.DoesNotExist,
+            Permit.DoesNotExist,
+            ActionRequest.DoesNotExist,
+        ):
             return toast_response("Card not found.", "error", status=404)
         folder.save()
         messages.success(request, f'Folder "{name}" created')
@@ -846,9 +843,7 @@ class PermitAssetLinkView(ProjectModifyAccessMixin, View):
         permit_svc = PermitService(project, request.user)
         try:
             permit = permit_svc.get_permit(permit_pk)
-            asset = AssetService(project, request.user).get_asset(
-                request.POST.get("asset_id")
-            )
+            asset = AssetService(project, request.user).get_asset(request.POST.get("asset_id"))
         except (PermitNotFoundError, AssetNotFoundError) as exc:
             return toast_response(str(exc), "error", status=404)
         permit.assets.add(asset)
@@ -866,9 +861,7 @@ class PermitAssetUnlinkView(ProjectModifyAccessMixin, View):
         permit_svc = PermitService(project, request.user)
         try:
             permit = permit_svc.get_permit(permit_pk)
-            asset = AssetService(project, request.user).get_asset(
-                request.POST.get("asset_id")
-            )
+            asset = AssetService(project, request.user).get_asset(request.POST.get("asset_id"))
         except (PermitNotFoundError, AssetNotFoundError) as exc:
             return toast_response(str(exc), "error", status=404)
         permit.assets.remove(asset)
@@ -940,9 +933,7 @@ class AssetCSVExportView(ProjectAccessMixin, View):
         service = AssetService(project, request.user)
         content = service.export_csv()
         response = HttpResponse(content, content_type="text/csv; charset=utf-8")
-        response["Content-Disposition"] = (
-            f'attachment; filename="assets-{project.pk}.csv"'
-        )
+        response["Content-Disposition"] = f'attachment; filename="assets-{project.pk}.csv"'
         return response
 
 
@@ -1626,10 +1617,16 @@ class FacilityDocumentsView(ProjectTabMixin, TemplateView):
                 "folders": list(folders),
                 "folder_count": folders.count(),
                 # Card pickers for the "New folder" form (attach to any card).
-                "pick_assets": FacilityAsset.objects.filter(project=project).order_by("asset_tag", "name"),
-                "pick_work_orders": WorkOrder.objects.filter(project=project).order_by("-wo_number"),
+                "pick_assets": FacilityAsset.objects.filter(project=project).order_by(
+                    "asset_tag", "name"
+                ),
+                "pick_work_orders": WorkOrder.objects.filter(project=project).order_by(
+                    "-wo_number"
+                ),
                 "pick_permits": Permit.objects.filter(project=project).order_by("-permit_number"),
-                "pick_requests": ActionRequest.objects.filter(project=project).order_by("-created_at"),
+                "pick_requests": ActionRequest.objects.filter(project=project).order_by(
+                    "-created_at"
+                ),
                 # All project documents for the "add document to folder" picker.
                 "all_documents": Document.objects.filter(project=project).order_by("name"),
             }

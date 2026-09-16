@@ -24,7 +24,7 @@
 ## Tabs
 
 - **Ask** — Read-only chat interface for querying IFC models and documents. Responses include source citations.
-- **Modify** — Propose IFC changes through natural language. Displays approval flow with tier-appropriate UI (diff table / plan review / code inspector).
+- **Modify** — Propose IFC changes through natural language. Every proposal is one card: the request, a one-sentence blind explanation, the targets with evidence, the measured diff, flagged rows on top, the code collapsed.
 - **Conflicts** — Dashboard of detected inconsistencies between IFC data and document requirements. Severity badges (critical / warning / info).
 - **History** — Git commit log for the project's IFC files. Each entry shows the semantic diff and allows rollback.
 
@@ -36,15 +36,18 @@
 - **Icons:** Bootstrap Icons
 - **Framework:** Bootstrap 5
 
-## Traffic Light System (Modify Tab)
+## The proposal card (Modify Tab)
 
-The write-back tier is communicated visually:
+There is one review surface for every change (V3; the V2 tier badges are gone):
 
-| Tier | Badge | Meaning |
-|---|---|---|
-| Tier 1 | 🟢 GREEN | Safe, certified operation. Simple diff preview. |
-| Tier 2 | 🟠 ORANGE | Multi-step plan. Full plan review panel. |
-| Tier 3 | 🔴 RED | LLM-generated code. Code display + before/after diff. Requires typed confirmation. |
+| Element | What it shows |
+|---|---|
+| Explanation | one sentence written by a model that saw the code and the diff, not the request |
+| Targets | the selected entities with name, container and one distinguishing property |
+| Diff rows | the measured before/after change, aggregated with counts |
+| Flagged rows | in a warning colour on top: a value or property name not in the request, an entity added or removed; each needs a tick before Approve |
+| Guardian verdict | confirmed / conflict / unknown / skipped, advisory |
+| Code | collapsed behind one click |
 
 ## Design Principles
 

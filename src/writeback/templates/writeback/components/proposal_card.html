@@ -1,0 +1,184 @@
+<!-- writeback/components/proposal_card.html — the one proposal card (live and persisted) -->
+<!-- Context: card (serialize_proposal dict), proposal (ModificationProposal), project -->
+<div class="card border-0 shadow-sm proposal-card"
+     id="proposal-card-{{ card.id }}"
+     data-conflict-ids="{{ card.conflict_ids }}"
+     data-flagged="{{ card.flagged_count }}">
+    <div class="card-header bg-transparent border-bottom d-flex justify-content-between align-items-center py-2">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span class="badge bg-purple-subtle text-purple rounded-pill fs-9">
+                <i class="bi bi-code-square me-1"></i>{{ card.target_count }} target{{ card.target_count|pluralize }}
+            </span>
+            {% if card.flagged_count %}
+            <span class="badge bg-warning-subtle text-warning rounded-pill fs-9" title="Rows whose value is not in your request">
+                <i class="bi bi-flag-fill me-1"></i>{{ card.flagged_count }} flagged
+            </span>
+            {% endif %}
+        </div>
+        <span class="badge {% if card.status == 'pending' %}bg-warning text-dark{% elif card.status == 'applied' %}bg-success{% elif card.status == 'rejected' or card.status == 'superseded' %}bg-secondary{% else %}bg-danger{% endif %} fs-9"
+              id="proposal-status-{{ card.id }}">
+            {{ card.status_display }}
+        </span>
+    </div>
+    <div class="card-body p-3">
+
+        <!-- The request, on the card itself, so the blind explanation below can be compared with it -->
+        <p class="fs-8 text-secondary mb-2">
+            <i class="bi bi-chat-left-text me-1"></i>You asked: <span class="fst-italic">{{ card.request }}</span>
+        </p>
+
+        <!-- Blind explanation: written from the code and the diff, never from the request -->
+        <p class="fs-7 mb-1">{{ card.explanation|default:"Explanation unavailable." }}</p>
+        <p class="fs-9 text-secondary mb-3">
+            <i class="bi bi-eye-slash me-1"></i>Explained by {{ card.explainer_model|default:"the Modify model" }} without seeing your request. Compare it with what you asked.
+        </p>
+
+        {% if not card.is_v3 %}
+        <p class="fs-8 text-secondary mb-2"><i class="bi bi-archive me-1"></i>Proposal from an earlier version of Castor; no measured diff is available.</p>
+        {% endif %}
+
+        <!-- Targets with evidence from the index -->
+        {% if card.targets %}
+        <div class="table-responsive mb-3">
+            <table class="table table-sm table-borderless mb-0">
+                <thead><tr class="text-secondary">
+                    <th class="px-2 py-1 fs-9">Target</th>
+                    <th class="px-2 py-1 fs-9">Type</th>
+                    <th class="px-2 py-1 fs-9">Container</th>
+                    <th class="px-2 py-1 fs-9">Evidence</th>
+                </tr></thead>
+                <tbody>
+                {% for t in card.targets %}
+                <tr>
+                    <td class="px-2 py-1 fs-8">
+                        {% if t.ifc_type %}
+                        <a href="{% url 'projects:explore' project.pk %}?focus={{ t.global_id|urlencode }}" target="_blank" rel="noopener" class="text-decoration-none" title="View in 3D (opens a new tab)">{{ t.name }} <i class="bi bi-box-arrow-up-right fs-9 opacity-50"></i></a>
+                        {% else %}{{ t.name }}{% endif %}
+                    </td>
+                    <td class="px-2 py-1 fs-8 text-secondary">{{ t.ifc_type }}</td>
+                    <td class="px-2 py-1 fs-8 text-secondary">{{ t.container }}</td>
+                    <td class="px-2 py-1 fs-8 font-monospace text-secondary">{{ t.evidence }}</td>
+                </tr>
+                {% endfor %}
+                {% if card.targets_hidden %}
+                <tr><td colspan="4" class="px-2 py-1 fs-9 text-secondary">… and {{ card.targets_hidden }} more</td></tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Aggregated diff; flagged rows first, each needs a tick before approval -->
+        {% if card.rows %}
+        <div class="table-responsive mb-3">
+            <table class="table table-sm table-borderless mb-0">
+                <thead><tr class="text-secondary">
+                    <th class="px-2 py-1 fs-9" style="width:2rem;"></th>
+                    <th class="px-2 py-1 fs-9">Change</th>
+                    <th class="px-2 py-1 fs-9">Before</th>
+                    <th class="px-2 py-1 fs-9">After</th>
+                    <th class="px-2 py-1 fs-9 text-end">Count</th>
+                </tr></thead>
+                <tbody>
+                {% for r in card.rows %}
+                <tr class="{% if r.flagged %}table-warning-subtle diff-row-flagged{% endif %}">
+                    <td class="px-2 py-1 fs-8">
+                        {% if r.flagged %}
+                            {% if card.status == 'pending' %}
+                            <input class="form-check-input flag-ack" type="checkbox" value="{{ r.key }}"
+                                   id="flag-{{ card.id }}-{{ r.key }}" title="Tick to acknowledge this row"
+                                   onchange="ModifyChat.onFlagToggle('{{ card.id }}')">
+                            {% else %}
+                            <i class="bi bi-flag-fill text-warning" title="Was flagged"></i>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                    <td class="px-2 py-1 fs-8 font-monospace">
+                        {% if r.flagged %}<label for="flag-{{ card.id }}-{{ r.key }}" class="mb-0">{{ r.label }}</label>{% else %}{{ r.label }}{% endif %}
+                        {% if r.flagged %}<span class="badge bg-warning-subtle text-warning fs-9 ms-1">{{ r.flag_label|default:"not in request" }}</span>{% endif %}
+                    </td>
+                    <td class="px-2 py-1 fs-8 text-danger">{% if r.kind == 'added' %}—{% else %}<del>{{ r.before|default_if_none:"(none)" }}</del>{% endif %}</td>
+                    <td class="px-2 py-1 fs-8 text-success fw-medium">{% if r.kind == 'removed' %}—{% else %}{{ r.after|default_if_none:"(removed)" }}{% endif %}</td>
+                    <td class="px-2 py-1 fs-8 text-end text-secondary">× {{ r.count }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Guardian verdict, or the recorded skip -->
+        {% with g=card.guardian %}
+        <div class="d-flex align-items-start gap-2 p-2 rounded mb-2"
+             style="background: {% if g.status == 'verified' %}rgba(34,197,94,0.08){% elif g.status == 'conflict' %}rgba(239,68,68,0.08){% elif g.status == 'pending' %}rgba(234,179,8,0.08){% else %}rgba(148,163,184,0.1){% endif %}">
+            <i class="bi {% if g.status == 'verified' %}bi-shield-check text-success{% elif g.status == 'conflict' %}bi-shield-exclamation text-danger{% elif g.status == 'skipped' %}bi-shield-slash text-secondary{% elif g.status == 'pending' %}bi-hourglass-split text-warning{% elif g.status == 'failed' %}bi-shield-x text-secondary{% else %}bi-shield-slash text-secondary{% endif %} fs-7 flex-shrink-0"></i>
+            <div>
+                <span class="fs-8 fw-medium {% if g.status == 'verified' %}text-success{% elif g.status == 'conflict' %}text-danger{% elif g.status == 'pending' %}text-warning{% else %}text-secondary{% endif %}">
+                    {% if g.status == 'verified' %}Docs confirm{% elif g.status == 'conflict' %}⚠ Possible conflict{% elif g.status == 'skipped' %}Guardian skipped{% elif g.status == 'pending' %}Checking docs…{% elif g.status == 'failed' %}Check unavailable{% else %}No relevant docs{% endif %}
+                </span>
+                {% if g.result and not g.skipped %}<p class="fs-8 text-secondary mb-0">{{ g.result }}</p>{% endif %}
+                {% if g.source %}<small class="text-secondary fs-9">📄 {{ g.source }}</small>{% endif %}
+            </div>
+        </div>
+        {% endwith %}
+
+        <!-- The code, collapsed: one click away -->
+        {% if card.code %}
+        <details class="mb-3">
+            <summary class="fs-8 text-secondary" style="cursor:pointer;"><i class="bi bi-code-slash me-1"></i>Show the code that produced this diff</summary>
+            <pre class="rounded mt-2 mb-0" style="max-height: 350px; overflow: auto;"><code class="language-python">{{ card.code }}</code></pre>
+        </details>
+        {% endif %}
+
+        {% if card.status == 'pending' and user_permission != 'viewer' %}
+        <div id="proposal-actions-{{ card.id }}">
+            {% if card.has_flagged_rows %}
+            <p class="fs-9 text-warning mb-2" id="proposal-flag-hint-{{ card.id }}">
+                <i class="bi bi-flag-fill me-1"></i>Tick each flagged row to enable Approve.
+            </p>
+            {% endif %}
+            <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-success w-50"
+                        id="proposal-execute-{{ card.id }}"
+                        {% if card.has_flagged_rows %}disabled title="Tick each flagged row first"{% endif %}
+                        onclick="ModifyChat.approve('{{ card.id }}')">
+                    <i class="bi bi-check-lg me-1"></i>Approve
+                </button>
+                <button class="btn btn-sm btn-outline-secondary w-50" onclick="ModifyChat.reject('{{ card.id }}')">
+                    <i class="bi bi-x-lg me-1"></i>Reject
+                </button>
+            </div>
+        </div>
+        {% elif card.status == 'applied' and card.commit_hash %}
+        <span class="badge bg-success"><i class="bi bi-check-lg me-1"></i>Applied — {{ card.commit_hash }}</span>
+        {% elif card.status == 'rejected' %}
+        <span class="badge bg-secondary">Rejected</span>
+        {% elif card.status == 'superseded' %}
+        <span class="badge bg-secondary-subtle text-secondary"><i class="bi bi-arrow-down-circle me-1"></i>Superseded by newer request</span>
+        {% elif card.status == 'failed' %}
+        <span class="badge bg-danger">Failed: {{ card.error_message|truncatechars:80 }}</span>
+        {% endif %}
+
+        <!-- Failure records (D3): execution-phase failures linked to this proposal -->
+        {% if proposal %}
+        {% for fr in proposal.failure_records.all %}
+        <div class="card border-2 {% if fr.category == 'RETRYABLE' %}border-warning{% else %}border-danger{% endif %} mt-2 shadow-sm">
+            <div class="card-body py-2 px-3">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+                    <span class="fw-semibold fs-8">{{ fr.error_type|lower|title }}</span>
+                    <span class="badge {% if fr.category == 'RETRYABLE' %}bg-warning text-dark{% else %}bg-danger{% endif %} ms-auto" style="font-size:.65rem;">{{ fr.category|title }}</span>
+                    <span class="text-muted" style="font-size:.65rem;">{{ fr.failure_phase }}</span>
+                </div>
+                <p class="mb-1 text-muted fs-8">{{ fr.diagnosis }}</p>
+                <button type="button" class="btn btn-link btn-sm p-0 fs-8 text-decoration-none"
+                        data-bs-toggle="modal" data-bs-target="#modifyFailureHelpModal"
+                        title="Why does this happen, and what can I try?">
+                    <i class="bi bi-info-circle me-1"></i>Why did this happen?
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+    </div>
+</div>

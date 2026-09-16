@@ -1,0 +1,254 @@
+<!-- writeback/components/modify_help_modal.html — "How Modify works" + clickable example prompts -->
+
+<style>
+    /* Example prompts: each group carries its own colour as a left rule and a hover tint */
+    #modifyHelpModal .modify-example-group .modify-example {
+        border-left: 3px solid var(--example-color);
+    }
+    #modifyHelpModal .modify-example-group .modify-example:hover,
+    #modifyHelpModal .modify-example-group .modify-example:focus-visible {
+        background-color: color-mix(in srgb, var(--example-color) 14%, transparent);
+        border-color: var(--example-color);
+        color: var(--bs-body-color);
+    }
+</style>
+
+<div class="modal fade" id="modifyHelpModal" tabindex="-1" aria-labelledby="modifyHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="modifyHelpLabel">
+                    <i class="bi bi-tools me-2" style="color: var(--castor-accent, #8b5cf6);"></i>
+                    How Modify works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <!-- Tabs: how Modify works / example prompts (the lightbulb in the tab header opens Examples) -->
+            <div class="px-4 pt-2 border-bottom" style="border-color: var(--bs-border-color) !important;">
+                <ul class="nav nav-tabs border-0" id="modifyHelpTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active fs-7" id="modify-help-how-tab" data-bs-toggle="tab"
+                                data-bs-target="#modify-help-how" type="button" role="tab"
+                                aria-controls="modify-help-how" aria-selected="true">
+                            <i class="bi bi-info-circle me-1"></i>How it works
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link fs-7" id="modify-help-examples-tab" data-bs-toggle="tab"
+                                data-bs-target="#modify-help-examples" type="button" role="tab"
+                                aria-controls="modify-help-examples" aria-selected="false">
+                            <i class="bi bi-lightbulb me-1"></i>Example prompts
+                        </button>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="modal-body px-4 py-4">
+                <div class="tab-content">
+
+                <div class="tab-pane fade show active" id="modify-help-how" role="tabpanel" aria-labelledby="modify-help-how-tab">
+
+                    <!-- 1. What is it? -->
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-box-seam me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                        What is Modify?
+                    </p>
+                    <p class="text-secondary fs-7 mb-4">
+                        Modify changes the IFC model from a sentence. Castor writes the change as a small piece of
+                        IfcOpenShell code, runs it on a <strong>copy</strong> of the file, and shows you what actually
+                        changed before anything touches the real file. Every approved change becomes a git commit
+                        you can restore from the History tab.
+                    </p>
+
+                    <!-- 2. Lifecycle -->
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-arrow-repeat me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                        How a request flows
+                    </p>
+                    <div class="d-flex flex-column gap-2 fs-7 mb-4">
+                        <div class="d-flex gap-2"><span class="badge bg-secondary-subtle text-secondary" style="min-width:5.5rem;">ground</span><span class="text-secondary">Castor reads the storeys, spaces, entity counts and property sets of the file from the database. No model call.</span></div>
+                        <div class="d-flex gap-2"><span class="badge bg-secondary-subtle text-secondary" style="min-width:5.5rem;">generate</span><span class="text-secondary">The Modify model writes two functions: <code>select</code> picks the target entities, <code>modify</code> changes them.</span></div>
+                        <div class="d-flex gap-2"><span class="badge bg-secondary-subtle text-secondary" style="min-width:5.5rem;">run</span><span class="text-secondary">A separate process runs the code on a scratch copy and measures the before/after difference.</span></div>
+                        <div class="d-flex gap-2"><span class="badge bg-secondary-subtle text-secondary" style="min-width:5.5rem;">verify</span><span class="text-secondary">Anything changed outside the selection, or any geometry, sends the code back for a repair (at most two). Every diff row is then compared with your request: a value or a property name your request never mentions is flagged. A second model then explains the change from the code and the diff <em>without seeing your request</em>.</span></div>
+                        <div class="d-flex gap-2"><span class="badge bg-secondary-subtle text-secondary" style="min-width:5.5rem;">guardian</span><span class="text-secondary">The project documents are searched for anything that confirms or contradicts the change. Advisory only.</span></div>
+                        <div class="d-flex gap-2"><span class="badge bg-success-subtle text-success" style="min-width:5.5rem;">approve</span><span class="text-secondary">The reviewed copy replaces the original, the change is committed to git with the code in the commit, and the index is refreshed. The code never runs a second time.</span></div>
+                    </div>
+
+                    <!-- 3. How to read the card -->
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-card-checklist me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                        How to review a proposal
+                    </p>
+                    <div class="d-flex flex-column gap-2 fs-7 mb-4 text-secondary">
+                        <div><strong>Your request</strong> is repeated at the top of the card. <strong>The sentence under it</strong> was written from the code and the diff, not from your request. If it does not say what you asked for, reject.</div>
+                        <div><strong>Targets</strong> are listed by name, type, container and one property, straight from the index, so you can see the selection is the right one.</div>
+                        <div><strong>Diff rows</strong> aggregate the change: <em>FireRating: (none) → EI60 × 5</em> means five entities got that value.</div>
+                        <div><strong><i class="bi bi-flag-fill text-warning"></i> Flagged rows</strong> sit on top in a warning colour. A row is flagged when something about it is not in your request: its new value (<em>value not in request</em>), the property it changed (<em>property not in request</em>, for example a U-value written when you asked for a fire rating), or an entity created or deleted. Tick each one to enable Approve. Normal rows need nothing. The model is shown, per property set, the standard properties the file does not hold yet, so a request for a missing property adds it instead of reusing a neighbour.</div>
+                        <div><strong>Guardian</strong> shows whether the documents confirm, contradict, or say nothing. Untick <em>Check documents</em> next to the input to skip it when you know the documents are silent; the skip is recorded on the proposal.</div>
+                        <div><strong>The code</strong> is one click away, collapsed. You do not have to read Python to approve.</div>
+                    </div>
+
+                    <!-- 4. Who can do what -->
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-person-check me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                        Who can do what
+                    </p>
+                    <ul class="fs-7 text-secondary mb-4 ps-3">
+                        <li><strong>Editors and owners</strong> can propose, approve and reject.</li>
+                        <li><strong>Viewers</strong> can read this tab and the History tab but cannot propose, approve or reject.</li>
+                        <li>Sending a new request supersedes any proposal still pending in the same conversation.</li>
+                    </ul>
+
+                    <!-- 5. Caveats -->
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-exclamation-circle me-1" style="color: var(--castor-accent, #8b5cf6);"></i>
+                        Caveats
+                    </p>
+                    <div class="d-flex flex-column gap-1 fs-8 text-secondary mb-3">
+                        <span><i class="bi bi-dot"></i>Geometry is out of scope: moving, resizing or reshaping anything is refused, never proposed.</span>
+                        <span><i class="bi bi-dot"></i>If the file changes between proposal and approval, approval is refused with "file changed, please re-propose".</span>
+                        <span><i class="bi bi-dot"></i>One file per request. Several changes in one sentence are fine and become one commit.</span>
+                        <span><i class="bi bi-dot"></i>Approval refreshes the index for the changed entities but does not re-embed them for Ask until the file is reprocessed; a created storey or space appears as an entity but not in the spatial tree until then.</span>
+                        <span><i class="bi bi-dot"></i>Pressing Stop, or closing the tab, discards the run in progress: no proposal is left pending and the scratch copy is deleted.</span>
+                        <span><i class="bi bi-dot"></i>If the Modify model does not answer in time or cannot be reached, the request ends with a retryable failure card; nothing is written.</span>
+                        <span><i class="bi bi-dot"></i>Use the storey, space and property-set names as they appear in the model; Castor lists them for the model, it does not guess.</span>
+                    </div>
+
+                    <p class="fw-semibold fs-8 mb-1 text-secondary">Which model runs Modify</p>
+                    <div class="table-responsive">
+                        <table class="table table-sm fs-8 mb-0">
+                            <thead><tr class="text-secondary"><th>Graphics memory</th><th>Modify model</th><th>Note</th></tr></thead>
+                            <tbody>
+                                <tr><td>8 GB</td><td>7B coder</td><td>the floor; measured in the benchmark, not assumed</td></tr>
+                                <tr><td>12 GB</td><td>14B coder</td><td>the default, settled by the benchmark bake-off</td></tr>
+                                <tr><td>24 GB</td><td>30B coder</td><td>best local quality</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="fs-9 text-secondary mt-2 mb-0">All inference is local. A model that does not fit in graphics memory is not spilled into system memory: that turns a thirty-second generation into minutes. The explanation sentence is written by the same Modify model.</p>
+
+                </div>
+
+                <div class="tab-pane fade" id="modify-help-examples" role="tabpanel" aria-labelledby="modify-help-examples-tab">
+                    {% if user_permission == 'viewer' %}
+                    <p class="text-secondary fs-7 mb-4">What Modify can do, in sentences that work. Pasting an example into the input needs editor access.</p>
+                    {% else %}
+                    <p class="text-secondary fs-7 mb-4">Click an example to paste it into the input. Nothing runs until you press <strong>Propose</strong>, and nothing is written until you approve the diff.</p>
+                    {% endif %}
+
+                    <!-- Change a property -->
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-pencil-square me-1" style="color: #3b82f6;"></i>
+                        Change a property
+                    </p>
+                    <div class="d-flex flex-column gap-2 mb-4 modify-example-group" style="--example-color: #3b82f6;">
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Set the fire rating of all walls on the ground floor to EI60</button>
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Set FireRating to EI120 on all external walls</button>
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Change ThermalTransmittance to 0.18 on all walls with ThermalTransmittance above 0.3</button>
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Set the fire rating of the internal doors to EI30</button>
+                    </div>
+
+                    <!-- Add or remove a property -->
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-plus-slash-minus me-1" style="color: #22c55e;"></i>
+                        Add or remove a property
+                    </p>
+                    <div class="d-flex flex-column gap-2 mb-4 modify-example-group" style="--example-color: #22c55e;">
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Add FireRating EI90 to all walls</button>
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Remove Reference from all walls</button>
+                    </div>
+
+                    <!-- Property sets -->
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-folder2-open me-1" style="color: #f97316;"></i>
+                        Property sets
+                    </p>
+                    <div class="d-flex flex-column gap-2 mb-4 modify-example-group" style="--example-color: #f97316;">
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Add Pset_FireCompliance with Standard="FS-2026" and Status="Pending" to all external walls</button>
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Remove Pset_Maintenance from all walls</button>
+                    </div>
+
+                    <!-- Names and attributes -->
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-tag me-1" style="color: #eab308;"></i>
+                        Names and attributes
+                    </p>
+                    <div class="d-flex flex-column gap-2 mb-4 modify-example-group" style="--example-color: #eab308;">
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Rename the space "2 - Bedroom" to "2 - Master bedroom"</button>
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Set LongName to "Main Living Room" on the space "1 - Living room"</button>
+                    </div>
+
+                    <!-- Materials and classification -->
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-bookmark-star me-1" style="color: #ec4899;"></i>
+                        Materials and classification
+                    </p>
+                    <div class="d-flex flex-column gap-2 mb-4 modify-example-group" style="--example-color: #ec4899;">
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Assign concrete material to all walls</button>
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Classify all walls under FireSafety with reference FS-2026/EW</button>
+                    </div>
+
+                    <!-- Storeys, spaces and groups -->
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-diagram-3 me-1" style="color: #14b8a6;"></i>
+                        Storeys, spaces and groups
+                    </p>
+                    <div class="d-flex flex-column gap-2 mb-4 modify-example-group" style="--example-color: #14b8a6;">
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Set Reference to LR on all the furniture in the living room</button>
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Move the bed and the desk from the bedroom into the living room</button>
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Add all external walls to a new zone called Fire Zone A</button>
+                    </div>
+
+                    <!-- Create and delete -->
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-plus-square me-1" style="color: #ef4444;"></i>
+                        Create and delete
+                    </p>
+                    <p class="text-secondary fs-8 mb-2">Every created or deleted entity is a flagged row you tick before Approve.</p>
+                    <div class="d-flex flex-column gap-2 mb-4 modify-example-group" style="--example-color: #ef4444;">
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Create a new IfcZone called "Acoustic Zone 1"</button>
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Create a new IfcSpace named "Storage-01" on the Ground Floor</button>
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Delete all IfcFurniture in the bedroom</button>
+                    </div>
+
+                    <!-- Several changes at once -->
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-link-45deg me-1" style="color: #06b6d4;"></i>
+                        Several changes at once
+                    </p>
+                    <p class="text-secondary fs-8 mb-2">One sentence, one diff, one commit.</p>
+                    <div class="d-flex flex-column gap-2 mb-4 modify-example-group" style="--example-color: #06b6d4;">
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Set FireRating to EI120 and LoadBearing to true on all external walls</button>
+                        <button type="button" class="btn btn-outline-secondary text-start fs-8 modify-example" data-bs-dismiss="modal">Add Pset_FireCompliance with Standard="FS-2026" to all external walls and classify them under FireSafety with reference FS-2026/EW</button>
+                    </div>
+
+                    <!-- Will be refused -->
+                    <p class="fw-semibold fs-7 mb-2">
+                        <i class="bi bi-slash-circle me-1" style="color: #6b7280;"></i>
+                        Will be refused
+                    </p>
+                    <div class="d-flex flex-column gap-1 fs-8 text-secondary mb-4">
+                        <span><i class="bi bi-dot"></i><em>Move the wall 1 meter east</em>, <em>resize the door to 1200mm width</em>, <em>create a new wall</em>: geometry is out of scope.</span>
+                        <span><i class="bi bi-dot"></i><em>What walls do you have?</em>: a question, not a change. Use Ask.</span>
+                        <span><i class="bi bi-dot"></i><em>Change the wall</em>: no property and no value to write.</span>
+                    </div>
+                    
+                    <!-- Tips -->
+                    <div class="border rounded p-3 fs-8 text-secondary" style="border-color: var(--bs-border-color) !important;">
+                        <p class="fw-semibold mb-2"><i class="bi bi-stars me-1" style="color: #eab308;"></i>Tips</p>
+                        <ul class="mb-0 ps-3">
+                            <li>Use storey, space and property-set names as they appear in the model.</li>
+                            <li>Name the type: say <strong>walls</strong> or <strong>doors</strong>, not "elements".</li>
+                            <li>Write the exact value you want: a value that does not appear in your request is flagged on the card.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -211,7 +211,7 @@ class InvestorView(StaffDashboardBaseView):
         ctx = super().get_context_data(**kwargs)
         ctx["kpis"] = usage_analytics.investor_kpis()
         ctx["cohort_grid"] = usage_analytics.cohort_retention_grid(weeks=8)
-        ctx["acceptance"] = usage_analytics.proposal_acceptance_rate_by_tier(window_days=30)
+        ctx["acceptance"] = usage_analytics.proposal_acceptance_rate(window_days=30)
         ctx["provider_mix"] = usage_analytics.provider_mix_summary(window_days=30)
         ctx["ingestion_scatter"] = usage_analytics.ifc_ingestion_scatter()
         ctx["design_partners"] = usage_analytics.design_partner_engagement(window_days=30)

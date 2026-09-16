@@ -381,7 +381,7 @@ class SettingsView(LoginRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
 
         # BYOK panel context (every authenticated user).
-        from core.llm import _resolve_llm_choice, friendly_provider_label
+        from core.llm import _resolve_llm_choice, friendly_provider_label, resolve_model_name
         from core.views_byok import build_byok_context
 
         context.update(build_byok_context(self.request.user))
@@ -398,6 +398,10 @@ class SettingsView(LoginRequiredMixin, TemplateView):
         context["ask_route_meta"] = ask_meta
         context["modify_route_label"] = modify_label
         context["modify_route_meta"] = modify_meta
+        # The resolved model tags: the Modify one is site-wide (Django admin →
+        # Site LLM Configuration); the staff Ollama picker below changes Ask only.
+        context["ask_route_model"] = resolve_model_name(self.request.user, "ask")
+        context["modify_route_model"] = resolve_model_name(self.request.user, "modify")
         context["embed_model"] = settings.OLLAMA_EMBED_MODEL
         context["embed_dimensions"] = settings.PGVECTOR_DIMENSIONS
 

@@ -173,7 +173,7 @@ def test_no_db_writes_from_discovery():
 
 @pytest.mark.django_db
 def test_quantities_page_shows_semantic_filters_panel(client):
-    """Quantities HTML includes IFC semantic filters panel."""
+    """Quantities HTML includes Filter controls (DYNAMIC-07)."""
     project = _project_with_semantics()
     client.force_login(project.owner)
     from django.urls import reverse
@@ -189,6 +189,6 @@ def test_quantities_page_shows_semantic_filters_panel(client):
     )
     assert response.status_code == 200
     html = response.content.decode("utf-8")
-    assert 'data-testid="qty-semantic-filters"' in html
-    assert "IFC semantic filters" in html
+    assert 'data-testid="qty-table-filter-bar"' in html
+    assert 'data-testid="qty-semantic-field"' in html
     assert "BOQ-ready" not in html

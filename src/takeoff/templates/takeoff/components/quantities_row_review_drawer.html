@@ -17,6 +17,7 @@
     <div class="mb-3" data-testid="qty-row-review-identity">
       <div class="text-secondary small">Row</div>
       <div class="fw-semibold" id="qty-row-review-identity-text">—</div>
+      <div class="text-secondary small mt-1" id="qty-row-review-identity-meta" data-testid="qty-row-review-identity-meta"></div>
       <div class="text-secondary small mt-1">
         Computed gap status:
         <span id="qty-row-review-computed-status">—</span>
@@ -241,14 +242,36 @@
     var key = btn.getAttribute("data-qty-row-key") || "";
     var group = btn.getAttribute("data-qty-model-group") || "—";
     var typeName = btn.getAttribute("data-qty-type-name") || "";
+    var displayName = btn.getAttribute("data-qty-display-name") || "";
+    var level = btn.getAttribute("data-qty-hierarchy-level") || "";
+    var gid = btn.getAttribute("data-qty-global-id") || "";
+    var tgid = btn.getAttribute("data-qty-type-global-id") || "";
+    var techCount = btn.getAttribute("data-qty-technical-type-count") || "";
+    var techGids = btn.getAttribute("data-qty-technical-type-gids") || "";
     var basis = btn.getAttribute("data-qty-basis") || "Unresolved";
     var computed = btn.getAttribute("data-qty-computed-status") || "—";
     var status = btn.getAttribute("data-qty-session-status") || "needs_review";
     var note = btn.getAttribute("data-qty-session-note") || "";
-    var identity = group;
-    if (typeName) identity += " · " + typeName;
+    var identity = displayName || typeName || group;
+    if (level === "type") {
+      identity = "Engineering type · " + identity;
+    } else if (level) {
+      identity = (level.charAt(0).toUpperCase() + level.slice(1)) + " · " + identity;
+    }
+    if (!displayName && typeName) identity = group + " · " + typeName;
     identity += " · basis " + (basis || "Unresolved");
+    var metaParts = [];
+    if (group) metaParts.push("IFC class: " + group);
+    if (techCount && Number(techCount) > 1) {
+      metaParts.push("Technical IFC types: " + techCount);
+      if (techGids) metaParts.push("Type GlobalIds: " + techGids);
+    } else if (tgid) {
+      metaParts.push("Type GlobalId: " + tgid);
+    }
+    if (gid) metaParts.push("Instance GlobalId: " + gid);
+    if (key) metaParts.push("Row key: " + key);
     var identityEl = document.getElementById("qty-row-review-identity-text");
+    var metaEl = document.getElementById("qty-row-review-identity-meta");
     var computedEl = document.getElementById("qty-row-review-computed-status");
     var keyEl = document.getElementById("qty-row-review-key");
     var clearKeyEl = document.getElementById("qty-row-review-clear-key");
@@ -257,6 +280,7 @@
     var statusEl = document.getElementById("qty-row-review-status");
     var noteEl = document.getElementById("qty-row-review-note");
     if (identityEl) identityEl.textContent = identity;
+    if (metaEl) metaEl.textContent = metaParts.join(" · ");
     if (computedEl) computedEl.textContent = computed;
     if (keyEl) keyEl.value = key;
     if (clearKeyEl) clearKeyEl.value = key;

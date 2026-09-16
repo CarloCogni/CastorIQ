@@ -2,7 +2,7 @@
 """Intent-to-Work-Order — natural-language batch creation (M3.E).
 
 Mirrors the *shape* of :class:`writeback.services.modification_service.ModificationService`
-but does NOT reuse it: writeback's Tier-2 pipeline is hardcoded to IFC
+but does NOT reuse it: writeback's Modify pipeline is hardcoded to IFC
 mutations and would poison the FM-only contract. Instead we run our own
 classify → plan → preview pipeline and persist an :class:`FMIntentProposal`
 row as the audit record.

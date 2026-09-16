@@ -1,3 +1,5 @@
+> **Note (2026-09-15).** The writeback sections below (triage, slots, resolver, tier router, journal) describe **V2** and are kept as history. V3 replaced that pipeline; its limitations are listed in [`writeback_V3/spec.md`](writeback_V3/spec.md) §Non-goals and in the Modify help modal.
+
 # Known Limitations
 
 A running log of observed reliability limits when running Castor on local
@@ -343,6 +345,120 @@ place.
   at all.
 - Add the prompt to `fixtures/benchmark/pipeline-test-prompts.txt` with
   its expected outcome, so the next run regression-tests it.
+
+---
+
+## 4. Base models write weak IfcOpenShell code
+
+### Symptom
+
+Modify V3 has the model write IfcOpenShell code. Small local models make up helpers, use API
+keywords from older IfcOpenShell versions, and misread IFC semantics (a subtype mistaken for its
+parent, a zone treated as a spatial container). The code fails in the sandbox and uses up the
+repair budget, or it selects the wrong entities.
+
+### Why it matters
+
+Local-first means the default Modify model fits in 8–12 GB. IfcOpenShell is a very small, version-drifted
+share of what those models were trained on, so how well they know the API sets the ceiling
+on Modify's pass rate, whatever verification surrounds it.
+
+### Concrete example
+
+Model: `qwen2.5-coder:7b` via local Ollama (decision log, *review 6*). Verbatim prompt:
+
+```
+Create a new IfcZone called "Acoustic Zone 1"
+```
+
+Observed:
+
+```
+AttributeError: IfcZone has no attribute 'ContainsElements'
+```
+
+In the 2026-09-15 bake-off, 15 of the 7B row's 56 failures were rejections after three code errors
+(e.g. a hallucinated `by_guid` helper) and 19 were wrong selections
+([evaluation record](evaluation/2026-09-15-writeback-v3-bakeoff.md)).
+
+### Mitigations in place
+
+The reviewed API sheet (`writeback/services/api_sheet.py`, checked against the installed
+ifcopenshell), exact grounding strings from the index, sheet modules bound in the sandbox, up to two
+repairs that see the real error, and the scope gate. Wrong code ends in a repair or a rejection,
+never in a change outside the selection.
+
+### Residual risk
+
+The pass rate stays bounded by the model. Larger coder models help but need more graphics memory.
+
+### What to do
+
+Use the largest coder model the machine can hold without CPU offload. Fine-tuning a local model on
+execution-verified IfcOpenShell code is **tracked as future work** in
+[`brainstorming/ifc_code_model_training.md`](brainstorming/ifc_code_model_training.md).
+
+---
+
+## 5. Conflict-scan recall is bounded by retrieval, then by the model's reading of absence
+
+### Symptom
+
+The conflict scanner (the RAV surface, `docs/conflict-scan.md`) misses planted
+contradictions. The first measured run found 5 of 25 conflict triples
+(recall 0.20) and only 1 of 11 clear-cut ones, on a corpus where every
+conflict is a single property on a single element.
+
+### Why it matters
+
+RAV is advisory and never blocks, so a miss costs nothing at approval time;
+but a scanner that reports "no conflicts" on a model with planted ones gives
+false comfort, and the panel's question is whether the number moves when the
+cause is addressed, not whether it is known.
+
+### Concrete example
+
+Model: `qwen2.5-coder:7b` via local Ollama, corpus `fixtures/benchmark/rav/`,
+three runs. The thermal specification says external cavity walls
+(`Wall-Ext_102Bwk-75Ins-100LBlk-12P`) shall not exceed 0.18 W/m²K; the three
+walls carry 0.2359. Before the retrieval fix no thermal chunk ever reached a
+wall: embedding top-K per chunk returned the nearest five entities, three
+near-identical walls crowded each other out, and the case was never shown to
+the model. After the fix the walls are reached by the chunk that quotes their
+reference and the conflict is found on every run
+([record](evaluation/2026-09-15-rav-retrieval-fix.md)).
+
+### Mitigations in place
+
+Retrieval by lookup before retrieval by embedding (reference pass, label pass,
+then top-K), verification of the current value a finding claims against the
+indexed properties (a value the entity does not carry is stored as `(not set)`,
+never invented), attribution of a finding to the chunk that quotes the
+requirement, and the Modify context size passed on every call so a longer
+prompt is not truncated. Measured on 2026-09-15, three repeats against a
+three-repeat baseline: precision 0.60 → 0.70, recall 0.16 → 0.65, F1 0.25 →
+0.68 on the coder model, and precision 0.29 → 0.71, recall 0.20 → 0.77, F1
+0.24 → 0.74 on `llama3.1:8b`; clear-conflict recall 1/11 → 6–8/11 and
+9–10/11; every key entity reached by its right document (11/15 → 15/15). The recall and F1 deltas exceed the
+baseline's spread by more than an order of magnitude; precision did not fall.
+
+### Residual risk
+
+What still fails is the model, not retrieval: an absent property the
+requirement targets (acoustic rating on doors, fire rating on a slab) is read
+as "not applicable"; the one marginal case (0.117 against ≤ 0.10) is rounded
+away; two documents that disagree about the same walls are not both reported;
+"as designed" values in the same excerpt as a limit are compared against the
+limit. Aligned requirements held on 18–23 of 26 after the fix (21–25 of 26
+before): the price of reaching more entities is a few more chances to
+misapply a requirement. The corpus is small and self-labelled.
+
+### What to do
+
+Treat RAV output as a checklist for a person, not a verdict. Cite elements in
+specifications by their model reference; the reference pass depends on it.
+Expert labelling of a larger set is the open validation item
+(`docs/fmp-delivery/rubric-map.md` §5).
 
 ---
 

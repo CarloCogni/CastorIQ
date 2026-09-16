@@ -24,6 +24,7 @@ class FailureRecord(TimestampedModel):
     """
 
     class FailurePhase(models.TextChoices):
+        GENERATE = "GENERATE", "Generate"
         VALIDATION = "VALIDATION", "Validation"
         EXECUTION = "EXECUTION", "Execution"
         SANDBOX = "SANDBOX", "Sandbox"
@@ -56,7 +57,7 @@ class FailureRecord(TimestampedModel):
     tier = models.IntegerField(
         null=True,
         blank=True,
-        help_text="RSAA tier at failure time. Null for early VALIDATION failures.",
+        help_text="V2 RSAA tier at failure time. Null on V3 failures.",
     )
     failure_phase = models.CharField(
         max_length=20,

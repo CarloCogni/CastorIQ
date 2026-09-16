@@ -46,6 +46,17 @@ def scan_service(project, user, mock_llm):
     return ConflictScanService(project, user, skip_low_value=True)
 
 
+# ── _get_llm_model_name ────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_llm_model_name_is_the_resolved_modify_model(scan_service, settings):
+    """The audit label is the Modify model the scan ran on, not the Ask prose model."""
+    settings.OLLAMA_MODEL = "llama3.1:8b"
+    settings.MODIFY_MODEL = "qwen2.5-coder:14b"
+    assert scan_service._get_llm_model_name() == "qwen2.5-coder:14b"
+
+
 # ── _format_properties ─────────────────────────────────────────────────────────
 
 
@@ -337,7 +348,7 @@ class TestUpsertConflict:
         from documents.models import Document, DocumentChunk
         from ifc_processor.tests.factories import IFCEntityFactory
 
-        entity = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcRoof")
+        entity = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcRoof", properties={})
         doc = Document.objects.create(
             project=project, name="Spec.pdf", file="spec.pdf", status="completed"
         )
@@ -825,3 +836,427 @@ class TestPerEntityHeartbeat:
         assert statuses.count("running") == 2
         assert statuses.count("error") == 1
         assert statuses.count("done") == 1
+
+
+# ── Entity-first retrieval ────────────────────────────────────────────────────
+
+
+def _doc_chunk(project, name: str, content: str, index: int = 0):
+    from documents.models import Document, DocumentChunk
+
+    doc, _ = Document.objects.get_or_create(
+        project=project, name=name, defaults={"file": name, "status": "completed"}
+    )
+    return DocumentChunk.objects.create(document=doc, content=content, chunk_index=index)
+
+
+@pytest.mark.django_db
+class TestEntityFirstRetrieval:
+    """The reference and label passes reach entities the per-chunk embedding top-K missed.
+
+    Chunks here carry no embedding, so the embedding pass contributes nothing
+    and every mapping below comes from the deterministic passes alone.
+    """
+
+    THERMAL = (
+        "3.1 External walls. External cavity walls (Wall-Ext_102Bwk-75Ins-100LBlk-12P) "
+        "shall have a thermal transmittance not exceeding 0.18 W/m²K."
+    )
+
+    def _walls(self, ifc_file, n: int = 3):
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        return [
+            IFCEntityFactory(
+                ifc_file=ifc_file,
+                ifc_type="IfcWall",
+                name=f"Basic Wall:Wall-Ext_102Bwk-75Ins-100LBlk-12P:28533{i}",
+                embedding=[0.0] * 1024,
+                properties={
+                    "Pset_WallCommon.Reference": "Wall-Ext_102Bwk-75Ins-100LBlk-12P",
+                    "Pset_WallCommon.ThermalTransmittance": 0.2359,
+                },
+            )
+            for i in range(n)
+        ]
+
+    def test_every_identical_wall_reaches_the_chunk_that_names_its_reference(
+        self, scan_service, ifc_file
+    ):
+        """Three walls with the same reference all map to the thermal chunk; no lottery."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        walls = self._walls(ifc_file)
+        beam = IFCEntityFactory(
+            ifc_file=ifc_file, ifc_type="IfcBeam", name="Beam:B1:1", embedding=[0.0] * 1024
+        )
+        chunk = _doc_chunk(scan_service.project, "thermal.pdf", self.THERMAL)
+
+        mapping = scan_service._build_entity_chunk_map([chunk])
+
+        assert set(mapping) == set(walls)
+        assert beam not in mapping
+        assert scan_service.retrieval_stats["by_reference"] == 3
+        assert scan_service.retrieval_stats["by_embedding"] == 0
+
+    def test_label_pass_needs_a_property_mention(self, scan_service, ifc_file):
+        """'walls' alone pulls nothing; 'walls' plus 'U-value' pulls every wall."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        walls = [
+            IFCEntityFactory(
+                ifc_file=ifc_file, ifc_type="IfcWall", name=f"W{i}", embedding=[0.0] * 1024
+            )
+            for i in range(2)
+        ]
+        plain = _doc_chunk(scan_service.project, "a.pdf", "The walls are rendered white.")
+        spec = _doc_chunk(scan_service.project, "b.pdf", "All walls: U-value at most 0.18.")
+
+        assert scan_service._build_entity_chunk_map([plain]) == {}
+        mapping = scan_service._build_entity_chunk_map([spec])
+
+        assert set(mapping) == set(walls)
+        assert scan_service.retrieval_stats["by_label"] == 2
+
+    def test_reference_match_respects_word_boundaries(self, scan_service, ifc_file):
+        """The internal door reference '810x2110mm' does not match inside '1810x2110mm'."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        internal = IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcDoor",
+            name="Doors_IntSgl:810x2110mm:285959",
+            embedding=[0.0] * 1024,
+            properties={"Pset_DoorCommon.Reference": "810x2110mm"},
+        )
+        external = IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcDoor",
+            name="Doors_ExtDbl_Flush:1810x2110mm:285860",
+            embedding=[0.0] * 1024,
+            properties={"Pset_DoorCommon.Reference": "1810x2110mm"},
+        )
+        chunk = _doc_chunk(
+            scan_service.project,
+            "fire.pdf",
+            "The external double door (Doors_ExtDbl_Flush 1810x2110mm) has no fire rating requirement.",
+        )
+
+        mapping = scan_service._build_entity_chunk_map([chunk])
+
+        # Both doors arrive through the label pass ("door" + "fire rating");
+        # only the external one is a reference hit.
+        assert external in mapping and internal in mapping
+        assert scan_service.retrieval_stats["by_reference"] == 1
+
+    def test_plain_word_name_segments_are_not_references(self, scan_service, ifc_file):
+        """'System Panel:Glazed:285688' must not match 'double-glazed' in a thermal spec."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcPlate",
+            name="System Panel:Glazed:285688",
+            embedding=[0.0] * 1024,
+            properties={},
+        )
+        deck = IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcSlab",
+            name="Floor:Simple floor:295048",
+            embedding=[0.0] * 1024,
+            properties={"Pset_SlabCommon.Reference": "Simple floor"},
+        )
+        chunk = _doc_chunk(
+            scan_service.project,
+            "thermal.pdf",
+            'A double-glazed low-E unit. The access deck slab ("Simple floor") carries no U-value requirement.',
+        )
+
+        mapping = scan_service._build_entity_chunk_map([chunk])
+
+        assert deck in mapping
+        assert [e.ifc_type for e in mapping] == ["IfcSlab"]
+
+    def test_chunks_per_entity_are_capped_reference_hits_first(self, scan_service, ifc_file):
+        """With the cap at 2, a wall keeps the chunk that quotes its reference over label-only chunks."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        wall = IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcWall",
+            name="Basic Wall:Wall-Ext_102Bwk-75Ins-100LBlk-12P:285330",
+            embedding=[0.0] * 1024,
+            properties={"Pset_WallCommon.Reference": "Wall-Ext_102Bwk-75Ins-100LBlk-12P"},
+        )
+        label_a = _doc_chunk(scan_service.project, "a.pdf", "All walls: U-value at most 0.18.")
+        label_b = _doc_chunk(scan_service.project, "b.pdf", "Walls shall have fire rating EI 30.")
+        by_reference = _doc_chunk(scan_service.project, "c.pdf", self.THERMAL)
+        scan_service.MAX_CHUNKS_PER_ENTITY = 2
+
+        mapping = scan_service._build_entity_chunk_map([label_a, label_b, by_reference])
+
+        assert len(mapping[wall]) == 2
+        assert mapping[wall][0] is by_reference
+
+    def test_scanner_passes_the_modify_context_size(self, project, user, monkeypatch):
+        """Every Modify-model call carries NUM_CTX; a long prompt must not be truncated."""
+        from unittest.mock import MagicMock
+
+        from writeback.services.generator import NUM_CTX
+
+        captured = {}
+
+        def fake_get_llm(**kwargs):
+            captured.update(kwargs)
+            return MagicMock()
+
+        monkeypatch.setattr("writeback.services.conflict_scan_service.get_llm", fake_get_llm)
+
+        ConflictScanService(project, user)
+
+        assert captured["num_ctx"] == NUM_CTX
+
+    def test_label_pass_is_capped_per_class(self, scan_service, ifc_file):
+        """ENTITY_TYPE_QUOTA bounds the LLM calls a generic sentence can cause."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        for i in range(4):
+            IFCEntityFactory(
+                ifc_file=ifc_file, ifc_type="IfcWall", name=f"W{i}", embedding=[0.0] * 1024
+            )
+        scan_service.ENTITY_TYPE_QUOTA = 2
+        chunk = _doc_chunk(scan_service.project, "b.pdf", "All walls: U-value at most 0.18.")
+
+        mapping = scan_service._build_entity_chunk_map([chunk])
+
+        assert len(mapping) == 2
+
+    def test_entity_first_off_restores_embedding_only_retrieval(self, project, user, mock_llm):
+        """The ablation switch: with entity_first=False an unembedded chunk maps nothing."""
+        from ifc_processor.tests.factories import IFCFileFactory
+
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        service = ConflictScanService(project, user, entity_first=False)
+        self._walls(ifc_file, n=1)
+        chunk = _doc_chunk(project, "thermal.pdf", self.THERMAL)
+
+        assert service._build_entity_chunk_map([chunk]) == {}
+
+
+# ── Value verification ────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestVerifyIfcValue:
+    """A finding's current value is the index's value, never the model's claim."""
+
+    def _scan_run(self, scan_service, project):
+        return ScanRun.objects.create(
+            project=project,
+            triggered_by=scan_service.user,
+            scan_type=ScanRun.ScanType.FULL,
+            status=ScanRun.Status.RUNNING,
+            llm_model_used="test",
+        )
+
+    def _finding(self, **overrides):
+        base = {
+            "property_name": "FireRating",
+            "ifc_value": "EI60",
+            "document_value": "EI 30",
+            "title": "t",
+            "description": "d",
+            "severity": "critical",
+            "confidence": 0.9,
+            "suggested_fix": "",
+        }
+        base.update(overrides)
+        return base
+
+    def test_fabricated_value_on_entity_without_the_property_is_stored_as_not_set(
+        self, scan_service, project, ifc_file
+    ):
+        """EI60 claimed on a wall with no FireRating: stored '(not set)', counted as unset."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        wall = IFCEntityFactory(
+            ifc_file=ifc_file, ifc_type="IfcWall", properties={"Pset_WallCommon.IsExternal": True}
+        )
+        chunk = _doc_chunk(project, "fire.pdf", "External walls shall be EI 30.")
+
+        result = scan_service._upsert_conflict(
+            wall, chunk, self._finding(), self._scan_run(scan_service, project)
+        )
+
+        assert result == "created"
+        assert Conflict.objects.get(project=project).ifc_value == "(not set)"
+        assert scan_service.value_stats == {"values_corrected": 0, "values_unset": 1}
+
+    def test_claimed_value_is_replaced_by_the_indexed_value(self, scan_service, project, ifc_file):
+        """The model says 0.2; the index says 0.2359; the conflict row says 0.2359."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        wall = IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcWall",
+            properties={"Pset_WallCommon.ThermalTransmittance": 0.235926059936681},
+        )
+        chunk = _doc_chunk(project, "thermal.pdf", "U-value not exceeding 0.18 W/m²K.")
+        finding = self._finding(
+            property_name="U-value", ifc_value="0.2", document_value="<= 0.18 W/m²K"
+        )
+
+        result = scan_service._upsert_conflict(
+            wall, chunk, finding, self._scan_run(scan_service, project)
+        )
+
+        assert result == "created"
+        assert Conflict.objects.get(project=project).ifc_value == "0.235926"
+        assert scan_service.value_stats["values_corrected"] == 1
+
+    def test_claim_equal_to_the_index_at_float_precision_is_not_a_correction(
+        self, scan_service, project, ifc_file
+    ):
+        """0.549915397631134 claimed vs 0.549915 formatted is the same value; nothing is counted."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        covering = IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcCovering",
+            properties={"Pset_CoveringCommon.ThermalTransmittance": 0.549915397631134},
+        )
+        chunk = _doc_chunk(project, "thermal.pdf", "Ceilings: U-value not exceeding 0.1.")
+        finding = self._finding(
+            property_name="ThermalTransmittance",
+            ifc_value="0.549915397631134",
+            document_value="<= 0.1",
+        )
+
+        scan_service._upsert_conflict(
+            covering, chunk, finding, self._scan_run(scan_service, project)
+        )
+
+        assert scan_service.value_stats["values_corrected"] == 0
+
+    def test_as_designed_value_equal_at_document_precision_is_dropped(
+        self, scan_service, project, ifc_file
+    ):
+        """0.350998 in the index vs '0.35 as designed' in the document is not a conflict."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        wall = IFCEntityFactory(
+            ifc_file=ifc_file,
+            ifc_type="IfcWallStandardCase",
+            properties={"Pset_WallCommon.ThermalTransmittance": 0.350997935306263},
+        )
+        chunk = _doc_chunk(project, "thermal.pdf", "Partitions are recorded at 0.35 as designed.")
+        finding = self._finding(
+            property_name="ThermalTransmittance",
+            ifc_value="0.35",
+            document_value="0.35 as designed",
+        )
+
+        result = scan_service._upsert_conflict(
+            wall, chunk, finding, self._scan_run(scan_service, project)
+        )
+
+        assert result == "skipped"
+        assert not Conflict.objects.filter(project=project).exists()
+
+    def test_boolean_asserted_by_the_document_wording_is_dropped(
+        self, scan_service, project, ifc_file
+    ):
+        """LoadBearing=False against 'non-load-bearing' is agreement, not a conflict."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        wall = IFCEntityFactory(
+            ifc_file=ifc_file, ifc_type="IfcWall", properties={"Pset_WallCommon.LoadBearing": False}
+        )
+        chunk = _doc_chunk(project, "fire.pdf", "The walls are non-load-bearing.")
+        finding = self._finding(
+            property_name="LoadBearing", ifc_value="false", document_value="non-load-bearing"
+        )
+
+        result = scan_service._upsert_conflict(
+            wall, chunk, finding, self._scan_run(scan_service, project)
+        )
+
+        assert result == "skipped"
+
+    def test_boolean_contradicted_by_the_document_wording_is_kept(
+        self, scan_service, project, ifc_file
+    ):
+        """LoadBearing=False against 'load-bearing' is the ST-01 conflict; it stays."""
+        from ifc_processor.tests.factories import IFCEntityFactory
+
+        wall = IFCEntityFactory(
+            ifc_file=ifc_file, ifc_type="IfcWall", properties={"Pset_WallCommon.LoadBearing": False}
+        )
+        chunk = _doc_chunk(project, "structural.pdf", "The external walls are load-bearing.")
+        finding = self._finding(
+            property_name="LoadBearing", ifc_value="False", document_value="load-bearing"
+        )
+
+        result = scan_service._upsert_conflict(
+            wall, chunk, finding, self._scan_run(scan_service, project)
+        )
+
+        assert result == "created"
+        assert Conflict.objects.get(project=project).ifc_value == "False"
+
+    def test_verification_can_be_switched_off_for_ablation(self, project, user, mock_llm):
+        """verify_values=False stores the claim as the model made it."""
+        from ifc_processor.tests.factories import IFCEntityFactory, IFCFileFactory
+
+        ifc_file = IFCFileFactory(project=project, status="completed")
+        service = ConflictScanService(project, user, verify_values=False)
+        wall = IFCEntityFactory(ifc_file=ifc_file, ifc_type="IfcWall", properties={})
+        chunk = _doc_chunk(project, "fire.pdf", "External walls shall be EI 30.")
+
+        service._upsert_conflict(wall, chunk, self._finding(), self._scan_run(service, project))
+
+        assert Conflict.objects.get(project=project).ifc_value == "EI60"
+
+
+# ── Chunk attribution ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestAttributeChunk:
+    """A finding is filed against the chunk that quotes the requirement."""
+
+    def test_chunk_quoting_the_document_value_beats_the_model_index(self, scan_service, project):
+        """Index says 0 (thermal); the fire chunk contains 'EI 30-Sa'; the fire chunk wins."""
+        thermal = _doc_chunk(project, "thermal.pdf", "Doors: U-value not exceeding 1.2 W/m²K.")
+        fire = _doc_chunk(project, "fire.pdf", "Internal doors shall be EI 30-Sa self-closing.")
+        finding = {
+            "property_name": "FireRating",
+            "document_value": "EI 30-Sa",
+            "source_chunk_index": 0,
+        }
+
+        assert scan_service._attribute_chunk(finding, [thermal, fire]) is fire
+
+    def test_tie_keeps_the_model_index(self, scan_service, project):
+        """When no chunk quotes the value better than the model's choice, the choice stands."""
+        a = _doc_chunk(project, "a.pdf", "Walls shall be EI 30.")
+        b = _doc_chunk(project, "b.pdf", "Partitions shall be EI 30.", index=1)
+        finding = {
+            "property_name": "FireRating",
+            "document_value": "EI 30",
+            "source_chunk_index": 1,
+        }
+
+        assert scan_service._attribute_chunk(finding, [a, b]) is b
+
+    def test_non_integer_index_falls_back_to_the_first_chunk(self, scan_service, project):
+        """The model returned 'first' as the index; nothing crashes."""
+        a = _doc_chunk(project, "a.pdf", "Walls shall be EI 30.")
+        finding = {
+            "property_name": "FireRating",
+            "document_value": "",
+            "source_chunk_index": "first",
+        }
+
+        assert scan_service._attribute_chunk(finding, [a]) is a

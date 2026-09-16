@@ -1,0 +1,87 @@
+<!-- fived/components/semantic_source_readiness_review.html — frozen SEM-4A readiness -->
+{% with readiness=semantic_readiness_review %}
+<section class="mb-4"
+         data-testid="s3-semantic-source-readiness"
+         aria-labelledby="s3-semantic-readiness-heading">
+  <div class="d-flex flex-wrap align-items-baseline justify-content-between gap-2 mb-2">
+    <h2 class="h6 mb-0" id="s3-semantic-readiness-heading"
+        data-testid="s3-semantic-source-readiness-title">
+      Semantic source readiness
+    </h2>
+  </div>
+  <p class="small text-secondary mb-2" data-testid="s3-semantic-source-readiness-purpose">
+    Frozen openBIM / IFC-first Field · Status · Source · Note for Level, Zone, Classification,
+    Package, Work Package, Project unit declaration, and Measurement Basis. Distinct from
+    Quantity row readiness (usable-row coverage) below. Not cost, BOQ, or rates.
+  </p>
+  <p class="small text-secondary mb-2" data-testid="s3-unit-layers-note">
+    Project unit confirmation and quantity-row unit resolution are reviewed separately.
+  </p>
+
+  {% if readiness.state == "captured" %}
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-2"
+           data-testid="s3-semantic-source-readiness-table"
+           style="table-layout:fixed; width:100%;">
+      <thead>
+        <tr class="small text-secondary">
+          <th scope="col" style="width:14%;">Field</th>
+          <th scope="col" style="width:18%;">Status</th>
+          <th scope="col" style="width:28%;">Source</th>
+          <th scope="col" style="width:40%;">Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for field in readiness.fields %}
+        <tr data-testid="s3-semantic-readiness-row"
+            data-field-key="{{ field.field_key }}"
+            data-readiness-status="{{ field.readiness_status }}">
+          <td class="small fw-semibold">{{ field.label }}</td>
+          <td class="small">
+            {% if field.readiness_status == "available" %}
+            <span class="text-success" data-testid="s3-readiness-status-label">Available</span>
+            {% elif field.readiness_status == "confirmed" %}
+            <span class="text-success" data-testid="s3-readiness-status-label">Confirmed</span>
+            {% elif field.readiness_status == "missing_in_export" %}
+            <span class="text-secondary" data-testid="s3-readiness-status-label">Missing in this IFC export</span>
+            {% elif field.readiness_status == "user_mapping_required" %}
+            <span class="text-warning" data-testid="s3-readiness-status-label">User mapping required</span>
+            {% else %}
+            <span class="text-secondary" data-testid="s3-readiness-status-label">{{ field.readiness_status }}</span>
+            {% endif %}
+          </td>
+          <td class="small text-secondary text-break"
+              style="white-space:normal; word-break:break-word;">
+            {% if field.available_sources %}
+              {{ field.available_sources|join:", " }}
+            {% elif field.recommended_sources %}
+              {{ field.recommended_sources.0 }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="small text-secondary text-break"
+              style="white-space:normal; word-break:break-word;">{{ field.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if readiness.helper %}
+  <details class="mt-1">
+    <summary class="small text-secondary" style="cursor:pointer;">More about readiness</summary>
+    <p class="small text-secondary mb-0" data-testid="s3-semantic-source-readiness-helper">
+      {{ readiness.helper }}
+    </p>
+  </details>
+  {% endif %}
+
+  {% else %}
+  <div class="alert alert-secondary py-2 mb-0"
+       data-testid="s3-semantic-source-readiness-empty"
+       role="status">
+    <p class="small mb-0">{{ readiness.message }}</p>
+  </div>
+  {% endif %}
+</section>
+{% endwith %}

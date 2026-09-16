@@ -295,8 +295,7 @@ class ExportReconciliationService:
             commit_message = self._build_commit_message(plan, user)
             commit_hash = self.git.commit_modification(
                 ifc_file=ifc_file,
-                message=commit_message,
-                tier=2,
+                subject=commit_message,
                 diff_data=diff_data,
                 author_name=self._author_name(user),
             )

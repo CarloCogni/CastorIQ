@@ -70,11 +70,13 @@ class FiveDModelVersionAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
         "content_hash",
+        "content_hash_contract_version",
         "row_count",
         "settings_snapshot",
         "boundary_snapshot",
         "session_annotations_snapshot",
         "unresolved_register_snapshot",
+        "semantic_source_readiness_snapshot",
         "source_query",
     )
     autocomplete_fields = ("data_model", "created_by")

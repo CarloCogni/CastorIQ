@@ -1,0 +1,39 @@
+<!-- takeoff/components/quantities_save_version_modal.html — TABLE-04 Save version -->
+<div class="modal fade" id="qtySaveVersionModal" tabindex="-1"
+     aria-labelledby="qtySaveVersionModalLabel" aria-hidden="true"
+     data-testid="qty-save-version-modal">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="{{ qty_prep_freeze_url }}" data-testid="qty-freeze-form">
+        {% csrf_token %}
+        <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
+        <div class="modal-header py-2">
+          <h5 class="modal-title" id="qtySaveVersionModalLabel">Save version</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small text-secondary mb-2" data-testid="qty-save-version-help">
+            Creates a read-only version of the current table for review.
+            It does not save an editable workspace you can reopen later.
+            You can keep editing this working session afterward; open saved versions from the status chip.
+          </p>
+          <label class="form-label small mb-1" for="qty-freeze-version-label">Version label</label>
+          <input type="text"
+                 class="form-control form-control-sm"
+                 id="qty-freeze-version-label"
+                 name="version_label"
+                 maxlength="64"
+                 placeholder="Quantity table version — …"
+                 data-testid="qty-freeze-version-label"
+                 autocomplete="off">
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-primary" data-testid="qty-freeze-cta">
+            Save version
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

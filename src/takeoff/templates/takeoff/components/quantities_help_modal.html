@@ -18,15 +18,26 @@
 
                 <p class="fw-semibold fs-7 mb-2">What is it?</p>
                 <p class="text-secondary fs-7 mb-4">
-                    Quantities builds a deterministic Quantity Preparation Data Model from indexed IFC.
-                    Start with the Preparation Setup Summary, then use Schema Builder, Source Mapping,
-                    and User-defined Measurement Rules to generate preparation rows. Optionally save
-                    or load a preparation configuration draft. Add session-only row reviews
-                    (status + note) on generated rows. Review the Unresolved Data Register,
-                    Visual Summary, and Quantity Preparation Insights. Rows eligible for Modify handoff
-                    have enough target context — they are not necessarily complete.
-                    Raw Indexed Quantity Inventory is secondary reference only.
-                    Not Ask, not Modify, not BOQ, not cost, not verified QS measurement.
+                    Quantities opens on one quantity table built from indexed IFC (openBIM-first).
+                    Use Columns, Filter, Set measurement, Assign values, Units,
+                    Save table, Open table, Save version, and Export table
+                    from the primary toolbar. There is no six-stage Discover→Configure→Map→Units→Freeze→Review rail.
+                    Advanced &amp; reference keeps configure/schema tools available when needed.
+                    Help covers boundaries (not Ask, Modify, BOQ, cost, or writeback).
+                </p>
+                <p class="text-secondary fs-7 mb-4" data-testid="qty-help-openbim-neutrality">
+                    Some fields are exported by the authoring tool into the IFC file, such as Family,
+                    Type, Category, Workset, OmniClass, or Assembly Code. Castor treats them as model
+                    evidence, not as Revit-only assumptions. Availability varies by export.
+                </p>
+                <p class="text-secondary fs-7 mb-4" data-testid="qty-help-classref-vs-authoring">
+                    IFC Classification References are native IFC relationships. They are separate from
+                    authoring properties and separate from Castor schema mapping.
+                </p>
+                <p class="text-secondary fs-7 mb-4" data-testid="qty-help-zone-missing-export">
+                    Zone is not found in this IFC export when readiness shows
+                    <em>Missing in this IFC export</em>. Another IFC export may include zone membership,
+                    or the user may choose a zone source from available properties.
                 </p>
 
                 <p class="fw-semibold fs-7 mb-2">Lifecycle</p>
@@ -38,11 +49,12 @@
                     basis rules, schema includes, and source mapping intent — not generated
                     quantity rows, totals, register counts, visuals, or row reviews.
                     It does not approve, certify, write back, or create BOQ/cost.
-                    Row reviews (status + note) are session-only in this slice — not saved into
-                    preparation configuration drafts, and they do not change generated quantities
-                    or resolve missing mapping/quantity gaps. Ending the browser session or
-                    losing the session may clear row reviews.
-                    Refresh without parameters restores defaults unless a prep_config draft is loaded.
+                    Row reviews (status + note) are session-only until you use
+                    <strong>Save table</strong>, which keeps editable work across logout and restart.
+                    Ending the browser session without Save table may clear row reviews.
+                    <strong>Save version</strong> creates a read-only copy; it does not replace Save table.
+                    Preparation configuration drafts remain settings-only (basis/schema/source intent).
+                    Refresh without parameters restores defaults unless a prep_config draft or saved table is loaded.
                     Generate may continue as session GET params after a draft is loaded.
                     Required/core fields are locked. Excluded optional fields are omitted from the
                     generated table and are not counted as unresolved schema gaps.
@@ -54,36 +66,23 @@
 
                 <p class="fw-semibold fs-7 mb-2">How to use it</p>
                 <ul class="text-secondary fs-7 mb-4">
-                    <li>Preparation Setup Summary — counts for the current configuration.</li>
-                    <li>Preparation Configuration Drafts — optional save/load of settings only
-                        (basis + schema + source intent). Not generated rows, not row reviews,
-                        not BOQ, not verified takeoff, not Modify/writeback, not cost.
-                        No active/default/approve profile in this slice.</li>
-                    <li>Schema Builder — include/exclude optional fields; core fields stay locked.</li>
-                    <li>Source Mapping — choose source type for Classification, Package Mapping,
-                        and Work Package (intent until saved as a draft):
-                        Future Modify handoff (counted unresolved),
-                        Manual field (counted unresolved; enter session values in Review row),
-                        Not mapped (intentional blank; not counted).</li>
-                    <li>User-defined Measurement Rules — choose a Measurement Basis per model group (NetVolume, NetArea, Length, Count). Unit is confirmed separately in Quantity units.</li>
-                    <li>Generate Preparation Data Model — rebuilds prep rows, register, visual summary, and insights from selected schema + source intents + rules.</li>
-                    <li>Generated Preparation Data Model — totals only when source + basis are selected and available. Mapping cells show intent hints only,
-                        or session-only Manual preparation values when a field is configured as Manual field.
-                        Use Review row for session review status/note and eligible manual mapping values.
-                        Use Export preparation model (session) for a ZIP snapshot of the current generated model,
-                        settings, and session annotations — not BOQ, not cost, not writeback.
-                        When a frozen 5D snapshot already exists, use
-                        <strong>Open latest 5D Review</strong> to open 5D Quantity Review
-                        for that snapshot.
-                        After mapping or unit confirmation, the
-                        <strong>Unsaved 5D review changes</strong> banner offers
-                        <strong>Freeze updated 5D snapshot</strong> — session changes stay
-                        local until you freeze; existing snapshots are not changed.</li>
+                    <li>Quantity table — Class → Type → Instance. Classes start collapsed. “Expand classes” reveals Types only; expand a Type for elements. Collapse a Class resets its Type expansion. Parent quantities always cover all matching descendants.</li>
+                    <li>Add column — one searchable catalogue (table fields, assigned values, and indexed IFC Element/Type/Qto/Spatial/Classification fields). Search first; Add is disabled until a selection. Calculation (Sum / Average / Min / Max) applies to eligible numeric columns on Class/Type parents from matching instance leaves.</li>
+                    <li>Type identity follows IFC type GlobalId (IfcRelDefinesByType). Distinct GlobalIds that share a display name stay separate — full GlobalId is in Row details.</li>
+                    <li>Set measurement / Assign values — parent selection targets descendant elements (deduplicated). Assign values is session-only and does not write back to IFC.</li>
+                    <li>Units — convert displayed Quantity from model units; raw model values stay available for export.</li>
+                    <li>Save table — durable editable work for this project (name required). Open table resumes it.</li>
+                    <li>Save version — creates a read-only snapshot; editing continues afterward. Open Saved versions from the status chip.</li>
+                    <li>Export table — ZIP of the current working table (model + output values).</li>
+                    <li>Advanced &amp; reference — optional configure/schema/source/rules and legacy export.</li>
+                    <li>IFC columns — add IFC properties, model location, classification references, and exported properties; separate from Castor schema Assign values.</li>
+                    <li>Semantic source readiness — frozen with each saved version and shown in 5D Quantity Review.
+                        Missing evidence means not found in this IFC export — not unsupported forever.</li>
                     <li>Unresolved Data Register — counts only included schema gaps for counting source intents; no fake readiness percentages.
                         Session row reviews do not change these counts. Session manual mapping values may clear mapping gaps for that row only.</li>
-                    <li>Preparation Data Model Visual Summary — count charts from generated rows only.</li>
+                    <li>Preparation Data Model Visual Summary — count charts from generated rows only (Advanced).</li>
                     <li>Quantity Preparation Insights — deterministic operational notes (not AI).</li>
-                    <li>Raw Indexed Quantity Inventory — input evidence only, at the bottom.</li>
+                    <li>Raw Indexed Quantity Inventory — input evidence only, under Advanced.</li>
                 </ul>
 
                 <p class="fw-semibold fs-7 mb-2">Who can do what</p>
@@ -115,7 +114,8 @@
                         preparation data model, schema, source intent, row reviews, or manual mapping values.
                         Prefer Export preparation model (session) on the Generated Preparation Data Model
                         for the current preparation snapshot.</li>
-                    <li>Quantity units — confirm IFC project units (volume / area / length) in the Quantity units panel before totals show confirmed unit labels. Session-only until freeze; no conversion.</li>
+                    <li>Quantity units — convert displayed output units in the Units panel. Session-only until Save version; raw model values remain for export.</li>
+                    <li>Measurement settings Output unit follows the selected measurement: Count is read-only (no conversion); Length/Area/Volume options refresh to that family. A mismatched output unit is rejected on Apply.</li>
                     <li>Total Quantity, Unit, and Measurement Basis stay separate columns — never number+unit in one field.</li>
                     <li>Volume / area / length stay “Unit not resolved” until confirmed — Castor does not invent SI labels from quantity basis names.</li>
                     <li>Hub <code>?tab=quantities</code> on scheduling does not render this page — use the Quantities hub link.</li>

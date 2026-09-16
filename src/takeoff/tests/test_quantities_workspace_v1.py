@@ -66,6 +66,8 @@ def test_quantities_workspace_v1_layout_markers(client):
     assert "Model quantities only" in html
     assert 'data-testid="quantities-open-model"' in html
     assert 'data-testid="quantities-open-ifc-elements"' in html
+    assert "Open Link Analysis" in html
+    assert "Open Model" not in html
     assert "Open IFC Elements" in html
 
     # Slice 2a

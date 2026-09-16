@@ -95,6 +95,14 @@ def test_psets_for_inherits_through_ancestors():
     assert "Pset_WallCommon" in psets_for("IfcWallStandardCase", "IFC4")
 
 
+def test_psets_for_lists_the_types_own_psets_before_inherited_ones():
+    """A capped consumer (grounding) must see Pset_WindowCommon before the IfcElement-wide psets."""
+    names = psets_for("IfcWindow", "IFC4")
+
+    assert "Pset_WindowCommon" in names[:3]
+    assert names.index("Pset_WindowCommon") < names.index("Pset_Condition")
+
+
 def test_resolve_fire_rating_on_door():
     """The flagship grounding case: 'fire rating' of doors."""
     assert resolve_property_term("fire rating", "IfcDoor") == ("Pset_DoorCommon", "FireRating")

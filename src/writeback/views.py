@@ -1,7 +1,6 @@
 # writeback/views.py
 """Writeback views — handled by environments.views.ModifyView."""
 
-import json
 import logging
 from itertools import groupby
 from urllib.parse import quote
@@ -19,7 +18,7 @@ from django.views.generic import (
 )
 
 from chat.models import ChatSession, Message
-from core.http import toast_response, trigger_toast
+from core.http import trigger_toast
 from core.llm import (
     BYOKAuthError,
     BYOKRateLimitError,
@@ -35,6 +34,12 @@ from writeback.models import Conflict, GitCommit, ScanRun
 from writeback.services.modification_service import (
     ModificationError,
     ModificationService,
+    NoChangeError,
+)
+from writeback.services.proposal_serializer import (
+    prefetch_target_entities,
+    render_card,
+    serialize_proposal,
 )
 
 logger = logging.getLogger(__name__)
@@ -124,28 +129,31 @@ class ModifyView(ProjectTabMixin, TemplateView):
 
         context["session"] = session
         context["active_session_id"] = session.pk
-        context["messages"] = (
+        messages_with_cards = list(
             session.messages.select_related("proposal", "proposal__git_commit")
             .prefetch_related("proposal__failure_records")
             .order_by("created_at")
         )
-
-        # Pending proposals for the sidebar
-        from writeback.models import ModificationProposal
-
-        context["pending_proposals"] = (
-            ModificationProposal.objects.filter(
-                ifc_file__project=project,
-                status=ModificationProposal.Status.PENDING,
-            )
-            .select_related("ifc_file")
-            .order_by("-created_at")
-        )
-
+        proposals = [
+            message.proposal for message in messages_with_cards if hasattr(message, "proposal")
+        ]
+        # One index query for every card on the page, not one per card.
+        entities = prefetch_target_entities(proposals)
+        for message in messages_with_cards:
+            proposal = message.proposal if hasattr(message, "proposal") else None
+            message.card = serialize_proposal(proposal, entities=entities) if proposal else None
+        context["messages"] = messages_with_cards
         return context
 
     def post(self, request, *args, **kwargs):
         project = self.get_project()
+        # Reading the tab needs membership; changing the model needs EDITOR or
+        # OWNER, the same gate the WebSocket consumer applies.
+        if not ProjectAccessService.can_modify(request.user, project):
+            return JsonResponse(
+                {"status": "error", "message": "Only editors and owners can modify the model."},
+                status=403,
+            )
         action = request.POST.get("action", "propose")
 
         # New session — redirect (not JSON)
@@ -167,7 +175,6 @@ class ModifyView(ProjectTabMixin, TemplateView):
             "propose": self._handle_propose,
             "approve": self._handle_approve,
             "reject": self._handle_reject,
-            "acknowledge_review": self._handle_acknowledge_review,
         }
         handler = dispatch.get(action)
         if not handler:
@@ -178,28 +185,22 @@ class ModifyView(ProjectTabMixin, TemplateView):
         return handler(request, project)
 
     def _handle_propose(self, request, project):
-        """Classify intent, validate, create proposal — no IFC writes yet."""
+        """Ground, generate, run, verify — on a scratch copy. No write to the original."""
         user_text = request.POST.get("message", "").strip()
         if not user_text:
             return JsonResponse({"status": "error", "message": "Message is required."}, status=400)
+        skip_guardian = request.POST.get("skip_guardian", "") in ("1", "true", "on")
 
         session = self._resolve_session(project, request.user)
-
-        # Save user message
-        user_msg = Message.objects.create(  # noqa: F841
-            session=session,
-            role=Message.Role.USER,
-            content=user_text,
-        )
-
         svc = ModificationService(project, user=request.user)
-
-        # Supersede any prior pending proposals in this session before
-        # generating a new one — captures the abandon as a queryable status.
-        superseded_ids = svc.supersede_pending(session, request.user)
-
         try:
-            proposal = svc.propose(user_message=user_text, user=request.user)
+            proposal, superseded_ids = svc.propose_in_session(
+                session,
+                user_text,
+                request.user,
+                conflict_ids=request.POST.get("conflict_ids", ""),
+                skip_guardian=skip_guardian,
+            )
         except (
             LLMConfigurationError,
             LLMMasterKillError,
@@ -207,12 +208,9 @@ class ModifyView(ProjectTabMixin, TemplateView):
             BYOKAuthError,
             BYOKRateLimitError,
         ) as e:
-            # Cloud-side guardrail tripped — surface the friendly reason and stop.
             friendly = _friendly_llm_error(e)
             Message.objects.create(
-                session=session,
-                role=Message.Role.ASSISTANT,
-                content=f"⚠️ {friendly}",
+                session=session, role=Message.Role.ASSISTANT, content=f"⚠️ {friendly}"
             )
             return JsonResponse(
                 {"status": "blocked", "message": friendly},
@@ -220,96 +218,25 @@ class ModifyView(ProjectTabMixin, TemplateView):
                 if isinstance(e, (TokenBudgetExceededError, BYOKRateLimitError))
                 else 503,
             )
+        except NoChangeError as e:
+            # The service recorded the answer in the chat; this is the HTTP shape of it.
+            return JsonResponse({"status": "no_change", "message": str(e)})
         except ModificationError as e:
-            # Save error as assistant message
-            Message.objects.create(
-                session=session,
-                role=Message.Role.ASSISTANT,
-                content=f"⚠️ {e}",
-            )
-            return JsonResponse({"status": "error", "message": str(e)})
+            payload: dict = {"status": "error", "message": str(e)}
+            failure = _failure_payload(getattr(e, "failure_record_id", None))
+            if failure:
+                payload["failure"] = failure
+            return JsonResponse(payload)
 
-        # Save assistant message
-        assistant_msg = Message.objects.create(
-            session=session,
-            role=Message.Role.ASSISTANT,
-            content=proposal.explanation,
-        )
-
-        # Link the proposal to the assistant message and persist conflict link.
-        conflict_ids_raw = request.POST.get("conflict_ids", "")
-        linked_ids = (
-            [i.strip() for i in conflict_ids_raw.split(",") if i.strip()]
-            if conflict_ids_raw
-            else []
-        )
-        proposal.message = assistant_msg
-        if linked_ids:
-            proposal.linked_conflict_ids = linked_ids
-            proposal.save(update_fields=["message", "linked_conflict_ids"])
-        else:
-            proposal.save(update_fields=["message"])
-
-        # Auto-title
-        if session.title == "New Modification":
-            session.title = user_text[:50]
-            session.save(update_fields=["title"])
-
-        try:
-            diff_preview = json.loads(proposal.diff_preview)
-        except (json.JSONDecodeError, TypeError):
-            diff_preview = []
-
-        entry = {
-            "id": str(proposal.id),
-            "tier": proposal.tier,
-            "operation": proposal.operation,
-            "explanation": proposal.explanation,
-            "confidence": proposal.confidence,
-            "affected_count": proposal.affected_count,
-            "diff_preview": diff_preview,
-            "conflict_ids": ",".join(str(i) for i in proposal.linked_conflict_ids),
-            "guardian": {
-                "status": proposal.verification_status,
-                "result": proposal.verification_result,
-                "source": proposal.verification_source,
-            },
-        }
-
-        # Tier 2: include plan steps for UI
-        if proposal.tier == 2 and proposal.intent_json and "plan" in proposal.intent_json:
-            entry["plan_steps"] = [
-                {
-                    "step": s.get("step", i + 1),
-                    "operation": s.get("operation", ""),
-                    "explanation": s.get("explanation", ""),
-                }
-                for i, s in enumerate(proposal.intent_json["plan"])
-            ]
-        if proposal.tier == 3 and proposal.intent_json:
-            if "code" in proposal.intent_json:
-                entry["code"] = proposal.intent_json["code"]
-            if "review" in proposal.intent_json:
-                entry["review"] = proposal.intent_json["review"]
-        # Drives the client-side Execute gating; the server check in
-        # _handle_approve remains the source of truth.
-        entry["requires_code_ack"] = proposal.requires_code_ack
-
+        card = serialize_proposal(proposal)
+        card["html"] = render_card(proposal, project, card)
         return JsonResponse(
-            {
-                "status": "proposed",
-                "proposal": entry,
-                "superseded_ids": superseded_ids,
-            }
+            {"status": "proposed", "proposal": card, "superseded_ids": superseded_ids}
         )
 
     def _handle_approve(self, request, project):
-        """Execute an approved proposal — writes to IFC + git commit."""
+        """Approve in one POST: the ticked flagged-row keys travel with it (spec U-2)."""
         from writeback.models import ModificationProposal
-        from writeback.services.modification_service import (
-            ModificationError,
-            ModificationService,
-        )
 
         proposal_id = request.POST.get("proposal_id")
         if not proposal_id:
@@ -318,10 +245,7 @@ class ModifyView(ProjectTabMixin, TemplateView):
             )
 
         try:
-            proposal = ModificationProposal.objects.get(
-                id=proposal_id,
-                ifc_file__project=project,
-            )
+            proposal = ModificationProposal.objects.get(id=proposal_id, ifc_file__project=project)
         except ModificationProposal.DoesNotExist:
             return JsonResponse({"status": "error", "message": "Proposal not found."}, status=404)
 
@@ -339,56 +263,40 @@ class ModifyView(ProjectTabMixin, TemplateView):
                 {"status": "error", "message": "Proposal is no longer pending."}, status=409
             )
 
-        # Code review gate — a proposal carrying generated IfcOpenShell code
-        # runs that code in our process, so the user must explicitly
-        # acknowledge they read it first. The acknowledgement is a separate
-        # POST (action=acknowledge_review) so the timestamp is real, not
-        # coerced. Keyed on the code itself rather than the tier: Tier 3
-        # proposals built from typed operations have a diff preview and no
-        # code, while anything with code is gated whatever its tier.
-        if proposal.requires_code_ack and proposal.code_review_acknowledged_at is None:
+        # Flagged-row gate: the server recomputes the flagged keys from the
+        # stored diff and refuses unless the client ticked exactly those.
+        acknowledged = {
+            k.strip() for k in request.POST.get("acknowledged_keys", "").split(",") if k.strip()
+        }
+        expected = proposal.flagged_keys
+        if acknowledged != expected:
             return JsonResponse(
                 {
                     "status": "error",
-                    "message": (
-                        "This proposal runs generated code, so you must explicitly "
-                        "acknowledge that you have reviewed it. Tick the review checkbox "
-                        "below the code preview before clicking Execute."
-                    ),
-                    "needs_review_ack": True,
+                    "message": "Tick every flagged row on the card before approving.",
+                    "needs_flag_ack": True,
+                    "missing": sorted(expected - acknowledged),
                 },
                 status=422,
             )
 
-        proposal.reviewed_by = request.user
-        proposal.reviewed_at = timezone.now()
-        proposal.save(update_fields=["reviewed_by", "reviewed_at"])
-
+        # One guarded UPDATE claims the row; a second approve request for the
+        # same proposal (a double-click) finds it already claimed and stops here.
         svc = ModificationService(project)
+        if not svc.claim_for_approval(proposal, request.user, acknowledge_flags=bool(expected)):
+            return JsonResponse(
+                {"status": "error", "message": "Proposal is no longer pending."}, status=409
+            )
 
         try:
             git_commit = svc.execute(proposal)
         except ModificationError as e:
             payload: dict = {"status": "error", "message": str(e)}
-            failure_id = getattr(e, "failure_record_id", None)
-            if failure_id:
-                try:
-                    from metacastor.models import FailureRecord
-
-                    rec = FailureRecord.objects.get(pk=failure_id)
-                    payload["failure"] = {
-                        "id": str(rec.id),
-                        "error_type": rec.error_type,
-                        "category": rec.category,
-                        "diagnosis": rec.diagnosis,
-                        "failure_phase": rec.failure_phase,
-                        "is_retryable": rec.category == "RETRYABLE",
-                    }
-                except Exception:
-                    payload["failure_record_id"] = failure_id
+            failure = _failure_payload(getattr(e, "failure_record_id", None))
+            if failure:
+                payload["failure"] = failure
             return JsonResponse(payload)
 
-        # Auto-resolve linked conflicts
         resolved_count = 0
         if proposal.linked_conflict_ids:
             resolved_count = Conflict.objects.filter(
@@ -401,13 +309,12 @@ class ModifyView(ProjectTabMixin, TemplateView):
                 resolution_note=f"Resolved by modification commit {git_commit.commit_hash[:8]}",
             )
 
-        # Save confirmation as assistant message (if proposal has a linked session)
         if proposal.message and proposal.message.session:
             Message.objects.create(
                 session=proposal.message.session,
                 role=Message.Role.ASSISTANT,
                 content=(
-                    f"✅ Applied! {proposal.affected_count} entities modified. "
+                    f"✅ Applied! {git_commit.entities_modified} entities modified. "
                     f"Commit: {git_commit.commit_hash[:8]}"
                 ),
             )
@@ -416,58 +323,14 @@ class ModifyView(ProjectTabMixin, TemplateView):
             {
                 "status": "applied",
                 "commit_hash": git_commit.commit_hash[:8],
-                "entities_modified": proposal.affected_count,
+                "entities_modified": git_commit.entities_modified,
                 "resolved_conflicts": resolved_count,
-            }
-        )
-
-    def _handle_acknowledge_review(self, request, project):
-        """Mark a Tier 3 proposal's generated code as reviewed by the user.
-
-        Records ``code_review_acknowledged_{at,by}`` so the subsequent
-        ``approve`` action can pass the gate. Idempotent: re-acknowledging
-        updates the timestamp to ``now`` but preserves the original reviewer
-        only if the same user re-clicks (rare). Returns 200 with a toast.
-        """
-        from writeback.models import ModificationProposal
-
-        proposal_id = request.POST.get("proposal_id")
-        if not proposal_id:
-            return toast_response("proposal_id is required.", level="error", status=400)
-
-        try:
-            proposal = ModificationProposal.objects.get(
-                id=proposal_id,
-                ifc_file__project=project,
-            )
-        except ModificationProposal.DoesNotExist:
-            return toast_response("Proposal not found.", level="error", status=404)
-
-        if not proposal.requires_code_ack:
-            return toast_response(
-                "Review acknowledgement only applies to proposals containing generated code.",
-                level="error",
-                status=400,
-            )
-        if proposal.status != ModificationProposal.Status.PENDING:
-            return toast_response("Proposal is no longer pending.", level="error", status=409)
-
-        proposal.code_review_acknowledged_at = timezone.now()
-        proposal.code_review_acknowledged_by = request.user
-        proposal.save(update_fields=["code_review_acknowledged_at", "code_review_acknowledged_by"])
-        return JsonResponse(
-            {
-                "status": "ok",
-                "acknowledged_at": proposal.code_review_acknowledged_at.isoformat(),
             }
         )
 
     def _handle_reject(self, request, project):
         """Reject a pending proposal."""
         from writeback.models import ModificationProposal
-        from writeback.services.modification_service import (
-            ModificationService,
-        )
 
         proposal_id = request.POST.get("proposal_id")
         if not proposal_id:
@@ -476,10 +339,7 @@ class ModifyView(ProjectTabMixin, TemplateView):
             )
 
         try:
-            proposal = ModificationProposal.objects.get(
-                id=proposal_id,
-                ifc_file__project=project,
-            )
+            proposal = ModificationProposal.objects.get(id=proposal_id, ifc_file__project=project)
         except ModificationProposal.DoesNotExist:
             return JsonResponse({"status": "error", "message": "Proposal not found."}, status=404)
 
@@ -499,9 +359,13 @@ class ModifyView(ProjectTabMixin, TemplateView):
 
         svc = ModificationService(project)
         reason = request.POST.get("reason", "")
-        svc.reject(proposal, user=request.user, reason=reason)
+        # One guarded UPDATE, like approve: a row claimed by an approve in
+        # another tab is no longer pending and the reject changes nothing.
+        if not svc.reject(proposal, user=request.user, reason=reason):
+            return JsonResponse(
+                {"status": "error", "message": "Proposal is no longer pending."}, status=409
+            )
 
-        # Save rejection as assistant message
         if proposal.message and proposal.message.session:
             Message.objects.create(
                 session=proposal.message.session,
@@ -510,6 +374,26 @@ class ModifyView(ProjectTabMixin, TemplateView):
             )
 
         return JsonResponse({"status": "rejected"})
+
+
+def _failure_payload(failure_id: str | None) -> dict | None:
+    """The failure-card payload for a FailureRecord id, or None."""
+    if not failure_id:
+        return None
+    try:
+        from metacastor.models import FailureRecord
+
+        rec = FailureRecord.objects.get(pk=failure_id)
+    except Exception:  # noqa: BLE001 — the record is best-effort
+        return {"id": str(failure_id)}
+    return {
+        "id": str(rec.id),
+        "error_type": rec.error_type,
+        "category": rec.category,
+        "diagnosis": rec.diagnosis,
+        "failure_phase": rec.failure_phase,
+        "is_retryable": rec.category == "RETRYABLE",
+    }
 
 
 class ConflictsView(ProjectTabMixin, TemplateView):
@@ -645,7 +529,6 @@ class HistoryView(ProjectTabMixin, TemplateView):
         commits_qs = (
             GitCommit.objects.filter(ifc_file__project=project)
             .select_related("ifc_file", "author")
-            .prefetch_related("proposal")
             .order_by("ifc_file__name", "-created_at")
         )
 

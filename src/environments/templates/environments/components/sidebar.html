@@ -6,8 +6,13 @@
             <a href="{% url 'projects:list' %}" class="text-secondary text-decoration-none fs-8 d-inline-block hover-white">
                 <i class="bi bi-arrow-left me-1"></i> Projects
             </a>
-            <button class="btn btn-link btn-sm text-secondary p-0 d-md-none" onclick="toggleSidebar()">
-                <i class="bi bi-x-lg"></i>
+            <button type="button"
+                    class="btn btn-link btn-sm text-secondary p-0 d-md-none"
+                    data-castor-sidebar-toggle="1"
+                    onclick="toggleSidebar()"
+                    aria-controls="project-sidebar"
+                    aria-label="Close sidebar">
+                <i class="bi bi-x-lg" aria-hidden="true"></i>
             </button>
         </div>
 

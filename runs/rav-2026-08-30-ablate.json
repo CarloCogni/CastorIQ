@@ -1,0 +1,4299 @@
+{
+  "runs": [
+    {
+      "label": "default",
+      "model": "llama3.1:8b",
+      "started_at": "2026-08-30T19:19:05+00:00",
+      "settings": {
+        "confidence_threshold": 0.7,
+        "type_gate": true,
+        "keyword_filter": true,
+        "entity_relevance_threshold": null,
+        "entity_top_k": null,
+        "skip_low_value": true
+      },
+      "run_stats": {
+        "entities_scanned": 15,
+        "conflicts_found": 16,
+        "conflicts_updated": 1,
+        "duration_seconds": 162.48,
+        "scan_run_id": "d812c278-bf59-46e4-be02-49c576a8c09d",
+        "llm_model": "llama3.1:8b"
+      },
+      "scores": {
+        "true_positives": 5,
+        "false_positives": 11,
+        "false_negatives": 20,
+        "precision": 0.3125,
+        "recall": 0.2,
+        "f1": 0.2439,
+        "recall_by_severity": {
+          "missing": {
+            "hits": 4,
+            "of": 13
+          },
+          "clear": {
+            "hits": 1,
+            "of": 11
+          },
+          "marginal": {
+            "hits": 0,
+            "of": 1
+          }
+        },
+        "negatives_held": 22,
+        "negatives_total": 26,
+        "cases": [
+          {
+            "id": "FS-01",
+            "document": "fire-safety-strategy",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "EI 30",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWx4"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-02",
+            "document": "fire-safety-strategy",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "EI 30",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-03",
+            "document": "fire-safety-strategy",
+            "section": "3.3",
+            "group": "internal_doors",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "EI 30-Sa",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-04",
+            "document": "fire-safety-strategy",
+            "section": "3.5",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "REI 30",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-05",
+            "document": "fire-safety-strategy",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "ifc_value": false,
+            "document_value": "non-load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "FS-06",
+            "document": "fire-safety-strategy",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ExtendToStructure",
+            "ifc_value": true,
+            "document_value": "extends to underside of slab",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "FS-07",
+            "document": "fire-safety-strategy",
+            "section": "3.4",
+            "group": "external_door",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWYp"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "IsExternal",
+            "ifc_value": true,
+            "document_value": "external element",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "FS-08",
+            "document": "fire-safety-strategy",
+            "section": "3.5",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "ifc_value": true,
+            "document_value": "load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "TH-01",
+            "document": "thermal-specification",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ThermalTransmittance",
+            "ifc_value": 0.2359,
+            "document_value": "<= 0.18 W/m2K",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-02",
+            "document": "thermal-specification",
+            "section": "3.2",
+            "group": "windows",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWcE",
+              "3cUkl32yn9qRSPvBJVyWdx",
+              "3cUkl32yn9qRSPvBJVyWe9",
+              "3cUkl32yn9qRSPvBJVyZTO"
+            ],
+            "ifc_type": "IfcWindow",
+            "property": "ThermalTransmittance",
+            "ifc_value": 5.5617,
+            "document_value": "<= 1.2 W/m2K",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWcE",
+              "3cUkl32yn9qRSPvBJVyWdx",
+              "3cUkl32yn9qRSPvBJVyWe9",
+              "3cUkl32yn9qRSPvBJVyZTO"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-03",
+            "document": "thermal-specification",
+            "section": "3.3",
+            "group": "roof",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWh4"
+            ],
+            "ifc_type": "IfcRoof",
+            "property": "ThermalTransmittance",
+            "ifc_value": 7.8057,
+            "document_value": "<= 0.13 W/m2K",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [
+              "3cUkl32yn9qRSPvBJVyWh4"
+            ],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "TH-04",
+            "document": "thermal-specification",
+            "section": "3.4",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "ThermalTransmittance",
+            "ifc_value": 0.1174,
+            "document_value": "<= 0.10 W/m2K",
+            "expected": "conflict",
+            "severity": "marginal",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-05",
+            "document": "thermal-specification",
+            "section": "3.5",
+            "group": "external_door",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWYp"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "ThermalTransmittance",
+            "ifc_value": null,
+            "document_value": "<= 1.2 W/m2K",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWYp"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-06",
+            "document": "thermal-specification",
+            "section": "3.6",
+            "group": "internal_doors",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "ThermalTransmittance",
+            "ifc_value": 3.7021,
+            "document_value": "3.7 as designed",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "TH-07",
+            "document": "thermal-specification",
+            "section": "3.6",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ThermalTransmittance",
+            "ifc_value": 0.351,
+            "document_value": "0.35 as designed",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3cUkl32yn9qRSPvBJVyWXt"
+            ],
+            "passed": false
+          },
+          {
+            "id": "TH-08",
+            "document": "thermal-specification",
+            "section": "3.6",
+            "group": "roof_deck_slab",
+            "global_ids": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "ThermalTransmittance",
+            "ifc_value": 6.3394,
+            "document_value": "no requirement",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "passed": false
+          },
+          {
+            "id": "AC-01",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.1",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "R'w >= 44 dB",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "AC-02",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.2",
+            "group": "internal_doors",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "Rw >= 30 dB",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "AC-03",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.3",
+            "group": "windows",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWcE",
+              "3cUkl32yn9qRSPvBJVyWdx",
+              "3cUkl32yn9qRSPvBJVyWe9",
+              "3cUkl32yn9qRSPvBJVyZTO"
+            ],
+            "ifc_type": "IfcWindow",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "no requirement",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3cUkl32yn9qRSPvBJVyWcE"
+            ],
+            "passed": false
+          },
+          {
+            "id": "AC-04",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.3",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "no requirement",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-01",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "ifc_value": false,
+            "document_value": "load-bearing",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "ST-02",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "ifc_value": false,
+            "document_value": "non-load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-03",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ExtendToStructure",
+            "ifc_value": true,
+            "document_value": "extends to structure",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-04",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.3",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "ifc_value": true,
+            "document_value": "load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-05",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.3",
+            "group": "roof_deck_slab",
+            "global_ids": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "ifc_value": true,
+            "document_value": "load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "passed": false
+          },
+          {
+            "id": "ST-06",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.3",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "IsExternal",
+            "ifc_value": false,
+            "document_value": "internal, not external",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          }
+        ],
+        "unmatched_findings": [
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "Roughness",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "3",
+            "document_value": "not specified",
+            "confidence": 0.85,
+            "title": "Roughness value not specified"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWYp",
+            "ifc_type": "IfcDoor",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "FireRating",
+            "document": "thermal-specification",
+            "ifc_value": "EI60",
+            "document_value": "EI 30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWgM",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "1.2",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          }
+        ],
+        "findings": [
+          {
+            "global_id": "3ntFzSulnDNeQ4nJrMgcOt",
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "True",
+            "document_value": "False",
+            "confidence": 0.85,
+            "title": "Load-bearing status differs from requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "Roughness",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "3",
+            "document_value": "not specified",
+            "confidence": 0.85,
+            "title": "Roughness value not specified"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWcE",
+            "ifc_type": "IfcWindow",
+            "property": "AcousticRating",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "absent (no property sets)",
+            "document_value": "at least 44 dB",
+            "confidence": 0.95,
+            "title": "Missing acoustic rating for window"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWY1",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "AcousticRating",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "absent (no property sets)",
+            "document_value": "at least 44 dB",
+            "confidence": 0.95,
+            "title": "Acoustic rating below requirement"
+          },
+          {
+            "global_id": "3ntFzSulnDNeQ4nJrMgcOt",
+            "ifc_type": "IfcSlab",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "6.33939393939394",
+            "document_value": "0.13",
+            "confidence": 0.95,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "AcousticRating",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "(not set)",
+            "document_value": "at least 44 dB",
+            "confidence": 0.92,
+            "title": "Acoustic rating missing"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.350997935306263",
+            "document_value": "0.10 W/m²K",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWYp",
+            "ifc_type": "IfcDoor",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWy4",
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWw5",
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "FireRating",
+            "document": "thermal-specification",
+            "ifc_value": "EI60",
+            "document_value": "EI 30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWh4",
+            "ifc_type": "IfcRoof",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "7.80566404478139",
+            "document_value": "0.13 W/m²K",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWgM",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "1.2",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          }
+        ]
+      }
+    },
+    {
+      "label": "no-type-gate",
+      "model": "llama3.1:8b",
+      "started_at": "2026-08-30T19:22:13+00:00",
+      "settings": {
+        "confidence_threshold": 0.7,
+        "type_gate": false,
+        "keyword_filter": true,
+        "entity_relevance_threshold": null,
+        "entity_top_k": null,
+        "skip_low_value": true
+      },
+      "run_stats": {
+        "entities_scanned": 15,
+        "conflicts_found": 17,
+        "conflicts_updated": 4,
+        "duration_seconds": 187.2,
+        "scan_run_id": "434de92d-7651-43d5-b3fc-4fc0e115d3b8",
+        "llm_model": "llama3.1:8b"
+      },
+      "scores": {
+        "true_positives": 5,
+        "false_positives": 12,
+        "false_negatives": 20,
+        "precision": 0.2941,
+        "recall": 0.2,
+        "f1": 0.2381,
+        "recall_by_severity": {
+          "missing": {
+            "hits": 4,
+            "of": 13
+          },
+          "clear": {
+            "hits": 1,
+            "of": 11
+          },
+          "marginal": {
+            "hits": 0,
+            "of": 1
+          }
+        },
+        "negatives_held": 22,
+        "negatives_total": 26,
+        "cases": [
+          {
+            "id": "FS-01",
+            "document": "fire-safety-strategy",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "EI 30",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWx4"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-02",
+            "document": "fire-safety-strategy",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "EI 30",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-03",
+            "document": "fire-safety-strategy",
+            "section": "3.3",
+            "group": "internal_doors",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "EI 30-Sa",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-04",
+            "document": "fire-safety-strategy",
+            "section": "3.5",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "REI 30",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-05",
+            "document": "fire-safety-strategy",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "ifc_value": false,
+            "document_value": "non-load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "FS-06",
+            "document": "fire-safety-strategy",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ExtendToStructure",
+            "ifc_value": true,
+            "document_value": "extends to underside of slab",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "FS-07",
+            "document": "fire-safety-strategy",
+            "section": "3.4",
+            "group": "external_door",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWYp"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "IsExternal",
+            "ifc_value": true,
+            "document_value": "external element",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "FS-08",
+            "document": "fire-safety-strategy",
+            "section": "3.5",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "ifc_value": true,
+            "document_value": "load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "TH-01",
+            "document": "thermal-specification",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ThermalTransmittance",
+            "ifc_value": 0.2359,
+            "document_value": "<= 0.18 W/m2K",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-02",
+            "document": "thermal-specification",
+            "section": "3.2",
+            "group": "windows",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWcE",
+              "3cUkl32yn9qRSPvBJVyWdx",
+              "3cUkl32yn9qRSPvBJVyWe9",
+              "3cUkl32yn9qRSPvBJVyZTO"
+            ],
+            "ifc_type": "IfcWindow",
+            "property": "ThermalTransmittance",
+            "ifc_value": 5.5617,
+            "document_value": "<= 1.2 W/m2K",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWcE",
+              "3cUkl32yn9qRSPvBJVyWdx",
+              "3cUkl32yn9qRSPvBJVyWe9",
+              "3cUkl32yn9qRSPvBJVyZTO"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-03",
+            "document": "thermal-specification",
+            "section": "3.3",
+            "group": "roof",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWh4"
+            ],
+            "ifc_type": "IfcRoof",
+            "property": "ThermalTransmittance",
+            "ifc_value": 7.8057,
+            "document_value": "<= 0.13 W/m2K",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [
+              "3cUkl32yn9qRSPvBJVyWh4"
+            ],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "TH-04",
+            "document": "thermal-specification",
+            "section": "3.4",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "ThermalTransmittance",
+            "ifc_value": 0.1174,
+            "document_value": "<= 0.10 W/m2K",
+            "expected": "conflict",
+            "severity": "marginal",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-05",
+            "document": "thermal-specification",
+            "section": "3.5",
+            "group": "external_door",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWYp"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "ThermalTransmittance",
+            "ifc_value": null,
+            "document_value": "<= 1.2 W/m2K",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWYp"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-06",
+            "document": "thermal-specification",
+            "section": "3.6",
+            "group": "internal_doors",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "ThermalTransmittance",
+            "ifc_value": 3.7021,
+            "document_value": "3.7 as designed",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "TH-07",
+            "document": "thermal-specification",
+            "section": "3.6",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ThermalTransmittance",
+            "ifc_value": 0.351,
+            "document_value": "0.35 as designed",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3cUkl32yn9qRSPvBJVyWXt"
+            ],
+            "passed": false
+          },
+          {
+            "id": "TH-08",
+            "document": "thermal-specification",
+            "section": "3.6",
+            "group": "roof_deck_slab",
+            "global_ids": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "ThermalTransmittance",
+            "ifc_value": 6.3394,
+            "document_value": "no requirement",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "passed": false
+          },
+          {
+            "id": "AC-01",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.1",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "R'w >= 44 dB",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "AC-02",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.2",
+            "group": "internal_doors",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "Rw >= 30 dB",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "AC-03",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.3",
+            "group": "windows",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWcE",
+              "3cUkl32yn9qRSPvBJVyWdx",
+              "3cUkl32yn9qRSPvBJVyWe9",
+              "3cUkl32yn9qRSPvBJVyZTO"
+            ],
+            "ifc_type": "IfcWindow",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "no requirement",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3cUkl32yn9qRSPvBJVyWcE"
+            ],
+            "passed": false
+          },
+          {
+            "id": "AC-04",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.3",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "no requirement",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-01",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "ifc_value": false,
+            "document_value": "load-bearing",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "ST-02",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "ifc_value": false,
+            "document_value": "non-load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-03",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ExtendToStructure",
+            "ifc_value": true,
+            "document_value": "extends to structure",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-04",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.3",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "ifc_value": true,
+            "document_value": "load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-05",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.3",
+            "group": "roof_deck_slab",
+            "global_ids": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "ifc_value": true,
+            "document_value": "load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "passed": false
+          },
+          {
+            "id": "ST-06",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.3",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "IsExternal",
+            "ifc_value": false,
+            "document_value": "internal, not external",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          }
+        ],
+        "unmatched_findings": [
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyW$l",
+            "ifc_type": "IfcPlate",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "6.7069",
+            "document_value": "1.2 W/m²K",
+            "confidence": 0.95,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalResistance",
+            "document": "thermal-specification",
+            "ifc_value": "1.81846153846154",
+            "document_value": "1.8",
+            "confidence": 0.85,
+            "title": "Thermal resistance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWYp",
+            "ifc_type": "IfcDoor",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWgM",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.18",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "fire-safety-strategy",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.13",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          }
+        ],
+        "findings": [
+          {
+            "global_id": "3ntFzSulnDNeQ4nJrMgcOt",
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "True",
+            "document_value": "load-bearing elements",
+            "confidence": 0.8,
+            "title": "Load-bearing status inconsistent with document"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWcE",
+            "ifc_type": "IfcWindow",
+            "property": "AcousticRating",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "absent (no property sets)",
+            "document_value": "at least 44 dB",
+            "confidence": 0.9,
+            "title": "Missing acoustic rating for window"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWY1",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "AcousticRating",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "absent (no property sets)",
+            "document_value": "at least 44 dB",
+            "confidence": 0.9,
+            "title": "Acoustic rating missing for wall"
+          },
+          {
+            "global_id": "3ntFzSulnDNeQ4nJrMgcOt",
+            "ifc_type": "IfcSlab",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "6.33939393939394",
+            "document_value": "≤ 0.13",
+            "confidence": 0.95,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "AcousticRating",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "0.35",
+            "document_value": "44 dB",
+            "confidence": 0.95,
+            "title": "Acoustic rating exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.35",
+            "document_value": "0.10",
+            "confidence": 0.95,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyW$l",
+            "ifc_type": "IfcPlate",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "6.7069",
+            "document_value": "1.2 W/m²K",
+            "confidence": 0.95,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalResistance",
+            "document": "thermal-specification",
+            "ifc_value": "1.81846153846154",
+            "document_value": "1.8",
+            "confidence": 0.85,
+            "title": "Thermal resistance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWYp",
+            "ifc_type": "IfcDoor",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWy4",
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWw5",
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWh4",
+            "ifc_type": "IfcRoof",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "7.80566404478139",
+            "document_value": "0.13",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWgM",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.18",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "fire-safety-strategy",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.13",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          }
+        ]
+      }
+    },
+    {
+      "label": "no-keyword-filter",
+      "model": "llama3.1:8b",
+      "started_at": "2026-08-30T19:25:08+00:00",
+      "settings": {
+        "confidence_threshold": 0.7,
+        "type_gate": true,
+        "keyword_filter": false,
+        "entity_relevance_threshold": null,
+        "entity_top_k": null,
+        "skip_low_value": true
+      },
+      "run_stats": {
+        "entities_scanned": 15,
+        "conflicts_found": 19,
+        "conflicts_updated": 0,
+        "duration_seconds": 174.93,
+        "scan_run_id": "f4e9b717-0104-4000-bd6c-a814aea437c0",
+        "llm_model": "llama3.1:8b"
+      },
+      "scores": {
+        "true_positives": 6,
+        "false_positives": 12,
+        "false_negatives": 19,
+        "precision": 0.3333,
+        "recall": 0.24,
+        "f1": 0.2791,
+        "recall_by_severity": {
+          "missing": {
+            "hits": 5,
+            "of": 13
+          },
+          "clear": {
+            "hits": 1,
+            "of": 11
+          },
+          "marginal": {
+            "hits": 0,
+            "of": 1
+          }
+        },
+        "negatives_held": 21,
+        "negatives_total": 26,
+        "cases": [
+          {
+            "id": "FS-01",
+            "document": "fire-safety-strategy",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "EI 30",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWx4"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-02",
+            "document": "fire-safety-strategy",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "EI 30",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [
+              "3cUkl32yn9qRSPvBJVyWXt"
+            ],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-03",
+            "document": "fire-safety-strategy",
+            "section": "3.3",
+            "group": "internal_doors",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "EI 30-Sa",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-04",
+            "document": "fire-safety-strategy",
+            "section": "3.5",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "REI 30",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-05",
+            "document": "fire-safety-strategy",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "ifc_value": false,
+            "document_value": "non-load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "passed": false
+          },
+          {
+            "id": "FS-06",
+            "document": "fire-safety-strategy",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ExtendToStructure",
+            "ifc_value": true,
+            "document_value": "extends to underside of slab",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "FS-07",
+            "document": "fire-safety-strategy",
+            "section": "3.4",
+            "group": "external_door",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWYp"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "IsExternal",
+            "ifc_value": true,
+            "document_value": "external element",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "FS-08",
+            "document": "fire-safety-strategy",
+            "section": "3.5",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "ifc_value": true,
+            "document_value": "load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "TH-01",
+            "document": "thermal-specification",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ThermalTransmittance",
+            "ifc_value": 0.2359,
+            "document_value": "<= 0.18 W/m2K",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-02",
+            "document": "thermal-specification",
+            "section": "3.2",
+            "group": "windows",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWcE",
+              "3cUkl32yn9qRSPvBJVyWdx",
+              "3cUkl32yn9qRSPvBJVyWe9",
+              "3cUkl32yn9qRSPvBJVyZTO"
+            ],
+            "ifc_type": "IfcWindow",
+            "property": "ThermalTransmittance",
+            "ifc_value": 5.5617,
+            "document_value": "<= 1.2 W/m2K",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWcE",
+              "3cUkl32yn9qRSPvBJVyWdx",
+              "3cUkl32yn9qRSPvBJVyWe9",
+              "3cUkl32yn9qRSPvBJVyZTO"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-03",
+            "document": "thermal-specification",
+            "section": "3.3",
+            "group": "roof",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWh4"
+            ],
+            "ifc_type": "IfcRoof",
+            "property": "ThermalTransmittance",
+            "ifc_value": 7.8057,
+            "document_value": "<= 0.13 W/m2K",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [
+              "3cUkl32yn9qRSPvBJVyWh4"
+            ],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "TH-04",
+            "document": "thermal-specification",
+            "section": "3.4",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "ThermalTransmittance",
+            "ifc_value": 0.1174,
+            "document_value": "<= 0.10 W/m2K",
+            "expected": "conflict",
+            "severity": "marginal",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-05",
+            "document": "thermal-specification",
+            "section": "3.5",
+            "group": "external_door",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWYp"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "ThermalTransmittance",
+            "ifc_value": null,
+            "document_value": "<= 1.2 W/m2K",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWYp"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-06",
+            "document": "thermal-specification",
+            "section": "3.6",
+            "group": "internal_doors",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "ThermalTransmittance",
+            "ifc_value": 3.7021,
+            "document_value": "3.7 as designed",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "TH-07",
+            "document": "thermal-specification",
+            "section": "3.6",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ThermalTransmittance",
+            "ifc_value": 0.351,
+            "document_value": "0.35 as designed",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3cUkl32yn9qRSPvBJVyWXt"
+            ],
+            "passed": false
+          },
+          {
+            "id": "TH-08",
+            "document": "thermal-specification",
+            "section": "3.6",
+            "group": "roof_deck_slab",
+            "global_ids": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "ThermalTransmittance",
+            "ifc_value": 6.3394,
+            "document_value": "no requirement",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "passed": false
+          },
+          {
+            "id": "AC-01",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.1",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "R'w >= 44 dB",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "AC-02",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.2",
+            "group": "internal_doors",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "Rw >= 30 dB",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "AC-03",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.3",
+            "group": "windows",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWcE",
+              "3cUkl32yn9qRSPvBJVyWdx",
+              "3cUkl32yn9qRSPvBJVyWe9",
+              "3cUkl32yn9qRSPvBJVyZTO"
+            ],
+            "ifc_type": "IfcWindow",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "no requirement",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3cUkl32yn9qRSPvBJVyWcE"
+            ],
+            "passed": false
+          },
+          {
+            "id": "AC-04",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.3",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "no requirement",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-01",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "ifc_value": false,
+            "document_value": "load-bearing",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "ST-02",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "ifc_value": false,
+            "document_value": "non-load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-03",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ExtendToStructure",
+            "ifc_value": true,
+            "document_value": "extends to structure",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-04",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.3",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "ifc_value": true,
+            "document_value": "load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-05",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.3",
+            "group": "roof_deck_slab",
+            "global_ids": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "ifc_value": true,
+            "document_value": "load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-06",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.3",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "IsExternal",
+            "ifc_value": false,
+            "document_value": "internal, not external",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          }
+        ],
+        "unmatched_findings": [
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "Absorptance",
+            "document": "thermal-specification",
+            "ifc_value": "0.7",
+            "document_value": "0.8",
+            "confidence": 0.85,
+            "title": "Absorptance below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "Roughness",
+            "document": "thermal-specification",
+            "ifc_value": "3",
+            "document_value": "not specified",
+            "confidence": 0.85,
+            "title": "Roughness value not specified"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWYp",
+            "ifc_type": "IfcDoor",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3ntFzSulnDNeQ4nJrMgcOt",
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "document": "fire-safety-strategy",
+            "ifc_value": "True",
+            "document_value": "False",
+            "confidence": 0.92,
+            "title": "Load-bearing status conflicts with requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWgM",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "fire-safety-strategy",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.10",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          }
+        ],
+        "findings": [
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWw5",
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "document": "fire-safety-strategy",
+            "ifc_value": "False",
+            "document_value": "True",
+            "confidence": 0.8,
+            "title": "Load-bearing status does not match requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "Absorptance",
+            "document": "thermal-specification",
+            "ifc_value": "0.7",
+            "document_value": "0.8",
+            "confidence": 0.85,
+            "title": "Absorptance below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "Roughness",
+            "document": "thermal-specification",
+            "ifc_value": "3",
+            "document_value": "not specified",
+            "confidence": 0.85,
+            "title": "Roughness value not specified"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWcE",
+            "ifc_type": "IfcWindow",
+            "property": "AcousticRating",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "absent (no property sets)",
+            "document_value": "at least 44 dB",
+            "confidence": 0.9,
+            "title": "Acoustic rating missing for window"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWY1",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "AcousticRating",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "absent (no property sets)",
+            "document_value": "at least 44 dB",
+            "confidence": 0.95,
+            "title": "Acoustic rating below requirement"
+          },
+          {
+            "global_id": "3ntFzSulnDNeQ4nJrMgcOt",
+            "ifc_type": "IfcSlab",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "6.33939393939394",
+            "document_value": "0.35",
+            "confidence": 0.95,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "AcousticRating",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "0",
+            "document_value": "at least 44 dB",
+            "confidence": 0.92,
+            "title": "Acoustic rating does not meet requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "0",
+            "document_value": "EI 30",
+            "confidence": 0.92,
+            "title": "Fire resistance does not meet requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.350997935306263",
+            "document_value": "0.18",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.350997935306263",
+            "document_value": "0.10",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWYp",
+            "ifc_type": "IfcDoor",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWy4",
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "document": "fire-safety-strategy",
+            "ifc_value": "False",
+            "document_value": "True",
+            "confidence": 0.85,
+            "title": "Load-bearing status mismatch"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWy4",
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWw5",
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3ntFzSulnDNeQ4nJrMgcOt",
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "document": "fire-safety-strategy",
+            "ifc_value": "True",
+            "document_value": "False",
+            "confidence": 0.92,
+            "title": "Load-bearing status conflicts with requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWh4",
+            "ifc_type": "IfcRoof",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "7.80566404478139",
+            "document_value": "0.13",
+            "confidence": 0.95,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWgM",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "fire-safety-strategy",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.10",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          }
+        ]
+      }
+    },
+    {
+      "label": "conf=0",
+      "model": "llama3.1:8b",
+      "started_at": "2026-08-30T19:28:05+00:00",
+      "settings": {
+        "confidence_threshold": 0.0,
+        "type_gate": true,
+        "keyword_filter": true,
+        "entity_relevance_threshold": null,
+        "entity_top_k": null,
+        "skip_low_value": true
+      },
+      "run_stats": {
+        "entities_scanned": 15,
+        "conflicts_found": 14,
+        "conflicts_updated": 2,
+        "duration_seconds": 177.44,
+        "scan_run_id": "8e84e42a-b31c-4214-8ca2-731c464f8ae0",
+        "llm_model": "llama3.1:8b"
+      },
+      "scores": {
+        "true_positives": 3,
+        "false_positives": 11,
+        "false_negatives": 22,
+        "precision": 0.2143,
+        "recall": 0.12,
+        "f1": 0.1538,
+        "recall_by_severity": {
+          "missing": {
+            "hits": 3,
+            "of": 13
+          },
+          "clear": {
+            "hits": 0,
+            "of": 11
+          },
+          "marginal": {
+            "hits": 0,
+            "of": 1
+          }
+        },
+        "negatives_held": 22,
+        "negatives_total": 26,
+        "cases": [
+          {
+            "id": "FS-01",
+            "document": "fire-safety-strategy",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "EI 30",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWx4"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-02",
+            "document": "fire-safety-strategy",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "EI 30",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-03",
+            "document": "fire-safety-strategy",
+            "section": "3.3",
+            "group": "internal_doors",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "EI 30-Sa",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-04",
+            "document": "fire-safety-strategy",
+            "section": "3.5",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "REI 30",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-05",
+            "document": "fire-safety-strategy",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "ifc_value": false,
+            "document_value": "non-load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "FS-06",
+            "document": "fire-safety-strategy",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ExtendToStructure",
+            "ifc_value": true,
+            "document_value": "extends to underside of slab",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "FS-07",
+            "document": "fire-safety-strategy",
+            "section": "3.4",
+            "group": "external_door",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWYp"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "IsExternal",
+            "ifc_value": true,
+            "document_value": "external element",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "FS-08",
+            "document": "fire-safety-strategy",
+            "section": "3.5",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "ifc_value": true,
+            "document_value": "load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "TH-01",
+            "document": "thermal-specification",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ThermalTransmittance",
+            "ifc_value": 0.2359,
+            "document_value": "<= 0.18 W/m2K",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-02",
+            "document": "thermal-specification",
+            "section": "3.2",
+            "group": "windows",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWcE",
+              "3cUkl32yn9qRSPvBJVyWdx",
+              "3cUkl32yn9qRSPvBJVyWe9",
+              "3cUkl32yn9qRSPvBJVyZTO"
+            ],
+            "ifc_type": "IfcWindow",
+            "property": "ThermalTransmittance",
+            "ifc_value": 5.5617,
+            "document_value": "<= 1.2 W/m2K",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWcE",
+              "3cUkl32yn9qRSPvBJVyWdx",
+              "3cUkl32yn9qRSPvBJVyWe9",
+              "3cUkl32yn9qRSPvBJVyZTO"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-03",
+            "document": "thermal-specification",
+            "section": "3.3",
+            "group": "roof",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWh4"
+            ],
+            "ifc_type": "IfcRoof",
+            "property": "ThermalTransmittance",
+            "ifc_value": 7.8057,
+            "document_value": "<= 0.13 W/m2K",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWh4"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-04",
+            "document": "thermal-specification",
+            "section": "3.4",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "ThermalTransmittance",
+            "ifc_value": 0.1174,
+            "document_value": "<= 0.10 W/m2K",
+            "expected": "conflict",
+            "severity": "marginal",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-05",
+            "document": "thermal-specification",
+            "section": "3.5",
+            "group": "external_door",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWYp"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "ThermalTransmittance",
+            "ifc_value": null,
+            "document_value": "<= 1.2 W/m2K",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWYp"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-06",
+            "document": "thermal-specification",
+            "section": "3.6",
+            "group": "internal_doors",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "ThermalTransmittance",
+            "ifc_value": 3.7021,
+            "document_value": "3.7 as designed",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "TH-07",
+            "document": "thermal-specification",
+            "section": "3.6",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ThermalTransmittance",
+            "ifc_value": 0.351,
+            "document_value": "0.35 as designed",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3cUkl32yn9qRSPvBJVyWXt"
+            ],
+            "passed": false
+          },
+          {
+            "id": "TH-08",
+            "document": "thermal-specification",
+            "section": "3.6",
+            "group": "roof_deck_slab",
+            "global_ids": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "ThermalTransmittance",
+            "ifc_value": 6.3394,
+            "document_value": "no requirement",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "passed": false
+          },
+          {
+            "id": "AC-01",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.1",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "R'w >= 44 dB",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWXt"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "AC-02",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.2",
+            "group": "internal_doors",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "Rw >= 30 dB",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "AC-03",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.3",
+            "group": "windows",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWcE",
+              "3cUkl32yn9qRSPvBJVyWdx",
+              "3cUkl32yn9qRSPvBJVyWe9",
+              "3cUkl32yn9qRSPvBJVyZTO"
+            ],
+            "ifc_type": "IfcWindow",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "no requirement",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3cUkl32yn9qRSPvBJVyWcE"
+            ],
+            "passed": false
+          },
+          {
+            "id": "AC-04",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.3",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "no requirement",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-01",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "ifc_value": false,
+            "document_value": "load-bearing",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "ST-02",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "ifc_value": false,
+            "document_value": "non-load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-03",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ExtendToStructure",
+            "ifc_value": true,
+            "document_value": "extends to structure",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-04",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.3",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "ifc_value": true,
+            "document_value": "load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-05",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.3",
+            "group": "roof_deck_slab",
+            "global_ids": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "ifc_value": true,
+            "document_value": "load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "passed": false
+          },
+          {
+            "id": "ST-06",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.3",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "IsExternal",
+            "ifc_value": false,
+            "document_value": "internal, not external",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          }
+        ],
+        "unmatched_findings": [
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyW$l",
+            "ifc_type": "IfcPlate",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "6.7069",
+            "document_value": "0.13 W/m²K",
+            "confidence": 0.95,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWYp",
+            "ifc_type": "IfcDoor",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWh4",
+            "ifc_type": "IfcRoof",
+            "property": "ThermalTransmittance",
+            "document": "fire-safety-strategy",
+            "ifc_value": "7.80566404478139",
+            "document_value": "0.13 W/m²K",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWgM",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "1.2",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.13",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          }
+        ],
+        "findings": [
+          {
+            "global_id": "3ntFzSulnDNeQ4nJrMgcOt",
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "True",
+            "document_value": "load-bearing elements",
+            "confidence": 0.8,
+            "title": "Load-bearing status inconsistent with document"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWcE",
+            "ifc_type": "IfcWindow",
+            "property": "AcousticRating",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "absent (no property sets)",
+            "document_value": "at least 44 dB",
+            "confidence": 0.9,
+            "title": "Missing acoustic rating for window"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWY1",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "AcousticRating",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "absent (no property sets)",
+            "document_value": "at least 44 dB",
+            "confidence": 0.9,
+            "title": "Acoustic rating below requirement"
+          },
+          {
+            "global_id": "3ntFzSulnDNeQ4nJrMgcOt",
+            "ifc_type": "IfcSlab",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "6.33939393939394",
+            "document_value": "≤ 0.13",
+            "confidence": 0.95,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.350997935306263",
+            "document_value": "0.10",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyW$l",
+            "ifc_type": "IfcPlate",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "6.7069",
+            "document_value": "0.13 W/m²K",
+            "confidence": 0.95,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWYp",
+            "ifc_type": "IfcDoor",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWy4",
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWw5",
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWh4",
+            "ifc_type": "IfcRoof",
+            "property": "ThermalTransmittance",
+            "document": "fire-safety-strategy",
+            "ifc_value": "7.80566404478139",
+            "document_value": "0.13 W/m²K",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWgM",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "1.2",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.13",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          }
+        ]
+      }
+    },
+    {
+      "label": "no-type-gate+no-keyword-filter+conf=0",
+      "model": "llama3.1:8b",
+      "started_at": "2026-08-30T19:30:55+00:00",
+      "settings": {
+        "confidence_threshold": 0.0,
+        "type_gate": false,
+        "keyword_filter": false,
+        "entity_relevance_threshold": null,
+        "entity_top_k": null,
+        "skip_low_value": true
+      },
+      "run_stats": {
+        "entities_scanned": 15,
+        "conflicts_found": 18,
+        "conflicts_updated": 6,
+        "duration_seconds": 170.19,
+        "scan_run_id": "a7cb75f7-eab6-4f2c-91ca-f3f893a021cc",
+        "llm_model": "llama3.1:8b"
+      },
+      "scores": {
+        "true_positives": 5,
+        "false_positives": 13,
+        "false_negatives": 20,
+        "precision": 0.2778,
+        "recall": 0.2,
+        "f1": 0.2326,
+        "recall_by_severity": {
+          "missing": {
+            "hits": 4,
+            "of": 13
+          },
+          "clear": {
+            "hits": 1,
+            "of": 11
+          },
+          "marginal": {
+            "hits": 0,
+            "of": 1
+          }
+        },
+        "negatives_held": 21,
+        "negatives_total": 26,
+        "cases": [
+          {
+            "id": "FS-01",
+            "document": "fire-safety-strategy",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "EI 30",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWx4"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-02",
+            "document": "fire-safety-strategy",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "EI 30",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-03",
+            "document": "fire-safety-strategy",
+            "section": "3.3",
+            "group": "internal_doors",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "EI 30-Sa",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-04",
+            "document": "fire-safety-strategy",
+            "section": "3.5",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "FireRating",
+            "ifc_value": null,
+            "document_value": "REI 30",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "FS-05",
+            "document": "fire-safety-strategy",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "ifc_value": false,
+            "document_value": "non-load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "FS-06",
+            "document": "fire-safety-strategy",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ExtendToStructure",
+            "ifc_value": true,
+            "document_value": "extends to underside of slab",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "FS-07",
+            "document": "fire-safety-strategy",
+            "section": "3.4",
+            "group": "external_door",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWYp"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "IsExternal",
+            "ifc_value": true,
+            "document_value": "external element",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "FS-08",
+            "document": "fire-safety-strategy",
+            "section": "3.5",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "ifc_value": true,
+            "document_value": "load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "TH-01",
+            "document": "thermal-specification",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ThermalTransmittance",
+            "ifc_value": 0.2359,
+            "document_value": "<= 0.18 W/m2K",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-02",
+            "document": "thermal-specification",
+            "section": "3.2",
+            "group": "windows",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWcE",
+              "3cUkl32yn9qRSPvBJVyWdx",
+              "3cUkl32yn9qRSPvBJVyWe9",
+              "3cUkl32yn9qRSPvBJVyZTO"
+            ],
+            "ifc_type": "IfcWindow",
+            "property": "ThermalTransmittance",
+            "ifc_value": 5.5617,
+            "document_value": "<= 1.2 W/m2K",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWcE",
+              "3cUkl32yn9qRSPvBJVyWdx",
+              "3cUkl32yn9qRSPvBJVyWe9",
+              "3cUkl32yn9qRSPvBJVyZTO"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-03",
+            "document": "thermal-specification",
+            "section": "3.3",
+            "group": "roof",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWh4"
+            ],
+            "ifc_type": "IfcRoof",
+            "property": "ThermalTransmittance",
+            "ifc_value": 7.8057,
+            "document_value": "<= 0.13 W/m2K",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [
+              "3cUkl32yn9qRSPvBJVyWh4"
+            ],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "TH-04",
+            "document": "thermal-specification",
+            "section": "3.4",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "ThermalTransmittance",
+            "ifc_value": 0.1174,
+            "document_value": "<= 0.10 W/m2K",
+            "expected": "conflict",
+            "severity": "marginal",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-05",
+            "document": "thermal-specification",
+            "section": "3.5",
+            "group": "external_door",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWYp"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "ThermalTransmittance",
+            "ifc_value": null,
+            "document_value": "<= 1.2 W/m2K",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWYp"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "TH-06",
+            "document": "thermal-specification",
+            "section": "3.6",
+            "group": "internal_doors",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "ThermalTransmittance",
+            "ifc_value": 3.7021,
+            "document_value": "3.7 as designed",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "TH-07",
+            "document": "thermal-specification",
+            "section": "3.6",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ThermalTransmittance",
+            "ifc_value": 0.351,
+            "document_value": "0.35 as designed",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3cUkl32yn9qRSPvBJVyWXt"
+            ],
+            "passed": false
+          },
+          {
+            "id": "TH-08",
+            "document": "thermal-specification",
+            "section": "3.6",
+            "group": "roof_deck_slab",
+            "global_ids": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "ThermalTransmittance",
+            "ifc_value": 6.3394,
+            "document_value": "no requirement",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "passed": false
+          },
+          {
+            "id": "AC-01",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.1",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "R'w >= 44 dB",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "AC-02",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.2",
+            "group": "internal_doors",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "ifc_type": "IfcDoor",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "Rw >= 30 dB",
+            "expected": "conflict",
+            "severity": "missing",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWaG",
+              "3cUkl32yn9qRSPvBJVyWax"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "AC-03",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.3",
+            "group": "windows",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWcE",
+              "3cUkl32yn9qRSPvBJVyWdx",
+              "3cUkl32yn9qRSPvBJVyWe9",
+              "3cUkl32yn9qRSPvBJVyZTO"
+            ],
+            "ifc_type": "IfcWindow",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "no requirement",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3cUkl32yn9qRSPvBJVyWcE"
+            ],
+            "passed": false
+          },
+          {
+            "id": "AC-04",
+            "document": "acoustic-and-structural-notes",
+            "section": "2.3",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "AcousticRating",
+            "ifc_value": null,
+            "document_value": "no requirement",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-01",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.1",
+            "group": "external_walls",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "ifc_value": false,
+            "document_value": "load-bearing",
+            "expected": "conflict",
+            "severity": "clear",
+            "hits": [],
+            "misses": [
+              "3cUkl32yn9qRSPvBJVyWw5",
+              "3cUkl32yn9qRSPvBJVyWx4",
+              "3cUkl32yn9qRSPvBJVyWy4"
+            ],
+            "false_alarms": [],
+            "passed": false
+          },
+          {
+            "id": "ST-02",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "LoadBearing",
+            "ifc_value": false,
+            "document_value": "non-load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3cUkl32yn9qRSPvBJVyWXt"
+            ],
+            "passed": false
+          },
+          {
+            "id": "ST-03",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.2",
+            "group": "partitions",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWXt",
+              "3cUkl32yn9qRSPvBJVyWY1"
+            ],
+            "ifc_type": "IfcWall",
+            "property": "ExtendToStructure",
+            "ifc_value": true,
+            "document_value": "extends to structure",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-04",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.3",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "ifc_value": true,
+            "document_value": "load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          },
+          {
+            "id": "ST-05",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.3",
+            "group": "roof_deck_slab",
+            "global_ids": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "ifc_value": true,
+            "document_value": "load-bearing",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [
+              "3ntFzSulnDNeQ4nJrMgcOt"
+            ],
+            "passed": false
+          },
+          {
+            "id": "ST-06",
+            "document": "acoustic-and-structural-notes",
+            "section": "3.3",
+            "group": "ground_slab",
+            "global_ids": [
+              "3cUkl32yn9qRSPvBJVyWgQ"
+            ],
+            "ifc_type": "IfcSlab",
+            "property": "IsExternal",
+            "ifc_value": false,
+            "document_value": "internal, not external",
+            "expected": "no_conflict",
+            "severity": "none",
+            "hits": [],
+            "misses": [],
+            "false_alarms": [],
+            "passed": true
+          }
+        ],
+        "unmatched_findings": [
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "Roughness",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "3",
+            "document_value": "not specified",
+            "confidence": 0.8,
+            "title": "Roughness value not specified"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "Roughness",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "3",
+            "document_value": "not specified",
+            "confidence": 0.8,
+            "title": "Roughness value not specified"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWYp",
+            "ifc_type": "IfcDoor",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "FireRating",
+            "document": "thermal-specification",
+            "ifc_value": "EI60",
+            "document_value": "EI 30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyW$l",
+            "ifc_type": "IfcPlate",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "6.7069",
+            "document_value": "1.2 W/m²K",
+            "confidence": 0.95,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWgM",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          }
+        ],
+        "findings": [
+          {
+            "global_id": "3ntFzSulnDNeQ4nJrMgcOt",
+            "ifc_type": "IfcSlab",
+            "property": "LoadBearing",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "True",
+            "document_value": "False",
+            "confidence": 0.85,
+            "title": "Load-bearing status differs from requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "Roughness",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "3",
+            "document_value": "not specified",
+            "confidence": 0.8,
+            "title": "Roughness value not specified"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "Roughness",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "3",
+            "document_value": "not specified",
+            "confidence": 0.8,
+            "title": "Roughness value not specified"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWcE",
+            "ifc_type": "IfcWindow",
+            "property": "AcousticRating",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "absent (no property sets)",
+            "document_value": "at least 44 dB",
+            "confidence": 0.95,
+            "title": "Missing acoustic rating for window"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWY1",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "AcousticRating",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "absent (no property sets)",
+            "document_value": "at least 44 dB",
+            "confidence": 0.9,
+            "title": "Acoustic rating below requirement"
+          },
+          {
+            "global_id": "3ntFzSulnDNeQ4nJrMgcOt",
+            "ifc_type": "IfcSlab",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "6.33939393939394",
+            "document_value": "0.13",
+            "confidence": 0.95,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "LoadBearing",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "False",
+            "document_value": "load-bearing",
+            "confidence": 0.92,
+            "title": "Load-bearing status incorrect"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "AcousticRating",
+            "document": "acoustic-and-structural-notes",
+            "ifc_value": "(not set)",
+            "document_value": "at least 44 dB",
+            "confidence": 0.92,
+            "title": "Acoustic rating missing"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.350997935306263",
+            "document_value": "0.10 W/m²K",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfu",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWYp",
+            "ifc_type": "IfcDoor",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWy4",
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWw5",
+            "ifc_type": "IfcWall",
+            "property": "FireRating",
+            "document": "fire-safety-strategy",
+            "ifc_value": "EI60",
+            "document_value": "EI30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+            "ifc_type": "IfcWallStandardCase",
+            "property": "FireRating",
+            "document": "thermal-specification",
+            "ifc_value": "EI60",
+            "document_value": "EI 30",
+            "confidence": 0.92,
+            "title": "Fire rating below requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyW$l",
+            "ifc_type": "IfcPlate",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "6.7069",
+            "document_value": "1.2 W/m²K",
+            "confidence": 0.95,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWh4",
+            "ifc_type": "IfcRoof",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "7.80566404478139",
+            "document_value": "0.13",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWgM",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          },
+          {
+            "global_id": "3cUkl32yn9qRSPvBJVyWfk",
+            "ifc_type": "IfcCovering",
+            "property": "ThermalTransmittance",
+            "document": "thermal-specification",
+            "ifc_value": "0.549915397631134",
+            "document_value": "0.1",
+            "confidence": 0.92,
+            "title": "Thermal transmittance exceeds requirement"
+          }
+        ]
+      }
+    }
+  ]
+}

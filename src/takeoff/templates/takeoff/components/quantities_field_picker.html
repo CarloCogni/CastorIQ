@@ -1,0 +1,81 @@
+<!-- takeoff/components/quantities_field_picker.html — REVIEW-08B shared grouped searchable picker
+     Expects: picker_id, hierarchy, selected_key (optional), exclude_keys (optional set),
+     mode ("column"|"filter"), scope_label (optional) -->
+{% with pid=picker_id|default:"qty-field-picker" %}
+<div class="qty-field-picker"
+     id="{{ pid }}"
+     data-testid="{{ pid }}"
+     data-picker-mode="{{ mode|default:'column' }}"
+     data-selected-key="{{ selected_key|default:'' }}">
+  {% if scope_label %}
+  <p class="small text-secondary mb-1" data-testid="{{ pid }}-scope">Scope: {{ scope_label }}</p>
+  {% endif %}
+  <label class="form-label small mb-1" for="{{ pid }}-search">Search fields</label>
+  <input type="search"
+         class="form-control form-control-sm mb-2 qty-field-picker-search"
+         id="{{ pid }}-search"
+         placeholder="Search by property or Pset / Qto…"
+         autocomplete="off"
+         autocorrect="off"
+         spellcheck="false"
+         data-testid="{{ pid }}-search"
+         data-1p-ignore="true"
+         data-lpignore="true">
+  <div class="qty-field-picker-status small text-secondary mb-1 d-none"
+       data-testid="{{ pid }}-status"
+       aria-live="polite"></div>
+  <div class="qty-field-picker-tree border rounded"
+       style="max-height:16rem;overflow:auto;"
+       data-testid="{% if tree_testid %}{{ tree_testid }}{% else %}{{ pid }}-tree{% endif %}"
+       id="{{ pid }}-tree">
+    {% for family in hierarchy %}
+    <details class="qty-field-picker-family" open data-family="{{ family.family }}">
+      <summary class="qty-field-picker-family-sum small fw-semibold px-2 py-1">
+        {{ family.family }}
+        <span class="text-secondary fw-normal">({{ family.count }})</span>
+      </summary>
+      {% for group in family.groups %}
+      <details class="qty-field-picker-group ms-1" open data-group="{{ group.name }}">
+        <summary class="qty-field-picker-group-sum small px-2 py-1 text-secondary">
+          {{ group.name }}
+          <span class="fw-normal">({{ group.count }})</span>
+        </summary>
+        <div class="list-group list-group-flush">
+          {% for field in group.fields %}
+            {% if not exclude_keys or field.key not in exclude_keys %}
+            <button type="button"
+                    class="list-group-item list-group-item-action py-1 px-2 qty-field-picker-option{% if mark_added_keys and field.key in mark_added_keys %} disabled{% endif %}"
+                    data-testid="{{ option_testid|default:'qty-field-picker-option' }}"
+                    data-field-key="{{ field.key }}"
+                    data-field-label="{{ field.label }}"
+                    data-value-type="{{ field.value_type|default:'text' }}"
+                    data-unit-label="{{ field.unit_label|default:'' }}"
+                    data-partial="{% if field.partial_in_scope %}1{% else %}0{% endif %}"
+                    data-already-added="{% if mark_added_keys and field.key in mark_added_keys %}1{% else %}0{% endif %}"
+                    data-scope-note="{{ field.scope_note|default:'' }}"
+                    data-search="{{ field.label }} {{ group.name }} {{ family.family }} {{ field.source_property }} {{ field.source_context }}"
+                    {% if mark_added_keys and field.key in mark_added_keys %}aria-disabled="true"{% endif %}
+                    {% if selected_key == field.key %}aria-pressed="true"{% else %}aria-pressed="false"{% endif %}>
+              <span class="d-block small fw-semibold">{{ field.label }}{% if mark_added_keys and field.key in mark_added_keys %} <span class="text-secondary fw-normal">· added</span>{% endif %}</span>
+              <span class="d-block text-secondary" style="font-size:0.7rem;">
+                {{ family.family }} · {{ group.name }}
+                {% if field.partial_in_scope %} · partial{% endif %}
+              </span>
+            </button>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </details>
+      {% endfor %}
+    </details>
+    {% empty %}
+    <p class="small text-secondary p-2 mb-0" data-testid="{{ pid }}-catalogue-empty">
+      No indexed fields available for this scope.
+    </p>
+    {% endfor %}
+  </div>
+  <p class="c5d-helper mb-0 mt-1 d-none qty-field-picker-no-matches"
+     id="{{ pid }}-no-matches"
+     data-testid="{% if no_matches_testid %}{{ no_matches_testid }}{% else %}{{ pid }}-no-matches{% endif %}">No fields match this search.</p>
+</div>
+{% endwith %}

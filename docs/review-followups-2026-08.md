@@ -20,10 +20,6 @@ they are resolved; delete the file when empty.
   returns the closest 3 per source even when they score as noise; 3 junk IFC hits then
   flip the 70% IFC quota in `_pack_with_quota` for purely documentary questions. The floor
   should apply to the merged candidate set.
-- **CODE_* failure labels unreachable.** `journal_executor` wraps `CodeSandboxError` into
-  `JournalExecutionError`, whose patterns only cover "Generated code failed"/"budget"/…, so
-  `CODE_SANDBOX_VIOLATION` etc. land on `IFC_WRITE_GENERIC`. Also six dead
-  `EXCEPTION_PATTERNS` rows for the deleted `Tier3ExecutionError`/`Tier3TimeoutError`.
 
 ## Performance
 

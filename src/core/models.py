@@ -470,7 +470,7 @@ class SiteLLMConfig(SingletonModel):
         blank=True,
         default="",
         verbose_name="Ask Model",
-        help_text="Model identifier for the Ask provider. Blank = .env default.",
+        help_text="Model identifier for the Ask provider. Blank = .env default (OLLAMA_MODEL).",
     )
     modify_provider = models.CharField(
         max_length=20,
@@ -484,7 +484,10 @@ class SiteLLMConfig(SingletonModel):
         blank=True,
         default="",
         verbose_name="Modify Model",
-        help_text="Model identifier for the Modify provider. Blank = .env default.",
+        help_text=(
+            "Model identifier for the Modify provider. Blank = .env default "
+            "(MODIFY_MODEL, a code-tuned Ollama tag)."
+        ),
     )
     force_local_ollama = models.BooleanField(
         default=False,
@@ -530,28 +533,47 @@ class SiteLLMConfig(SingletonModel):
             # settings.OLLAMA_MODEL — otherwise we'd persist a Claude/Llama name on
             # an Ollama provider, which is meaningless.
             obj.ask_model = settings.ASK_MODEL if obj.ask_provider != cls.Provider.OLLAMA else ""
-            obj.modify_model = (
-                settings.MODIFY_MODEL if obj.modify_provider != cls.Provider.OLLAMA else ""
-            )
+            obj.modify_model = ""
             obj.save()
         return obj
 
     def resolve(self, purpose: str) -> tuple[str, str]:
-        """Return (provider, model) for a given call-site purpose ('ask' | 'modify')."""
+        """Return (provider, model) for a given call-site purpose ('ask' | 'modify').
+
+        On Ollama, Ask uses ``OLLAMA_MODEL`` (a prose model) and Modify uses
+        ``MODIFY_MODEL`` (a code-tuned model) unless the row names a tag.
+        """
+        if purpose not in ("ask", "modify"):
+            raise ValueError(f"Unknown LLM purpose: {purpose!r} (expected 'ask' | 'modify')")
         if self.force_local_ollama:
-            return ("ollama", settings.OLLAMA_MODEL)
+            return ("ollama", self.local_model_for(purpose))
+        return self.resolve_configured(purpose)
+
+    def resolve_configured(self, purpose: str) -> tuple[str, str]:
+        """(provider, model) from the per-purpose fields, ignoring ``force_local_ollama``.
+
+        The admin "Test connection" buttons use this so the operator probes the
+        provider they configured, not the emergency switch.
+        """
         if purpose == "ask":
             provider, model = self.ask_provider, self.ask_model
             cloud_default = settings.ASK_MODEL
-        elif purpose == "modify":
-            provider, model = self.modify_provider, self.modify_model
-            cloud_default = settings.MODIFY_MODEL
         else:
-            raise ValueError(f"Unknown LLM purpose: {purpose!r} (expected 'ask' | 'modify')")
+            provider, model = self.modify_provider, self.modify_model
+            cloud_default = ""
         provider = str(provider)
         if provider == "ollama":
-            return ("ollama", settings.OLLAMA_MODEL)
+            return ("ollama", model or self.local_model_for(purpose))
+        if not cloud_default:
+            from core.llm_catalog import default_model_for
+
+            cloud_default = default_model_for(provider)
         return (provider, model or cloud_default)
+
+    @staticmethod
+    def local_model_for(purpose: str) -> str:
+        """The .env Ollama tag for a purpose: the coder for Modify, the prose model for Ask."""
+        return settings.MODIFY_MODEL if purpose == "modify" else settings.OLLAMA_MODEL
 
 
 class SiteLaunchConfig(SingletonModel):

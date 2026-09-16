@@ -1,0 +1,113 @@
+{
+  "fixture": "fzk-haus",
+  "model_label": "llama3.1:8b",
+  "started_at": "2026-09-16T00:45:48.661182+00:00",
+  "results": [
+    {
+      "case_id": "t1-count-doors",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "5",
+      "answer": "**Door Count in the Model**\nAccording to the verified computed fact, there are **5** doors in the model. This count was determined by a **COUNT** method over the parsed entities of type **IfcDoor** (including subtypes **IfcDoorStandardCase**) in the **IFC4** model.",
+      "latency_s": 1.5148840389883844,
+      "notes": []
+    },
+    {
+      "case_id": "t1-count-windows",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "11",
+      "answer": "According to the database index of the IFC4 model, the building has **11** windows. This count was determined by a **COUNT** operation over the parsed entities of type `IfcWindow` (including its subtypes `IfcWindowStandardCase`). \n\n**Entity Count: Windows**\n| Type | Count |\n| --- | --- |\n| IfcWindow | 11 |\n\nSource: Database index of IFC4 model.",
+      "latency_s": 1.9240351790067507,
+      "notes": []
+    },
+    {
+      "case_id": "t1-count-walls",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "13",
+      "answer": "**Entity Count Analysis**\n\nAccording to the verified computed facts, there are **13** walls in total in the AC20-FZK-Haus.ifc model. This count was determined by a **COUNT** operation over the parsed entities of type `IfcWall` (including subtypes `IfcWallElementedCase` and `IfcWallStandardCase`) in the IFC4 model database index.\n\n**Source:** Database index of IFC4 model\n**Method:** COUNT over parsed entities of type IfcWall (includes subtypes: IfcWallElementedCase, IfcWallStandardCase)",
+      "latency_s": 2.692125946006854,
+      "notes": []
+    },
+    {
+      "case_id": "t1-count-spaces",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "7",
+      "answer": "According to the provided IFC model data, there are 7 spaces defined in the model.\n\n| Space ID | Type | Classification | Properties |\n| --- | --- | --- | --- |\n| 1 | Allgemeines (Buero) | 000 Allgemeines | Raumvolumen=32.46, Height=2.5, ... |\n| 2 | Allgemeines (Buero) | 000 Allgemeines | Raumvolumen=32.46, Height=2.5, ... |\n| 3 | Allgemeines (Buero) | 000 Allgemeines | Raumvolumen=32.46, Height=2.5, ... |\n| 4 | Allgemeines (Buero) | 000 Allgemeines | Raumvolumen=32.46, Height=2.5, ... |\n| 5 | Allgemeines (Buero) | 000 Allgemeines | Raumvolumen=32.46, Height=2.5, ... |\n| 6 | Allgemeines (Buero) | 000 Allgemeines | Raumvolumen=32.46, Height=2.5, ... |\n| 7 | Allgemeines (Buero) | 000 Allgemeines | Raumvolumen=32.46, Height=2.5, ... |\n\nThe IFC model shows 7 spaces of type 'Allgemeines (Buero)' with similar properties.",
+      "latency_s": 8.756753445995855,
+      "notes": []
+    },
+    {
+      "case_id": "t1-storeys",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "Erdgeschoss, Dachgeschoss",
+      "answer": "**Building Storey List**\nThe IFC model contains the following building storeys:\n\n| Storey Name | Elevation (m) |\n| --- | --- |\n| Erdgeschoss | 0.0 |\n| Dachgeschoss | 2.7 |\n\nAccording to the spatial tree walk method, the model database contains 2 storeys. The elevations are directly extracted from the IFC model.",
+      "latency_s": 2.1316178039996885,
+      "notes": [
+        "matched 2/2"
+      ]
+    },
+    {
+      "case_id": "t1-schema",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "IFC4",
+      "answer": "**IFC Schema Version**\nAccording to the IFC file header in the model `AC20-FZK-Haus.ifc`, the IFC schema version is **IFC4**.\n \n**Source:** `AC20-FZK-Haus.ifc` (IFC file header)",
+      "latency_s": 1.407444762007799,
+      "notes": []
+    },
+    {
+      "case_id": "t2-materials",
+      "tier": 2,
+      "passed": true,
+      "skipped": false,
+      "expected": "Holz, Leichtbeton 102890359, Radial Gradient Fill 1515460218, Stahlbeton 65690, Solid, Solid 397409098",
+      "answer": "Based on the provided IFC data, the materials used in the building elements are:\n\n* Walls: Holz (Wood)\n* Slabs: Holz (Wood)\n* Doors: Holz (Wood), Aluminium\n* Windows: Holz (Wood), Aluminium\n* Site: No specific material is mentioned for the site, but it is mentioned that the GrossAreaPlanned is 0, indicating that there is no planned area for the site.\n\nNote that the materials mentioned are based on the Pset_DoorCommon and Pset_WindowCommon properties, which provide information about the materials used in the doors and windows. The materials for the walls and slabs are not explicitly mentioned, but based on the context, it is likely that they are also made of Holz (Wood).",
+      "latency_s": 4.594349797989707,
+      "notes": [
+        "matched 1 material name(s)"
+      ]
+    },
+    {
+      "case_id": "t2-spaces",
+      "tier": 2,
+      "passed": false,
+      "skipped": true,
+      "expected": "",
+      "answer": "",
+      "latency_s": 0.0,
+      "notes": [
+        "fixture has no named spaces"
+      ]
+    },
+    {
+      "case_id": "t2-fire-rating",
+      "tier": 2,
+      "passed": true,
+      "skipped": false,
+      "expected": "any of ('fire', 'rating'), non-refusal",
+      "answer": "Unfortunately, the provided IFC data does not contain information about the fire rating of the doors and walls. The IFC data only includes information about the physical properties and materials of the elements, but not about their fire resistance or fire rating.",
+      "latency_s": 2.238726615003543,
+      "notes": []
+    },
+    {
+      "case_id": "t2-external-walls",
+      "tier": 2,
+      "passed": false,
+      "skipped": false,
+      "expected": "any of ('external', 'exterior'), non-refusal",
+      "answer": "**External Walls and Storey Locations**\n\nTo determine which walls are external walls and on which storeys they are located, we need to analyze the IFC model data.\n\n**External Walls**\n\nUnfortunately, the provided excerpts do not contain information about external walls. Therefore, I could not find this information in the uploaded project files.\n\n**Storey List**\n\nAccording to the verified computed facts, there are 2 storeys in the building:\n\n| Storey Name | Elevation (m) |\n| --- | --- |\n| Erdgeschoss | 0.0 |\n| Dachgeschoss | 2.7 |\n\nTo determine the location of external walls, we would need to analyze the IFC model data for walls with specific properties or relationships to building elements, such as openings or boundary conditions. However, this information is not available in the provided excerpts.\n\n**Next Steps**\n\nTo answer the question, we would need to:\n\n1. Analyze the IFC model data for walls with specific properties or relationships to building elements.\n2. Identify the GlobalIDs or other unique identifiers of the external walls.\n3. Determine the storey locations of the external walls based on their spatial relationships to the building elements.\n\nPlease provide additional excerpts or clarify the requirements for a more detailed answer.",
+      "latency_s": 5.621391726002912,
+      "notes": []
+    }
+  ]
+}

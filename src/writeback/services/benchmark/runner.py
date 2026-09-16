@@ -1,44 +1,50 @@
 # writeback/services/benchmark/runner.py
-"""Run corpus cases through the real pipeline and score the outcome.
+"""Run corpus cases through the V3 pipeline and score the outcome (spec B-1, B-2).
 
-One case is one full trip: natural language → the V2 pipeline → a mutation
-journal → executed against a **scratch copy** of the project's IFC → the file
-read back to confirm the change is really there.
+One case is one real request: ground → generate → run → verify on a scratch
+copy of the project's IFC file. The runner scores what came back:
 
-Two isolation guarantees make a 92-case run safe and repeatable:
+* **targets match** — the GlobalIds ``select`` returned equal the set the
+  corpus expectation resolves to through the index (type, container, name,
+  property filter). This is the column that decides the bake-off.
+* **diff match** — every ``diff:`` line of the corpus is satisfied by the
+  aggregated rows of the measured diff.
+* **integrity** — nothing changed outside the selection and no geometry
+  moved, measured **independently** of the pipeline's own gate: the scratch
+  copy the child wrote is re-read from disk and diffed against the original
+  with :meth:`IfcDiff.unexpected`. The gate already checked the in-memory
+  diff, so this column catches a defect between that diff and the bytes on
+  disk, or a drift between the two implementations of the rule.
+* **reject / no-change** — cases that must be declined, or already hold.
 
-* **The real IFC is never touched.** Every case executes against its own copy
-  inside a temporary directory. ``JournalExecutor`` is only ever constructed
-  with a path under that directory.
-* **Cases do not contaminate each other.** The copy is fresh per case and the
-  DB index is never re-synced, so every case sees the same baseline model.
-  This matters more than it looks: several corpus cases assert the
-  ``SET_PROPERTY`` → ``ADD_PROPERTY`` fallback, which only fires while
-  ``FireRating`` is still absent — one leaked write would silently invalidate
-  them.
+A change case the model refused, or failed three times on, scores **false**
+on targets and diff match rather than dropping out of those denominators. A
+model that could not be reached (timeout, transport) is a harness error,
+excluded from every score and listed on its own.
 
-No proposal is ever persisted: ``ProposalPipeline.run()`` stops at the outcome,
-and creating the ``ModificationProposal`` row is a separate service's job.
+No proposal is persisted and the original file is never touched: the scratch
+copy the pipeline kept is deleted after scoring.
 """
 
 from __future__ import annotations
 
 import logging
-import shutil
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
-from ifc_processor.services.ifc_diff import IfcSnapshot, diff_snapshots
-from ifc_processor.services.journal import MutationJournal, MutationOp
-from ifc_processor.services.journal_executor import JournalExecutor
+from django.db.models import Q
+
+from ifc_processor.models import IFCEntity
+from ifc_processor.schema_data.lookup import expand_type
+from ifc_processor.services.ifc_diff import diff_files
+from ifc_processor.services.property_access import get_prop
 
 from ..emitters import CapturingEmitter
-from ..errors import ModificationError
-from ..proposal_pipeline import ProposalPipeline
-from .corpus import BenchmarkCase
-from .verify import FidelityCheck, verify_journal
+from ..errors import ModelUnavailableError, ModificationError, NoChangeError
+from ..pipeline import ModifyPipeline, PipelineOutcome
+from ..verifier import DiffRow
+from .corpus import BenchmarkCase, DiffExpectation, TargetExpectation
 
 logger = logging.getLogger(__name__)
 
@@ -51,39 +57,53 @@ class CaseResult:
     section_number: str
     prompt: str
     expectation: str
+    kind: str  # change | reject | no_change | advisory
     advisory: bool
 
-    # Understanding — did it route the way the corpus says?
-    understood: bool = False
-    actual_tier: int | None = None
-    actual_operation: str = ""
-    rejected: bool = False
+    outcome: str = ""  # proposal | rejected | no_change | error
     rejection_reason: str = ""
-    understanding_detail: str = ""
+    attempts: int = 0
+    explanation: str = ""
+    code: str = ""
 
-    # Slots — a diagnostic, never a pass/fail gate (see `slots_note`).
-    slots_match: bool | None = None
-    slots_detail: str = ""
+    targets_expected: int | None = None
+    targets_actual: int = 0
+    targets_match: bool | None = None
+    targets_detail: str = ""
 
-    # Fidelity — did the journal land in the file?
-    executed: bool = False
-    fidelity_checks: list[FidelityCheck] = field(default_factory=list)
-    fidelity_ok: bool | None = None
-    fidelity_detail: str = ""
+    diff_match: bool | None = None
+    diff_detail: str = ""
+    flagged_rows: int = 0
 
-    # Integrity — did anything *outside* the journal change in the file?
     integrity_ok: bool | None = None
     integrity_detail: str = ""
 
     duration_seconds: float = 0.0
     error: str = ""
+    #: How many times the case actually ran under ``--repeat``.
+    runs: int = 1
 
     @property
     def passed(self) -> bool:
-        """Advisory cases never fail; otherwise both scores must hold."""
+        """Advisory cases never fail; otherwise the case's kind decides."""
         if self.advisory:
             return True
-        return self.understood and self.fidelity_ok is not False and self.integrity_ok is not False
+        if self.error:
+            return False
+        if self.kind == "reject":
+            return self.outcome in ("rejected", "no_change") and self.targets_match is not False
+        if self.kind == "no_change":
+            return self.outcome == "no_change"
+        return (
+            self.outcome == "proposal"
+            and self.targets_match is not False
+            and self.diff_match is not False
+            and self.integrity_ok is not False
+        )
+
+    @property
+    def repairs(self) -> int:
+        return max(0, self.attempts - 1)
 
     def as_dict(self) -> dict:
         return {
@@ -91,46 +111,37 @@ class CaseResult:
             "section": self.section_number,
             "prompt": self.prompt,
             "expectation": self.expectation,
+            "kind": self.kind,
             "advisory": self.advisory,
-            "understood": self.understood,
-            "actual_tier": self.actual_tier,
-            "actual_operation": self.actual_operation,
-            "rejected": self.rejected,
+            "outcome": self.outcome,
             "rejection_reason": self.rejection_reason,
-            "understanding_detail": self.understanding_detail,
-            "slots_match": self.slots_match,
-            "slots_detail": self.slots_detail,
-            "executed": self.executed,
-            "fidelity_ok": self.fidelity_ok,
-            "fidelity_detail": self.fidelity_detail,
-            "fidelity_checks": [c.as_dict() for c in self.fidelity_checks],
+            "attempts": self.attempts,
+            "explanation": self.explanation,
+            "code": self.code,
+            "targets_expected": self.targets_expected,
+            "targets_actual": self.targets_actual,
+            "targets_match": self.targets_match,
+            "targets_detail": self.targets_detail,
+            "diff_match": self.diff_match,
+            "diff_detail": self.diff_detail,
+            "flagged_rows": self.flagged_rows,
             "integrity_ok": self.integrity_ok,
             "integrity_detail": self.integrity_detail,
+            "passed": self.passed,
             "duration_seconds": round(self.duration_seconds, 3),
             "error": self.error,
+            "runs": self.runs,
         }
 
 
 class BenchmarkRunner:
     """Executes corpus cases against one project and one model."""
 
-    def __init__(self, project, *, ifc_file, user=None, execute: bool = True) -> None:
-        """
-        Args:
-            project:  The project whose DB index the pipeline resolves against.
-            ifc_file: The IFCFile whose model the journals target.
-            user:     Optional user, for per-user LLM config.
-            execute:  False scores understanding only — no scratch copies, no
-                      writes. Much faster for iterating on prompts.
-        """
+    def __init__(self, project, *, ifc_file, user=None) -> None:
         self.project = project
         self.ifc_file = ifc_file
         self.user = user
-        self.execute = execute
-        self.pipeline = ProposalPipeline(project, user=user)
-        # The source file never changes during a run, so its snapshot is taken
-        # once and reused as the "before" side of every integrity diff.
-        self._baseline: IfcSnapshot | None = None
+        self.pipeline = ModifyPipeline(project, user=user)
 
     def run_case(self, case: BenchmarkCase) -> CaseResult:
         """Run one case end to end and score it."""
@@ -139,221 +150,221 @@ class BenchmarkRunner:
             section_number=case.section_number,
             prompt=case.prompt,
             expectation=case.describe_expectation(),
+            kind=case.kind,
             advisory=case.advisory,
         )
-
+        emitter = CapturingEmitter()
         started = time.perf_counter()
         try:
-            outcome = self.pipeline.run(
-                case.prompt,
-                user=self.user,
-                ifc_file=self.ifc_file,
-                emitter=CapturingEmitter(),
-            )
+            outcome = self.pipeline.run(case.prompt, ifc_file=self.ifc_file, emitter=emitter)
+        except NoChangeError as e:
+            result.duration_seconds = time.perf_counter() - started
+            result.outcome = "no_change"
+            result.rejection_reason = str(e)
+            result.code = e.code
+            result.attempts = _attempts(emitter)
+            self._score_targets(case, result, e.targets)
+            if case.kind == "change":
+                # The file was left as it was: a failed selection and a failed
+                # diff, in both denominators, like a rejection (spec B-2).
+                result.targets_detail = f"already so: {result.targets_detail}"
+                if case.expect_targets:
+                    result.targets_match = False
+                if case.expect_diff:
+                    result.diff_match = False
+            return result
+        except ModelUnavailableError as e:
+            # The model did not answer: a harness/provider failure, never a
+            # refusal the reject column could take credit for.
+            result.duration_seconds = time.perf_counter() - started
+            result.outcome = "error"
+            result.error = f"{type(e).__name__}: {e}"
+            result.attempts = _attempts(emitter)
+            return result
         except ModificationError as e:
             result.duration_seconds = time.perf_counter() - started
-            result.rejected = True
-            result.actual_tier = 0
+            result.outcome = "rejected"
             result.rejection_reason = str(e)
+            result.code = getattr(e, "code", "")
+            result.attempts = _attempts(emitter)
             self._score_rejection(case, result)
             return result
         except Exception as e:  # noqa: BLE001 — one bad case must not end the run
             result.duration_seconds = time.perf_counter() - started
+            result.outcome = "error"
             result.error = f"{type(e).__name__}: {e}"
-            result.understanding_detail = "pipeline raised an unexpected exception"
             logger.warning("Case %s raised: %s", case.id, e, exc_info=True)
             return result
 
         result.duration_seconds = time.perf_counter() - started
-        result.actual_tier = outcome.tier
-        result.actual_operation = outcome.operation
-        self._score_routing(case, result)
-        self._score_slots(case, result, outcome)
+        result.outcome = "proposal"
+        result.attempts = outcome.attempts
+        result.explanation = outcome.explanation
+        result.code = outcome.code
+        result.flagged_rows = outcome.flagged_count
+        self._score_integrity(result, outcome)
+        Path(outcome.scratch_path).unlink(missing_ok=True)
 
-        if self.execute:
-            self._execute_and_verify(outcome, result)
+        if case.kind == "reject":
+            result.targets_detail = "a proposal was produced for a request that must be declined"
+        self._score_targets(case, result, outcome.targets)
+        self._score_diff(case, result, outcome.rows)
         return result
 
-    # ── Understanding ──────────────────────────────────────
+    # ── Scoring ────────────────────────────────────────────
 
     def _score_rejection(self, case: BenchmarkCase, result: CaseResult) -> None:
-        if not case.expects_rejection:
-            result.understood = False
-            result.understanding_detail = (
-                f"expected {case.describe_expectation()}, got a tier 0 rejection"
-            )
+        if case.kind != "reject":
+            # A change case that ended in a rejection failed its selection and
+            # its diff; it stays in both denominators.
+            result.targets_detail = f"got a rejection: {result.rejection_reason[:200]}"
+            if case.expect_targets:
+                result.targets_match = False
+            if case.expect_diff:
+                result.diff_match = False
             return
-
         if not case.expect_reject_substrings:
-            result.understood = True
-            result.understanding_detail = "rejected (no substring required)"
+            result.targets_detail = "rejected"
             return
-
         reason = result.rejection_reason.casefold()
-        # Alternatives are "any of", not "all of" — the corpus lists the
-        # phrasings that would each be an acceptable explanation.
-        hit = next(
-            (s for s in case.expect_reject_substrings if s.casefold() in reason),
-            None,
-        )
+        hit = next((s for s in case.expect_reject_substrings if s.casefold() in reason), None)
         if hit:
-            result.understood = True
-            result.understanding_detail = f"rejected, reason mentions {hit!r}"
+            result.targets_detail = f"rejected, reason mentions {hit!r}"
         else:
-            result.understood = False
+            result.targets_match = False
             alternatives = " / ".join(repr(s) for s in case.expect_reject_substrings)
-            result.understanding_detail = f"rejected, but reason mentions none of {alternatives}"
+            result.targets_detail = f"rejected, but the reason mentions none of {alternatives}"
 
-    def _score_routing(self, case: BenchmarkCase, result: CaseResult) -> None:
-        if case.expects_rejection:
-            result.understood = False
-            result.understanding_detail = (
-                f"expected a tier 0 rejection, got tier {result.actual_tier}, "
-                f"{result.actual_operation}"
-            )
+    def _score_targets(self, case: BenchmarkCase, result: CaseResult, actual: list[str]) -> None:
+        result.targets_actual = len(actual)
+        if not case.expect_targets:
             return
-
-        if case.expect_tier is None:
-            result.understood = True
-            result.understanding_detail = "no expectation declared"
-            return
-
-        tier_ok = result.actual_tier == case.expect_tier
-        operation_ok = not case.expect_operation or result.actual_operation == case.expect_operation
-        result.understood = tier_ok and operation_ok
-        if result.understood:
-            result.understanding_detail = f"tier {result.actual_tier}, {result.actual_operation}"
-        else:
-            result.understanding_detail = (
-                f"expected {case.describe_expectation()}, got tier {result.actual_tier}, "
-                f"{result.actual_operation}"
-            )
-
-    def _score_slots(self, case: BenchmarkCase, result: CaseResult, outcome) -> None:
-        """Compare declared slots against the intent the pipeline built.
-
-        Reported but never gating: the corpus writes slots as prose-ish
-        pseudo-JSON and the pipeline may legitimately normalise a value
-        (``0.18`` → ``0.18``, ``EI240`` → ``EI240``) or infer a pset the corpus
-        left implicit. A mismatch is a hint for a human, not a verdict.
-        """
-        if not case.expect_slots:
-            return
-
-        intent = outcome.intent_json or {}
-        mismatches = []
-        for key, expected in case.expect_slots.items():
-            actual = _lookup_intent(intent, key)
-            if actual is None:
-                continue
-            if str(actual).strip().casefold() != str(expected).strip().casefold():
-                mismatches.append(f"{key}: expected {expected!r}, got {actual!r}")
-
-        result.slots_match = not mismatches
-        result.slots_detail = "; ".join(mismatches)
-
-    # ── Fidelity ───────────────────────────────────────────
-
-    def _execute_and_verify(self, outcome, result: CaseResult) -> None:
-        """Apply the journal to a throwaway copy and read the file back."""
-        if not outcome.is_journal or not outcome.changes:
-            result.fidelity_detail = "no journal to execute"
-            return
-
-        try:
-            journal = MutationJournal.from_json_dict(outcome.changes)
-        except Exception as e:  # noqa: BLE001
-            result.fidelity_ok = False
-            result.fidelity_detail = f"journal did not decode: {e}"
-            return
-
-        if not journal.mutations:
-            result.fidelity_detail = "journal is empty"
-            return
-
-        source = Path(self.ifc_file.file.path)
-        # ignore_cleanup_errors: on Windows a lingering handle (an ifcopenshell
-        # file object, or a RUN_CODE child that outlived its timeout) makes
-        # rmtree raise PermissionError. That would escape and kill a 92-case
-        # run over a leftover temp file nobody needs.
-        with TemporaryDirectory(prefix="castor-benchmark-", ignore_cleanup_errors=True) as tmp:
-            # The executor swaps over whatever path it is given, so this must
-            # be the copy — never `source`.
-            scratch = Path(tmp) / source.name
-            shutil.copy2(source, scratch)
-            try:
-                applied = JournalExecutor(scratch).apply(journal)
-            except Exception as e:  # noqa: BLE001
-                result.fidelity_ok = False
-                result.fidelity_detail = f"execution failed: {type(e).__name__}: {e}"
+        expected: set[str] = set()
+        for expectation in case.expect_targets:
+            resolved = resolve_targets(self.ifc_file, expectation)
+            if len(resolved) != expectation.count:
+                result.targets_match = False
+                result.targets_detail = (
+                    f"corpus says {expectation.describe()} but the index resolves it to "
+                    f"{len(resolved)} entities"
+                )
                 return
-
-            result.executed = True
-            result.fidelity_checks = verify_journal(applied, str(scratch))
-            self._check_integrity(journal, scratch, result)
-
-        scored = [c for c in result.fidelity_checks if not c.advisory]
-        if not scored:
-            result.fidelity_detail = "executed; nothing independently verifiable"
+            expected |= resolved
+        result.targets_expected = len(expected)
+        actual_set = set(actual)
+        result.targets_match = actual_set == expected
+        if result.targets_match:
+            result.targets_detail = f"{len(expected)} target(s) as expected"
             return
-
-        failures = [c for c in scored if not c.passed]
-        result.fidelity_ok = not failures
-        result.fidelity_detail = (
-            f"{len(scored) - len(failures)}/{len(scored)} mutations verified"
-            if not failures
-            else "; ".join(f"{c.op}: {c.detail}" for c in failures[:3])
+        missing, extra = expected - actual_set, actual_set - expected
+        result.targets_detail = (
+            f"expected {len(expected)}, got {len(actual_set)}: "
+            f"{len(missing)} missing, {len(extra)} unexpected"
         )
 
-    # ── Integrity ──────────────────────────────────────────
+    def _score_diff(self, case: BenchmarkCase, result: CaseResult, rows: list[DiffRow]) -> None:
+        if not case.expect_diff:
+            return
+        failures = []
+        for expectation in case.expect_diff:
+            found = _count_matching(rows, expectation)
+            if found != expectation.count:
+                failures.append(f"{expectation.describe()}: found {found}")
+        result.diff_match = not failures
+        result.diff_detail = (
+            f"{len(case.expect_diff)} expectation(s) met" if not failures else "; ".join(failures)
+        )
 
-    def _check_integrity(self, journal: MutationJournal, scratch: Path, result: CaseResult) -> None:
-        """Diff the written file against the untouched source.
-
-        Anything the journal did not declare — geometry drift, a lost entity, a
-        property changed on a bystander — is an integrity failure. Population
-        changes are tolerated only when the journal contains an op that creates
-        or deletes entities.
-        """
+    def _score_integrity(self, result: CaseResult, outcome: PipelineOutcome) -> None:
+        """Re-read the written scratch copy and diff it against the original on disk."""
         try:
-            if self._baseline is None:
-                self._baseline = IfcSnapshot.from_file(self.ifc_file.file.path)
-            diff = diff_snapshots(self._baseline, IfcSnapshot.from_file(scratch))
-        except Exception as e:  # noqa: BLE001
+            written = diff_files(self.ifc_file.file.path, outcome.scratch_path)
+        except Exception as e:  # noqa: BLE001 — an unreadable copy is an integrity failure, not a crash
             result.integrity_ok = False
-            result.integrity_detail = f"snapshot failed: {type(e).__name__}: {e}"
+            result.integrity_detail = f"could not re-read the scratch copy: {e}"
             return
-
-        ops = {m.op for m in journal.mutations}
-        problems = diff.unexpected(
-            allowed=journal.affected_global_ids,
-            allow_population_change=bool(ops & _POPULATION_OPS),
-        )
+        problems = written.unexpected(allowed=set(outcome.targets), allow_population_change=True)
         result.integrity_ok = not problems
         result.integrity_detail = (
-            f"{len(diff.property_changes) + len(diff.attribute_changes)} change(s), "
-            "all within journal"
-            if not problems
-            else "; ".join(problems[:3])
+            "; ".join(problems[:3])
+            if problems
+            else "the written copy changes nothing outside the selection"
         )
 
 
-_POPULATION_OPS = frozenset(
-    {MutationOp.CREATE_ENTITY, MutationOp.DELETE_ENTITY, MutationOp.RUN_CODE}
-)
+# ── Resolution and matching ────────────────────────────────────────
 
 
-def _lookup_intent(intent: dict, key: str):
-    """Find a slot value in a T1 intent or a T2 plan's first step."""
-    if key in intent:
-        return intent[key]
-    # T1 uses "new_value" where the corpus says "value".
-    if key == "value" and "new_value" in intent:
-        return intent["new_value"]
-    for step in intent.get("plan") or []:
-        params = step.get("params") or {}
-        if key in params:
-            return params[key]
-        if key == "value" and "new_value" in params:
-            return params["new_value"]
-    return None
+def resolve_targets(ifc_file, expectation: TargetExpectation) -> set[str]:
+    """GlobalIds the expectation names, read from the index."""
+    schema = ifc_file.schema_version or "IFC4"
+    types = set(expand_type(expectation.ifc_type, schema)) | {expectation.ifc_type}
+    queryset = IFCEntity.objects.filter(ifc_file=ifc_file, ifc_type__in=types)
+    if expectation.container:
+        queryset = queryset.filter(
+            Q(spatial_container__entity__name__iexact=expectation.container)
+            | Q(spatial_container__parent__entity__name__iexact=expectation.container)
+        )
+    if expectation.named:
+        queryset = queryset.filter(name__icontains=expectation.named)
+    if not expectation.where_key:
+        return set(queryset.values_list("global_id", flat=True))
+    pset, _, prop = expectation.where_key.partition(".")
+    return {
+        entity.global_id
+        for entity in queryset.only("global_id", "properties")
+        if _value_matches(get_prop(entity.properties or {}, pset, prop), expectation.where_value)
+    }
+
+
+def _count_matching(rows: list[DiffRow], expectation: DiffExpectation) -> int:
+    total = 0
+    for row in rows:
+        if _row_matches(row, expectation):
+            total += row.count
+    return total
+
+
+def _row_matches(row: DiffRow, expectation: DiffExpectation) -> bool:
+    kind = expectation.kind
+    if kind in ("add_entity", "remove_entity"):
+        wanted = "added" if kind == "add_entity" else "removed"
+        return row.kind == wanted and row.prop.casefold() == expectation.prop.casefold()
+    if row.kind not in ("property", "attribute"):
+        return False
+    if row.prop.casefold() != expectation.prop.casefold():
+        return False
+    if expectation.pset not in ("", "*") and row.pset.casefold() != expectation.pset.casefold():
+        return False
+    if expectation.pset == "" and row.pset:
+        return False
+    if kind == "remove":
+        return row.after is None
+    return _value_matches(row.after, expectation.value)
+
+
+def _value_matches(actual, expected: str, *, loose: bool = False) -> bool:
+    """True when ``actual`` is the value the corpus names.
+
+    Scalars must be equal (case-insensitive; numbers within a relative
+    1e-6, whether the file stores ``30``, ``30.0`` or ``"30"``), so an
+    expected ``EI60`` is not satisfied by ``REI60``. Only the items of a
+    list value (materials, groups) are matched loosely, by containment.
+    """
+    wanted = expected.strip().casefold()
+    if isinstance(actual, bool):
+        return wanted in ("true", "false") and (wanted == "true") == actual
+    if actual is None:
+        return wanted in ("none", "null", "")
+    if isinstance(actual, (list, tuple)):
+        return any(_value_matches(item, expected, loose=True) for item in actual)
+    text = str(actual).strip().casefold()
+    try:
+        return abs(float(text) - float(wanted)) <= 1e-6 * max(1.0, abs(float(wanted)))
+    except ValueError:
+        pass
+    return text == wanted or (loose and wanted in text)
+
+
+def _attempts(emitter: CapturingEmitter) -> int:
+    return sum(1 for e in emitter.events if e["phase"] == "generate" and e["status"] == "running")

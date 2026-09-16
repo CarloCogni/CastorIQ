@@ -1,12 +1,11 @@
 # writeback/services/benchmark/report.py
-"""Aggregate case results into a run artifact, a table, and a baseline diff.
+"""Aggregate case results into a run artifact, a table, and a baseline diff (spec B-2).
 
 Three outputs, one shape:
 
 * a human table for reading a run at a glance;
 * a JSON artifact so runs can be compared later or across machines;
-* a diff of two artifacts, which is the regression-guard mode — REGRESSED and
-  FIXED, rather than two wall-of-text outputs to eyeball.
+* a diff of two artifacts — REGRESSED and FIXED — the regression-guard mode.
 
 Latency is reported as median and p90 rather than a mean: LLM calls have a long
 tail, and one slow outlier drags a mean somewhere that describes no real request.
@@ -15,6 +14,7 @@ tail, and one slow outlier drags a mean somewhere that describes no real request
 from __future__ import annotations
 
 import json
+import math
 import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,27 +32,37 @@ class BenchmarkReport:
     tokens_in: int = 0
     tokens_out: int = 0
     estimated_cost_usd: float = 0.0
-    executed: bool = True
     repeats: int = 1
+    notes: dict = field(default_factory=dict)
 
     # ── Scores ─────────────────────────────────────────────
 
     @property
     def scored(self) -> list[CaseResult]:
-        """Cases that count — advisory ones are reported but never scored."""
-        return [r for r in self.results if not r.advisory]
+        """Cases that count: advisory ones are reported but never scored, and a
+        case the model could not answer (a harness error) is outside every
+        denominator and listed on its own (spec B-2)."""
+        return [r for r in self.results if not r.advisory and not r.error]
 
     @property
-    def understanding_passed(self) -> int:
-        return sum(1 for r in self.scored if r.understood)
+    def passed(self) -> int:
+        return sum(1 for r in self.scored if r.passed)
 
     @property
-    def fidelity_scored(self) -> list[CaseResult]:
-        return [r for r in self.scored if r.fidelity_ok is not None]
+    def targets_scored(self) -> list[CaseResult]:
+        return [r for r in self.scored if r.kind == "change" and r.targets_match is not None]
 
     @property
-    def fidelity_passed(self) -> int:
-        return sum(1 for r in self.fidelity_scored if r.fidelity_ok)
+    def targets_passed(self) -> int:
+        return sum(1 for r in self.targets_scored if r.targets_match)
+
+    @property
+    def diff_scored(self) -> list[CaseResult]:
+        return [r for r in self.scored if r.kind == "change" and r.diff_match is not None]
+
+    @property
+    def diff_passed(self) -> int:
+        return sum(1 for r in self.diff_scored if r.diff_match)
 
     @property
     def integrity_scored(self) -> list[CaseResult]:
@@ -63,6 +73,26 @@ class BenchmarkReport:
         return sum(1 for r in self.integrity_scored if r.integrity_ok)
 
     @property
+    def reject_scored(self) -> list[CaseResult]:
+        return [r for r in self.scored if r.kind in ("reject", "no_change")]
+
+    @property
+    def reject_passed(self) -> int:
+        return sum(1 for r in self.reject_scored if r.passed)
+
+    @property
+    def change_scored(self) -> list[CaseResult]:
+        return [r for r in self.scored if r.kind == "change"]
+
+    @property
+    def change_passed(self) -> int:
+        return sum(1 for r in self.change_scored if r.passed)
+
+    @property
+    def repairs(self) -> int:
+        return sum(r.repairs for r in self.results)
+
+    @property
     def failures(self) -> list[CaseResult]:
         return [r for r in self.scored if not r.passed]
 
@@ -71,12 +101,13 @@ class BenchmarkReport:
         return [r for r in self.results if r.error]
 
     def latency(self) -> tuple[float, float]:
-        """(median, p90) seconds per case."""
-        durations = sorted(r.duration_seconds for r in self.results if r.duration_seconds)
+        """(median, p90) seconds per scored case; a timed-out call is not a request that happened."""
+        durations = sorted(r.duration_seconds for r in self.scored if r.duration_seconds)
         if not durations:
             return 0.0, 0.0
         median = statistics.median(durations)
-        index = max(0, min(len(durations) - 1, int(round(0.9 * (len(durations) - 1)))))
+        # Nearest-rank p90: the smallest value at or above 90% of the sample.
+        index = max(0, min(len(durations) - 1, math.ceil(0.9 * len(durations)) - 1))
         return median, durations[index]
 
     def as_dict(self) -> dict:
@@ -84,17 +115,24 @@ class BenchmarkReport:
         return {
             "model": self.model_label,
             "started_at": self.started_at,
-            "executed": self.executed,
             "repeats": self.repeats,
+            "notes": self.notes,
             "totals": {
                 "cases": len(self.results),
                 "scored": len(self.scored),
-                "advisory": len(self.results) - len(self.scored),
-                "understanding_passed": self.understanding_passed,
-                "fidelity_scored": len(self.fidelity_scored),
-                "fidelity_passed": self.fidelity_passed,
+                "advisory": sum(1 for r in self.results if r.advisory),
+                "passed": self.passed,
+                "change_scored": len(self.change_scored),
+                "change_passed": self.change_passed,
+                "targets_scored": len(self.targets_scored),
+                "targets_passed": self.targets_passed,
+                "diff_scored": len(self.diff_scored),
+                "diff_passed": self.diff_passed,
                 "integrity_scored": len(self.integrity_scored),
                 "integrity_passed": self.integrity_passed,
+                "reject_scored": len(self.reject_scored),
+                "reject_passed": self.reject_passed,
+                "repairs": self.repairs,
                 "errored": len(self.errored),
                 "latency_median_s": round(median, 3),
                 "latency_p90_s": round(p90, 3),
@@ -117,78 +155,62 @@ class BenchmarkReport:
 # ── Rendering ─────────────────────────────────────────────────────
 
 
-def render_report(reports: list[BenchmarkReport], *, verbose: bool = False) -> str:
+def render_report(reports: list[BenchmarkReport]) -> str:
     """Render one or more model passes as a text report."""
     lines: list[str] = []
-
     for report in reports:
-        lines.extend(_render_failures(report, verbose=verbose))
-
+        lines.extend(_render_failures(report))
     lines.append("")
     lines.extend(_render_summary(reports))
     return "\n".join(lines)
 
 
-def _render_failures(report: BenchmarkReport, *, verbose: bool) -> list[str]:
-    lines = [""]
-    lines.append(f"-- {report.model_label} " + "-" * max(0, 60 - len(report.model_label)))
-
+def _render_failures(report: BenchmarkReport) -> list[str]:
+    lines = ["", f"-- {report.model_label} " + "-" * max(0, 60 - len(report.model_label))]
     failures = report.failures
     if not failures:
         lines.append("  no failures")
     for result in failures:
         lines.append(f"  FAIL {result.case_id:>6}  {result.prompt[:64]}")
-        lines.append(f"              {result.understanding_detail or result.fidelity_detail}")
-        if result.fidelity_ok is False and result.understood:
-            lines.append(f"              fidelity: {result.fidelity_detail}")
-        if result.integrity_ok is False:
-            lines.append(f"              integrity: {result.integrity_detail}")
-
+        lines.append(f"              expected {result.expectation}")
+        lines.append(f"              outcome: {_describe(result)}")
     for result in report.errored:
         lines.append(f"  ERROR{result.case_id:>6}  {result.error}")
-
-    if verbose:
-        mismatches = [r for r in report.results if r.slots_match is False]
-        for result in mismatches:
-            lines.append(f"  slots{result.case_id:>6}  {result.slots_detail}")
-
     return lines
+
+
+def _describe(result: CaseResult) -> str:
+    if result.error:
+        return result.error
+    if result.outcome in ("rejected", "no_change"):
+        detail = result.targets_detail or result.rejection_reason[:120]
+        return f"{result.outcome}: {detail}"
+    parts = [result.targets_detail, result.diff_detail]
+    if result.integrity_ok is False:
+        parts.append(f"integrity: {result.integrity_detail}")
+    return "; ".join(p for p in parts if p) or result.outcome
 
 
 def _render_summary(reports: list[BenchmarkReport]) -> list[str]:
     label_width = max((len(r.model_label) for r in reports), default=10)
-    column = max(12, label_width + 2)
+    column = max(14, label_width + 2)
 
     def row(name: str, values: list[str]) -> str:
         return f"  {name:<22}" + "".join(f"{v:>{column}}" for v in values)
 
+    def ratio(passed: int, scored: list) -> str:
+        return f"{passed}/{len(scored)}" if scored else "n/a"
+
     lines = ["  " + " " * 22 + "".join(f"{r.model_label:>{column}}" for r in reports)]
     lines.append("  " + "-" * (22 + column * len(reports)))
-
+    lines.append(row("passed", [ratio(r.passed, r.scored) for r in reports]))
+    lines.append(row("targets match", [ratio(r.targets_passed, r.targets_scored) for r in reports]))
+    lines.append(row("diff match", [ratio(r.diff_passed, r.diff_scored) for r in reports]))
+    lines.append(row("integrity", [ratio(r.integrity_passed, r.integrity_scored) for r in reports]))
     lines.append(
-        row(
-            "understanding",
-            [f"{r.understanding_passed}/{len(r.scored)}" for r in reports],
-        )
+        row("reject / no-change", [ratio(r.reject_passed, r.reject_scored) for r in reports])
     )
-    lines.append(
-        row(
-            "fidelity",
-            [
-                f"{r.fidelity_passed}/{len(r.fidelity_scored)}" if r.fidelity_scored else "n/a"
-                for r in reports
-            ],
-        )
-    )
-    lines.append(
-        row(
-            "integrity",
-            [
-                f"{r.integrity_passed}/{len(r.integrity_scored)}" if r.integrity_scored else "n/a"
-                for r in reports
-            ],
-        )
-    )
+    lines.append(row("repairs used", [str(r.repairs) for r in reports]))
     lines.append(row("errors", [str(len(r.errored)) for r in reports]))
     lines.append(row("latency median", [f"{r.latency()[0]:.1f}s" for r in reports]))
     lines.append(row("latency p90", [f"{r.latency()[1]:.1f}s" for r in reports]))
@@ -201,15 +223,8 @@ def _render_summary(reports: list[BenchmarkReport]) -> list[str]:
 
 
 def diff_runs(baseline: dict, current: BenchmarkReport) -> str:
-    """Compare a previous run artifact against this one.
-
-    Reports only what changed. A case that passed before and passes now is not
-    news; the point is to make a regression impossible to miss in a 92-line
-    output.
-    """
-    previous = {
-        case["case_id"]: case for case in baseline.get("cases", []) if not case.get("advisory")
-    }
+    """Compare a previous run artifact against this one; report only what changed."""
+    previous = {c["case_id"]: c for c in baseline.get("cases", []) if not c.get("advisory")}
     now = {r.case_id: r for r in current.scored}
 
     regressed, fixed = [], []
@@ -217,15 +232,11 @@ def diff_runs(baseline: dict, current: BenchmarkReport) -> str:
         before = previous.get(case_id)
         if before is None:
             continue
-        was_ok = (
-            before.get("understood")
-            and before.get("fidelity_ok") is not False
-            and before.get("integrity_ok") is not False
-        )
+        was_ok = bool(before.get("passed"))
         if was_ok and not result.passed:
-            regressed.append((case_id, before, result))
+            regressed.append((case_id, result))
         elif not was_ok and result.passed:
-            fixed.append((case_id, before, result))
+            fixed.append((case_id, result))
 
     added = sorted(set(now) - set(previous))
     removed = sorted(set(previous) - set(now))
@@ -238,27 +249,16 @@ def diff_runs(baseline: dict, current: BenchmarkReport) -> str:
     if not (regressed or fixed or added or removed):
         lines.append("  no change")
         return "\n".join(lines)
-
-    for case_id, before, result in regressed:
+    for case_id, result in regressed:
         lines.append(f"  REGRESSED {case_id:>6}  {result.prompt[:56]}")
-        lines.append(
-            f"                    was: {_describe(before)}   now: {result.understanding_detail}"
-        )
-    for case_id, before, result in fixed:
+        lines.append(f"                    now: {_describe(result)}")
+    for case_id, result in fixed:
         lines.append(f"  FIXED     {case_id:>6}  {result.prompt[:56]}")
-        lines.append(
-            f"                    was: {_describe(before)}   now: {result.understanding_detail}"
-        )
     if added:
         lines.append(f"  new cases not in baseline: {', '.join(added)}")
     if removed:
         lines.append(f"  baseline cases not run: {', '.join(removed)}")
     return "\n".join(lines)
-
-
-def _describe(case: dict) -> str:
-    detail = case.get("understanding_detail") or ""
-    return detail or f"tier {case.get('actual_tier')}, {case.get('actual_operation')}"
 
 
 def load_baseline(path: str | Path) -> dict:

@@ -950,9 +950,13 @@
         (buttons, links) are automatically locked with .castor-rif-busy for the
         request's duration to prevent re-clicks.
 
-        Auto-wired for HTMX requests and plain link navigations. Plain forms
-        opt in via the `data-castor-track` attribute. WebSocket flows are NOT
-        wired here — they have their own per-flow phase trackers.
+        Auto-wired for HTMX requests and plain link navigations. Explicit
+        file-download anchors (`download` attribute or `data-castor-download`)
+        are not locked — attachment responses do not navigate, so a busy lock
+        would stick. Prefer `data-castor-download` when the HTML `download`
+        attribute would interfere with Content-Disposition attachments.
+        Plain forms opt in via the `data-castor-track` attribute. WebSocket
+        flows are NOT wired here — they have their own per-flow phase trackers.
 
         Manual API:
             CastorRIF.begin(key?)   // key is optional; triggers 90s deadman
@@ -1332,7 +1336,10 @@
 
         // Plain link navigation (full page load). The triggering <a> gets the
         // busy lock immediately; no end() is needed because navigation wipes
-        // the JS context. Skip anchors that don't actually navigate.
+        // the JS context. Skip anchors that don't actually navigate — including
+        // explicit download links (`download` attribute). Attachment responses
+        // (Content-Disposition: attachment) do not unload the page, so locking
+        // them would leave .castor-rif-busy / aria-busy stuck permanently.
         document.addEventListener('click', function (e) {
             if (e.defaultPrevented) return;
             if (e.button !== 0) return;                // left-click only
@@ -1340,7 +1347,9 @@
             var a = e.target.closest && e.target.closest('a');
             if (!a) return;
             if (a.target && a.target !== '' && a.target !== '_self') return;
-            if (a.hasAttribute('download')) return;
+            // Explicit file-download controls: never RIF-lock (FUNC-EXPORT-001).
+            // Prefer HTML `download`; also honor data-castor-download for reuse.
+            if (a.hasAttribute('download') || a.hasAttribute('data-castor-download')) return;
             var href = a.getAttribute('href');
             if (!href) return;
             if (href[0] === '#') return;

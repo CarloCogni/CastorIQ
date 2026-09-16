@@ -286,8 +286,15 @@ def save_payload(
 
 
 def field_is_eligible(*, included: bool, source_intent: str) -> bool:
-    """True when a mapping field may accept a session manual value."""
-    return bool(included) and source_intent == "manual_field"
+    """True when a mapping field may accept a working Assign values override.
+
+    TABLE-04B: eligibility follows schema inclusion only. Source intent
+    (future_modify_handoff / manual_field / not_mapped) is not mutated and does
+    not gate the working-table Assign values action. Session overrides still do
+    not write back to IFC or change project-wide source configuration.
+    """
+    _ = source_intent  # retained for call-site compatibility
+    return bool(included)
 
 
 def eligible_mapping_fields(
@@ -295,7 +302,8 @@ def eligible_mapping_fields(
     show: Mapping[str, bool],
     source_intents: Mapping[str, str],
 ) -> list[dict[str, str]]:
-    """Return drawer field descriptors for currently eligible mapping fields."""
+    """Return Assign values field descriptors for included mapping fields."""
+    _ = source_intents
     rows: list[dict[str, str]] = []
     for key in MAPPING_FIELD_KEYS:
         if field_is_eligible(
@@ -525,8 +533,7 @@ class QuantityPrepRowMappingService:
         if not eligible_keys:
             return {
                 "result": None,
-                "error": "Manual mapping values are available only for fields "
-                "configured as Manual field.",
+                "error": "No assignable mapping fields are included in this table.",
             }
 
         incoming: dict[str, Any] = {}
@@ -602,8 +609,7 @@ class QuantityPrepRowMappingService:
         if not eligible_keys:
             return {
                 "result": None,
-                "error": "Manual mapping values are available only for fields "
-                "configured as Manual field.",
+                "error": "No assignable mapping fields are included in this table.",
             }
         incoming: dict[str, Any] = {}
         for field in MAPPING_FIELD_KEYS:
@@ -616,7 +622,7 @@ class QuantityPrepRowMappingService:
         if not incoming:
             return {
                 "result": None,
-                "error": "Choose at least one schema node (or free-text value) to map.",
+                "error": "Choose at least one schema node (or free-text value) to assign.",
             }
 
         known_by_key = {
@@ -719,8 +725,7 @@ class QuantityPrepRowMappingService:
         if not eligible_keys:
             return {
                 "result": None,
-                "error": "Manual mapping values are available only for fields "
-                "configured as Manual field.",
+                "error": "No assignable mapping fields are included in this table.",
             }
         incoming: dict[str, Any] = {}
         for field in MAPPING_FIELD_KEYS:
@@ -733,7 +738,7 @@ class QuantityPrepRowMappingService:
         if not incoming:
             return {
                 "result": None,
-                "error": "Choose at least one schema node (or free-text value) to map.",
+                "error": "Choose at least one schema node (or free-text value) to assign.",
             }
 
         seen: set[str] = set()
@@ -838,14 +843,24 @@ def apply_session_mapping_values_to_ui(
         for field in MAPPING_FIELD_KEYS:
             source = str(row.get(_SOURCE_ATTR[field]) or intents.get(field) or "")
             included = bool(show.get(field))
-            eligible = field_is_eligible(included=included, source_intent=source)
             missing_attr = _MISSING_FLAG[field]
-            if not eligible:
+            if not included:
                 _clear_row_field_metadata(row, field)
                 continue
-            norm = normalize_mapping_field_value(hit.get(field) if hit else None)
+
+            hit_field = hit.get(field) if hit else None
+            if not hit_field:
+                # No working override — leave prep-built IFC/intent cells intact.
+                # Legacy manual_field empty state still counts as a mapping gap.
+                if source == SOURCE_INTENT_MANUAL_FIELD and not str(row.get(field) or "").strip():
+                    row[missing_attr] = True
+                continue
+
+            norm = normalize_mapping_field_value(hit_field)
             raw_val = str(norm.get("value") or "")
             if raw_val:
+                # Explicit Castor working-row override (session). Does not mutate
+                # source_mapping_intents or IFC properties.
                 row[field] = raw_val
                 row[missing_attr] = False
                 row["manual_mapping"] = True
@@ -854,8 +869,9 @@ def apply_session_mapping_values_to_ui(
                 value_count += 1
                 row_had_value = True
             else:
-                row[field] = ""
-                row[missing_attr] = True
+                if source == SOURCE_INTENT_MANUAL_FIELD:
+                    row[field] = ""
+                    row[missing_attr] = True
                 _clear_row_field_metadata(row, field)
 
         if row_had_value:
@@ -896,9 +912,9 @@ def apply_session_mapping_values_to_ui(
     qty_prep["session_mapping_row_count"] = matched_rows
     qty_prep["session_mapping_stale_count"] = stale
     qty_prep["session_mapping_note"] = (
-        "Manual mapping values are session-only — not saved to configuration drafts. "
-        "Available only for fields configured as Manual field. "
-        "This does not approve, certify, write back, or generate BOQ quantities."
+        "Assigned values are session working-row overrides — not saved as an editable "
+        "workspace and not written back to the IFC. Source configuration is unchanged. "
+        "This does not approve, certify, or generate BOQ quantities."
     )
     qty_prep["session_mapping_stale_message"] = (
         "Some session mapping values no longer match the current configuration." if stale else ""

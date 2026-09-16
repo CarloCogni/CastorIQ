@@ -1,5 +1,8 @@
 # Maria testing map — findings and follow-ups by area
 
+> **Note (2026-09-15).** Written against the V2 tiered pipeline. V3 replaced it; the current
+> evidence map is [`rubric-map.md`](rubric-map.md) and the V3 record is [`../writeback_V3/`](../writeback_V3/).
+
 Status: ✅ resolved / fix verified · 🔶 partial or workaround · ⬜ open finding.
 Source: `FMP_testing_logs.xlsx` (Maria tab). Method: expert-in-the-loop
 cross-validation, Solibri Model Checker as the independent ground-truth

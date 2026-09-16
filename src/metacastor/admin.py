@@ -15,11 +15,10 @@ class FailureRecordAdmin(admin.ModelAdmin):
         "error_type",
         "category",
         "failure_phase",
-        "tier",
         "project",
         "created_at",
     ]
-    list_filter = ["category", "error_type", "failure_phase", "tier"]
+    list_filter = ["category", "error_type", "failure_phase"]
     search_fields = ["query_text", "error_detail"]
     readonly_fields = ["query_embedding", "created_at", "updated_at"]
     ordering = ["-created_at"]

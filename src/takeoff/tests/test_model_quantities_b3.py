@@ -167,8 +167,8 @@ def test_quantities_page_sections_and_honesty(client):
     assert "Length (model length units)" in html
     assert "model volume units" in html.lower() or "model area units" in html.lower()
     assert "model length units" in html.lower()
-    assert "m³" not in html
-    assert "m²" not in html
+    # MEASURE-02: Model Unit column shows IFC project unit family labels (not conversion).
+    assert 'data-testid="qty-prep-col-model-unit"' in html
     assert "Inspect IFC Elements" in html
     assert "has_qto=no" in html
     assert "GID-C1" not in html

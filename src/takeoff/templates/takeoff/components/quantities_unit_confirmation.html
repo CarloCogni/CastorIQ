@@ -1,132 +1,139 @@
-<!-- takeoff/components/quantities_unit_confirmation.html — UNIT-2 unit confirmation -->
-{% with uc=qty_prep.unit_confirmation %}
-<section class="qty-builder-section border rounded p-2 mb-2"
-         data-testid="qty-unit-confirmation">
-  <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
-    <div style="min-width:0;">
-      <h6 class="mb-0 small fw-semibold" data-testid="qty-unit-confirmation-title">
-        Quantity units
-      </h6>
-      <p class="mi-footnote mb-0" data-testid="qty-unit-confirmation-subtitle">
-        Confirm the IFC project units before using quantity totals for 5D review.
-      </p>
-    </div>
-    {% if uc.any_confirmed %}
-    <span class="badge text-bg-success" data-testid="qty-unit-confirmation-badge">Confirmed</span>
-    {% else %}
-    <span class="badge text-bg-secondary" data-testid="qty-unit-confirmation-badge">Unresolved</span>
-    {% endif %}
-  </div>
-
-  {% if uc.conflict %}
-  <p class="mi-footnote text-warning mb-2" data-testid="qty-unit-confirmation-conflict">
-    {{ uc.helper }}
+<!-- takeoff/components/quantities_unit_confirmation.html — UNIT-03 / TABLE-04B -->
+{% with ou=qty_prep.output_units %}
+<div data-testid="qty-unit-confirmation" id="qty-unit-confirmation">
+  <p class="c5d-helper mb-2" data-testid="qty-unit-confirmation-subtitle">
+    Output units convert displayed quantities; raw IFC values remain unchanged.
+    Choices belong to this working session. Save version creates a read-only copy;
+    Export table creates a file.
   </p>
+  {% if ou.any_override %}
+  <span class="c5d-status is-ok mb-2 d-inline-block" data-testid="qty-unit-confirmation-badge">Output override</span>
+  {% else %}
+  <span class="c5d-status is-ok mb-2 d-inline-block" data-testid="qty-unit-confirmation-badge">Model units</span>
   {% endif %}
 
-  <div class="table-responsive mb-2">
-    <table class="table table-sm mb-0 align-middle" data-testid="qty-unit-confirmation-table">
-      <thead>
-        <tr class="small text-secondary">
-          <th>Measure</th>
-          <th>Proposed</th>
-          <th>Source</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in uc.rows %}
-        <tr data-testid="qty-unit-row-{{ row.family }}">
-          <td class="small">{{ row.label }}</td>
-          <td class="small" data-testid="qty-unit-proposed-{{ row.family }}">
-            {% if row.proposed_label %}{{ row.proposed_label }}{% else %}—{% endif %}
-          </td>
-          <td class="small text-secondary">
-            {% if row.family == "count" %}Dimensionless{% else %}IFC project units{% endif %}
-          </td>
-          <td class="small" data-testid="qty-unit-status-{{ row.family }}">
-            {{ row.status_label }}
-            {% if row.active_label and row.status != "unresolved" %}
-            <span class="text-secondary">({{ row.active_label }})</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% empty %}
-        <tr>
-          <td colspan="4" class="small text-secondary" data-testid="qty-unit-confirmation-empty">
-            No IFC project units are indexed yet.
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  <form method="post"
+        action="{{ qty_unit_confirm_url }}"
+        data-testid="qty-output-units-form"
+        id="qty-output-units-form">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="apply_output" id="qty-output-units-action">
+    <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
 
-  <div class="d-flex flex-wrap gap-2 align-items-center">
-    <form method="post"
-          action="{{ qty_unit_confirm_url }}"
-          class="d-inline"
-          data-testid="qty-unit-confirm-form">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="confirm">
-      <input type="hidden" name="families" value="volume,area,length,count">
-      <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
+    <div class="table-responsive mb-2">
+      <table class="table table-sm mb-0 align-middle" data-testid="qty-unit-confirmation-table">
+        <thead>
+          <tr class="small text-secondary">
+            <th>Measurement</th>
+            <th>Model unit</th>
+            <th>Output unit</th>
+            <th>Example</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in ou.rows %}
+          <tr data-testid="qty-unit-row-{{ row.family }}">
+            <td class="small">{{ row.label }}</td>
+            <td class="small"
+                data-testid="qty-unit-model-{{ row.family }}"
+                data-model-unit="{{ row.model_unit }}"
+                data-source-known="{% if row.source_known %}1{% else %}0{% endif %}"
+                title="{{ row.provenance_note }}">
+              {{ row.model_unit_label }}
+              {% if row.source_declared_raw and row.source_known %}
+              <span class="d-block text-secondary" style="font-size:0.7rem;">
+                IFC: {{ row.source_declared_raw }}
+              </span>
+              {% endif %}
+            </td>
+            <td class="small">
+              {% if row.locked %}
+              <span data-testid="qty-unit-output-{{ row.family }}">{{ row.output_unit_label }}</span>
+              {% if row.family == "count" %}
+              <input type="hidden" name="output_{{ row.family }}" value="count">
+              {% endif %}
+              {% else %}
+              <select class="form-select form-select-sm qty-unit-output-select"
+                      name="output_{{ row.family }}"
+                      style="width:auto;min-width:6.5rem;"
+                      data-testid="qty-unit-output-{{ row.family }}"
+                      data-family="{{ row.family }}"
+                      data-model-unit="{{ row.model_unit }}">
+                {% for choice in row.choices %}
+                <option value="{{ choice.token }}"
+                        {% if choice.token == row.output_unit %}selected{% endif %}>
+                  {{ choice.label }}
+                </option>
+                {% endfor %}
+              </select>
+              {% endif %}
+            </td>
+            <td class="small text-secondary"
+                data-testid="qty-unit-example-{{ row.family }}"
+                data-qty-unit-example="1">{{ row.example_text }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="4" class="small text-secondary">No unit families available.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 align-items-center">
       <button type="submit"
-              class="btn btn-sm btn-outline-primary"
-              data-testid="qty-unit-confirm-submit"
-              {% if uc.conflict %}disabled{% endif %}>
-        Confirm declared units
+              class="btn btn-sm btn-primary"
+              data-testid="qty-unit-apply-output"
+              onclick="document.getElementById('qty-output-units-action').value='apply_output';">
+        Apply units
       </button>
-    </form>
-    <form method="post"
-          action="{{ qty_unit_confirm_url }}"
-          class="d-inline"
-          data-testid="qty-unit-clear-form">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="clear">
-      <input type="hidden" name="families" value="volume,area,length,count">
-      <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
       <button type="submit"
               class="btn btn-sm btn-outline-secondary"
-              data-testid="qty-unit-clear-submit">
-        Leave unresolved
+              data-testid="qty-unit-reset-output"
+              onclick="document.getElementById('qty-output-units-action').value='reset_output';">
+        Reset to model units
       </button>
-    </form>
-    <form method="post"
-          action="{{ qty_unit_confirm_url }}"
-          class="d-inline-flex flex-wrap align-items-center gap-1"
-          data-testid="qty-unit-override-form">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="override">
-      <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
-      <label class="visually-hidden" for="qty-unit-override-family">Override family</label>
-      <select class="form-select form-select-sm"
-              id="qty-unit-override-family"
-              name="family"
-              style="width:auto;min-width:7rem;"
-              data-testid="qty-unit-override-family">
-        <option value="volume">Volume</option>
-        <option value="area">Area</option>
-        <option value="length">Length</option>
-        <option value="count">Count</option>
-      </select>
-      <label class="visually-hidden" for="qty-unit-override-token">Override unit</label>
-      <input class="form-control form-control-sm"
-             id="qty-unit-override-token"
-             name="override_token"
-             placeholder="e.g. mm"
-             style="width:6rem;"
-             data-testid="qty-unit-override-token">
-      <button type="submit"
-              class="btn btn-sm btn-outline-secondary"
-              data-testid="qty-unit-override-submit">
-        Override
-      </button>
-    </form>
-  </div>
-  <p class="mi-footnote mt-2 mb-0" data-testid="qty-unit-confirmation-helper">
-    {{ uc.helper }} Session-only until you freeze a 5D snapshot. No unit conversion.
-    Unit stays in its own column — never merged into Total Quantity or Measurement Basis.
-  </p>
-</section>
+    </div>
+  </form>
+</div>
+<script>
+(function () {
+  /* Client-side example refresh so the Example column tracks the selected output. */
+  var FACTOR = {
+    mm: 0.001, cm: 0.01, m: 1,
+    mm2: 1e-6, cm2: 1e-4, m2: 1,
+    mm3: 1e-9, cm3: 1e-6, m3: 1,
+    count: 1
+  };
+  var LABEL = {
+    mm: "mm", cm: "cm", m: "m",
+    mm2: "mm²", cm2: "cm²", m2: "m²",
+    mm3: "mm³", cm3: "cm³", m3: "m³",
+    count: "count"
+  };
+  var SAMPLE = {
+    mm: 1000, cm: 100, m: 1,
+    mm2: 1000000, cm2: 10000, m2: 1,
+    mm3: 1000000000, cm3: 1000000, m3: 1,
+    count: 1
+  };
+  function example(model, out) {
+    if (!model || !out) return "—";
+    if (model === "count") return "unchanged";
+    if (model === out) return "No conversion";
+    if (!(model in FACTOR) || !(out in FACTOR)) return "No conversion";
+    var vin = SAMPLE[model] || 1;
+    var vout = vin * FACTOR[model] / FACTOR[out];
+    var outS = (Math.abs(vout - Math.round(vout)) < 1e-9) ? String(Math.round(vout)) : String(vout);
+    return vin + " " + (LABEL[model] || model) + " → " + outS + " " + (LABEL[out] || out);
+  }
+  document.querySelectorAll(".qty-unit-output-select").forEach(function (sel) {
+    sel.addEventListener("change", function () {
+      var fam = sel.getAttribute("data-family");
+      var model = sel.getAttribute("data-model-unit") || "";
+      var cell = document.querySelector('[data-testid="qty-unit-example-' + fam + '"]');
+      if (cell) cell.textContent = example(model, sel.value || model);
+    });
+  });
+})();
+</script>
 {% endwith %}

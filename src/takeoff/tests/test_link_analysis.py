@@ -74,7 +74,10 @@ def test_link_analysis_page_identity_and_no_qto(client):
     assert "Task Review Breakdown" in html
     assert "Task Attention Distribution" not in html
     assert "linked total" not in html
-    assert "Unlinked/non-model tasks are shown for context in Schedule Coverage and Task Review Breakdown" in html
+    assert (
+        "Unlinked/non-model tasks are shown for context in Schedule Coverage and Task Review Breakdown"
+        in html
+    )
     assert "excluded from Actionable Link Review" in html
     assert "Pending review" in html
     assert "Have dates for playback review" in html

@@ -126,7 +126,7 @@ def mock_llm_response():
 
     Usage:
         def test_something(mock_llm_response):
-            mock = mock_llm_response('{"tier": 1, ...}')
+            mock = mock_llm_response('REJECT: not a modification')
             # now any LLM.invoke() call returns that string
     """
     from unittest.mock import MagicMock, patch

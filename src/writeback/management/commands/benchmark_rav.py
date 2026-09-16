@@ -24,6 +24,9 @@ Usage::
     # Regression check.
     cd src && uv run manage.py benchmark_rav --project <uuid> --baseline ../runs/rav.json
 
+    # Variance floor: three runs per variant, mean and min-max in the table and the artifact.
+    cd src && uv run manage.py benchmark_rav --project <uuid> --repeat 3 --json ../runs/rav.json
+
 Conflicts the run creates are deleted afterwards unless ``--keep-conflicts``.
 """
 
@@ -42,6 +45,7 @@ from writeback.services.benchmark.rav import (
     RavReport,
     RavRunner,
     ScanSettings,
+    diff_rav_aggregates,
     diff_rav_runs,
     load_key,
     render_rav_report,
@@ -56,10 +60,18 @@ DEFAULT_DOCS = RAV_ROOT / "docs"
 
 ABLATION_VARIANTS = (
     ScanSettings(),
+    ScanSettings(entity_first=False),
+    ScanSettings(verify_values=False),
     ScanSettings(type_gate=False),
     ScanSettings(keyword_filter=False),
     ScanSettings(confidence_threshold=0.0),
-    ScanSettings(type_gate=False, keyword_filter=False, confidence_threshold=0.0),
+    ScanSettings(
+        entity_first=False,
+        verify_values=False,
+        type_gate=False,
+        keyword_filter=False,
+        confidence_threshold=0.0,
+    ),
 )
 
 
@@ -80,6 +92,16 @@ class Command(BaseCommand):
         parser.add_argument("--no-type-gate", action="store_true")
         parser.add_argument("--no-keyword-filter", action="store_true")
         parser.add_argument(
+            "--no-entity-first",
+            action="store_true",
+            help="Embedding top-K only: skip the reference and label retrieval passes.",
+        )
+        parser.add_argument(
+            "--no-verify-values",
+            action="store_true",
+            help="Store the current value the model claims instead of the indexed one.",
+        )
+        parser.add_argument(
             "--confidence", type=float, default=None, help="Confidence cut (default 0.7)."
         )
         parser.add_argument(
@@ -93,6 +115,12 @@ class Command(BaseCommand):
         )
         parser.add_argument("--json", default="", help="Write the run artifact here.")
         parser.add_argument("--baseline", default="", help="Diff against a previous artifact.")
+        parser.add_argument(
+            "--repeat",
+            type=int,
+            default=1,
+            help="Run every variant N times; the table adds mean and min-max per label.",
+        )
         parser.add_argument("--keep-conflicts", action="store_true")
         parser.add_argument("--verbose-cases", action="store_true", help="List passing cases too.")
 
@@ -119,25 +147,31 @@ class Command(BaseCommand):
             f"{len(corpus.negative_cases)} aligned requirements"
         )
 
+        repeat = max(1, options["repeat"])
         reports: list[RavReport] = []
         for settings in variants:
-            self.stdout.write(f"  scanning [{settings.label()}] …")
-            sheet, stats = runner.run(corpus, settings)
-            reports.append(
-                RavReport(
-                    settings=settings,
-                    sheet=sheet,
-                    run_stats=stats,
-                    started_at=datetime.now(UTC).isoformat(timespec="seconds"),
+            for index in range(repeat):
+                suffix = f" run {index + 1}/{repeat}" if repeat > 1 else ""
+                self.stdout.write(f"  scanning [{settings.label()}]{suffix} …")
+                sheet, stats = runner.run(corpus, settings)
+                reports.append(
+                    RavReport(
+                        settings=settings,
+                        sheet=sheet,
+                        run_stats=stats,
+                        started_at=datetime.now(UTC).isoformat(timespec="seconds"),
+                        repeat_index=index,
+                    )
                 )
-            )
 
         self.stdout.write(render_rav_report(reports, verbose=options["verbose_cases"]))
 
         if options["baseline"]:
             baseline = load_baseline(options["baseline"])
             for report in reports:
-                self.stdout.write(diff_rav_runs(baseline, report))
+                if report.repeat_index == 0:
+                    self.stdout.write(diff_rav_runs(baseline, report))
+            self.stdout.write(diff_rav_aggregates(baseline, reports))
 
         if options["json"]:
             path = write_json(reports, options["json"])
@@ -156,6 +190,8 @@ class Command(BaseCommand):
             entity_relevance_threshold=options["distance"],
             entity_top_k=options["top_k"],
             skip_low_value=not options["all_types"],
+            entity_first=not options["no_entity_first"],
+            verify_values=not options["no_verify_values"],
         )
 
     @staticmethod

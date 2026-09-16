@@ -333,18 +333,38 @@ def safe_invoke(
     ASGI thread for many minutes. Wrapping invoke() in a thread we can abandon
     gives the caller a real wall-clock cap.
 
-    Raises ``concurrent.futures.TimeoutError`` if the call doesn't return in
-    ``timeout`` seconds. The worker thread is daemonic so it won't block
-    process exit; the in-flight provider request still occupies one server-side
-    slot until it returns on its own.
+    Raises ``TimeoutError`` (the same class as ``concurrent.futures.TimeoutError``
+    on Python 3.11+) if the call doesn't return in ``timeout`` seconds. The
+    worker is an ordinary, non-daemon pool thread: an abandoned call keeps
+    running until the provider answers or its own client timeout fires, holds
+    one server-side slot meanwhile, and delays interpreter exit by that much.
+    ``shutdown(wait=False)`` only stops the caller from waiting.
+
+    The worker closes its own Django database connections when the call ends
+    (``TrackedChatModel.invoke`` writes the call log), because a pool thread
+    that is never reused would otherwise leave them to garbage collection.
     """
+
+    def run() -> _T:
+        try:
+            return func(*args, **kwargs)
+        finally:
+            from django.db import connections
+
+            connections.close_all()
+
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix=thread_name_prefix)
     try:
-        future = executor.submit(func, *args, **kwargs)
+        future = executor.submit(run)
         return future.result(timeout=timeout)
     finally:
         # Never wait on shutdown — a wedged worker would defeat the whole point.
         executor.shutdown(wait=False)
+
+
+def _local_model(purpose: str) -> str:
+    """The .env Ollama tag for a purpose: the coder for Modify, the prose model for Ask."""
+    return settings.MODIFY_MODEL if purpose == "modify" else settings.OLLAMA_MODEL
 
 
 def _resolve_site_config(purpose: str) -> tuple[str, str]:
@@ -355,7 +375,7 @@ def _resolve_site_config(purpose: str) -> tuple[str, str]:
         return SiteLLMConfig.load().resolve(purpose)
     except Exception as exc:  # DB not ready (migrations, tests, fresh checkout)
         logger.debug("SiteLLMConfig unavailable (%s); falling back to Ollama", exc)
-        return ("ollama", settings.OLLAMA_MODEL)
+        return ("ollama", _local_model(purpose))
 
 
 def _user_ollama_override(user) -> str | None:
@@ -396,7 +416,7 @@ def _resolve_llm_choice(user, purpose: str) -> ResolvedLLM:
         from core.models import SiteLLMConfig
 
         if SiteLLMConfig.load().force_local_ollama:
-            return ResolvedLLM("ollama", settings.OLLAMA_MODEL, None, False)
+            return ResolvedLLM("ollama", _local_model(purpose), None, False)
     except Exception:
         pass  # DB not ready (migrations, tests) — fall through.
 
@@ -404,8 +424,6 @@ def _resolve_llm_choice(user, purpose: str) -> ResolvedLLM:
 
     if not (user and getattr(user, "is_authenticated", False)):
         # Anonymous or no user: site defaults only, no BYOK.
-        if site_provider == "ollama":
-            return ResolvedLLM("ollama", settings.OLLAMA_MODEL, None, False)
         return ResolvedLLM(site_provider, site_model, None, False)
 
     try:
@@ -419,24 +437,22 @@ def _resolve_llm_choice(user, purpose: str) -> ResolvedLLM:
     if cfg is not None:
         override = getattr(cfg, f"{purpose}_provider_override", "") or ""
 
+    # The per-user Ollama tag (Settings → model) is an Ask preference: Modify
+    # always follows the site's code-tuned model so a prose pick cannot
+    # silently replace the coder.
+    user_tag = (cfg.active_model if cfg else "") or ""
+    ollama_model = (user_tag if purpose == "ask" and user_tag else "") or (
+        site_model if site_provider == "ollama" else _local_model(purpose)
+    )
+
     # No override — follow site config (Ollama may still be the user's model).
     if not override:
         if site_provider == "ollama":
-            return ResolvedLLM(
-                "ollama",
-                (cfg.active_model if cfg else "") or settings.OLLAMA_MODEL,
-                None,
-                False,
-            )
+            return ResolvedLLM("ollama", ollama_model, None, False)
         return ResolvedLLM(site_provider, site_model, None, False)
 
     if override == "ollama":
-        return ResolvedLLM(
-            "ollama",
-            (cfg.active_model if cfg else "") or settings.OLLAMA_MODEL,
-            None,
-            False,
-        )
+        return ResolvedLLM("ollama", ollama_model, None, False)
 
     if override in ("anthropic", "groq"):
         key = cfg.anthropic_api_key if override == "anthropic" else cfg.groq_api_key
@@ -450,8 +466,6 @@ def _resolve_llm_choice(user, purpose: str) -> ResolvedLLM:
                 purpose,
                 override,
             )
-            if site_provider == "ollama":
-                return ResolvedLLM("ollama", settings.OLLAMA_MODEL, None, False)
             return ResolvedLLM(site_provider, site_model, None, False)
 
         catalog_model = getattr(cfg, f"{override}_model", "") or ""
@@ -465,8 +479,6 @@ def _resolve_llm_choice(user, purpose: str) -> ResolvedLLM:
 
     # Unknown override value — treat as site default rather than crashing.
     logger.warning("Unknown provider override %r for user %s; ignoring", override, user.pk)
-    if site_provider == "ollama":
-        return ResolvedLLM("ollama", settings.OLLAMA_MODEL, None, False)
     return ResolvedLLM(site_provider, site_model, None, False)
 
 

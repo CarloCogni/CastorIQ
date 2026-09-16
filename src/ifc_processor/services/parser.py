@@ -698,9 +698,7 @@ class IFCParser:
             container_map[element_gid] = space_gid
             overlaid += 1
         if overlaid:
-            logger.info(
-                "Space boundaries refined %d element containers to rooms", overlaid
-            )
+            logger.info("Space boundaries refined %d element containers to rooms", overlaid)
 
     def _assign_spatial_containers(
         self,
@@ -933,6 +931,13 @@ class IFCParser:
                     val = getattr(element, attr, None)
                     if val is not None:
                         properties[attr] = round(float(val), 4)
+
+            # SEM-4A: denormalize IfcRelAssociatesClassification → ClassRef.*
+            from ifc_processor.services.classification_ref_index import (
+                merge_classref_properties,
+            )
+
+            properties = merge_classref_properties(element, properties, element_type=element_type)
 
         except Exception as e:
             logger.debug("Could not get properties: %s", e)

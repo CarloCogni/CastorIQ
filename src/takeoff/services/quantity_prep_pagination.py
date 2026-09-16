@@ -44,14 +44,23 @@ def parse_prep_pagination(query: Any) -> dict[str, int]:
 
 
 def build_pagination_query(base_query: Any, *, page: int, page_size: int) -> str:
-    """Rebuild query string preserving filters; set prep_page / prep_page_size."""
+    """Rebuild query string preserving filters; set prep_page / prep_page_size.
+
+    ``sem_cols`` is emitted once (deduped) so add→filter→page does not accumulate
+    duplicate keys in the working URL.
+    """
+    from takeoff.services.ifc_semantic_fields import parse_sem_cols
+
     items: list[tuple[str, str]] = []
     if base_query is not None and hasattr(base_query, "lists"):
         for key, values in base_query.lists():
-            if key in {"prep_page", "prep_page_size"}:
+            if key in {"prep_page", "prep_page_size", "sem_cols", "sem_cols_add"}:
                 continue
             for value in values:
                 items.append((str(key), str(value)))
+        cols = parse_sem_cols(base_query)
+        if cols:
+            items.append(("sem_cols", ",".join(cols)))
     items.append(("prep_page", str(page)))
     items.append(("prep_page_size", str(page_size)))
     return urlencode(items)
@@ -111,8 +120,60 @@ def paginate_prep_rows(
 
 
 def apply_prep_pagination_to_qty_prep(qty_prep: dict[str, Any], query: Any) -> dict[str, Any]:
-    """Attach page window + metadata. Leaves full filtered ``prep_rows`` intact."""
+    """Attach page window + metadata. Leaves full filtered ``prep_rows`` intact.
+
+    Hierarchy mode paginates root Class groups only so children stay with their
+    parent context on the same page.
+    """
     parsed = parse_prep_pagination(query)
+    hier = qty_prep.get("hierarchy") or {}
+    if hier.get("enabled") and qty_prep.get("_hierarchy_tree"):
+        from takeoff.services.quantity_hierarchy import flatten_visible_hierarchy_rows
+
+        tree = qty_prep["_hierarchy_tree"]
+        classes = list(tree.get("classes") or [])
+        class_page = paginate_prep_rows(
+            classes,
+            page=parsed["page"],
+            page_size=parsed["page_size"],
+            base_query=query,
+        )
+        page_classes = class_page["prep_page_rows"]
+        # Temporary tree with only this page's classes for flatten.
+        page_tree = {
+            **tree,
+            "classes": page_classes,
+        }
+        expanded = set(hier.get("expanded_keys") or [])
+        page_rows = flatten_visible_hierarchy_rows(
+            page_tree,
+            expanded=expanded,
+            type_loaded=hier.get("type_loaded") or {},
+            instance_offsets=hier.get("instance_offsets") or {},
+        )
+        # Re-attach light status fields already present on full prep_rows by node_key
+        by_key = {
+            str(r.get("node_key") or ""): r
+            for r in (qty_prep.get("prep_rows") or [])
+            if r.get("node_key")
+        }
+        merged: list[dict[str, Any]] = []
+        for row in page_rows:
+            key = str(row.get("node_key") or "")
+            if key in by_key and not row.get("is_load_more"):
+                merged.append(by_key[key])
+            else:
+                merged.append(row)
+        qty_prep["prep_page_rows"] = merged
+        pag = dict(class_page["pagination"])
+        pag["total_rows"] = len(classes)
+        pag["filtered_rows"] = len(classes)
+        pag["unit_label"] = "classes"
+        qty_prep["pagination"] = pag
+        qty_prep["prep_rows_filtered_count"] = len(classes)
+        qty_prep["prep_rows_capped"] = bool(qty_prep.get("prep_rows_capped"))
+        return qty_prep
+
     rows = list(qty_prep.get("prep_rows") or [])
     sliced = paginate_prep_rows(
         rows,

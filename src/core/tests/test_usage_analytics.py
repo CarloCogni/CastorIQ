@@ -600,54 +600,29 @@ def test_failure_record_taxonomy_empty_returns_zero_total():
     assert all(cell == 0 for row in result["grid"] for cell in row)
 
 
-def test_failure_record_taxonomy_buckets_by_phase_and_category_and_tier():
+def test_failure_record_taxonomy_buckets_by_phase_category_and_error_type():
     from environments.tests.factories import ProjectFactory
     from metacastor.models import FailureRecord
 
     project = ProjectFactory()
 
-    # 2 VALIDATION+RETRYABLE at tier=None, 1 EXECUTION+NON_RETRYABLE at tier=2,
-    # 1 SANDBOX+NON_RETRYABLE at tier=3
-    FailureRecord.objects.create(
-        project=project,
-        query_text="q1",
-        failure_phase=FailureRecord.FailurePhase.VALIDATION,
-        category=FailureRecord.Category.RETRYABLE,
-        tier=None,
-        error_type="VALIDATION_ERROR",
-        error_detail="x",
-        diagnosis="x",
-    )
-    FailureRecord.objects.create(
-        project=project,
-        query_text="q2",
-        failure_phase=FailureRecord.FailurePhase.VALIDATION,
-        category=FailureRecord.Category.RETRYABLE,
-        tier=None,
-        error_type="VALIDATION_ERROR",
-        error_detail="x",
-        diagnosis="x",
-    )
-    FailureRecord.objects.create(
-        project=project,
-        query_text="q3",
-        failure_phase=FailureRecord.FailurePhase.EXECUTION,
-        category=FailureRecord.Category.NON_RETRYABLE,
-        tier=2,
-        error_type="EXEC",
-        error_detail="x",
-        diagnosis="x",
-    )
-    FailureRecord.objects.create(
-        project=project,
-        query_text="q4",
-        failure_phase=FailureRecord.FailurePhase.SANDBOX,
-        category=FailureRecord.Category.NON_RETRYABLE,
-        tier=3,
-        error_type="SBX",
-        error_detail="x",
-        diagnosis="x",
-    )
+    # 2 GENERATE+RETRYABLE (TARGET_NOT_FOUND), 1 GENERATE+RETRYABLE (LLM_TIMEOUT),
+    # 1 EXECUTION+RETRYABLE (STALE_PROPOSAL)
+    for query, phase, error_type in (
+        ("q1", FailureRecord.FailurePhase.GENERATE, "TARGET_NOT_FOUND"),
+        ("q2", FailureRecord.FailurePhase.GENERATE, "TARGET_NOT_FOUND"),
+        ("q3", FailureRecord.FailurePhase.GENERATE, "LLM_TIMEOUT"),
+        ("q4", FailureRecord.FailurePhase.EXECUTION, "STALE_PROPOSAL"),
+    ):
+        FailureRecord.objects.create(
+            project=project,
+            query_text=query,
+            failure_phase=phase,
+            category=FailureRecord.Category.RETRYABLE,
+            error_type=error_type,
+            error_detail="x",
+            diagnosis="x",
+        )
 
     result = usage_analytics.failure_record_taxonomy(window_days=7)
 
@@ -655,15 +630,15 @@ def test_failure_record_taxonomy_buckets_by_phase_and_category_and_tier():
     # phase × category grid: indices match the order returned in `phases`/`categories`.
     phase_idx = {p: i for i, p in enumerate(result["phases"])}
     cat_idx = {c: i for i, c in enumerate(result["categories"])}
-    assert result["grid"][phase_idx["VALIDATION"]][cat_idx["RETRYABLE"]] == 2
-    assert result["grid"][phase_idx["EXECUTION"]][cat_idx["NON_RETRYABLE"]] == 1
-    assert result["grid"][phase_idx["SANDBOX"]][cat_idx["NON_RETRYABLE"]] == 1
+    assert result["grid"][phase_idx["GENERATE"]][cat_idx["RETRYABLE"]] == 3
+    assert result["grid"][phase_idx["EXECUTION"]][cat_idx["RETRYABLE"]] == 1
 
-    # Tier totals — None bucket is populated for early-VALIDATION failures.
-    assert result["tier_totals"][None] == 2
-    assert result["tier_totals"][2] == 1
-    assert result["tier_totals"][3] == 1
-    assert result["tier_totals"][1] == 0
+    # The most frequent error types, descending, ties by name.
+    assert result["error_types"] == [
+        {"error_type": "TARGET_NOT_FOUND", "n": 2},
+        {"error_type": "LLM_TIMEOUT", "n": 1},
+        {"error_type": "STALE_PROPOSAL", "n": 1},
+    ]
 
 
 # ── ingestion_status ────────────────────────────────────────────────────────
@@ -876,43 +851,43 @@ def test_feature_mix_classifies_users_by_purpose():
 # modify_funnel
 
 
-def test_modify_funnel_empty_returns_zero_total():
+def test_modify_funnel_empty_returns_zero_total_with_a_continuous_week_axis():
     result = usage_analytics.modify_funnel(window_days=30)
     assert result["total"] == 0
-    assert result["tiers"] == [1, 2, 3]  # untiered NOT appended when empty
+    assert 5 <= len(result["labels"]) <= 6  # every ISO week of a 30-day window
+    assert all(label[4] == "-" and "W" in label for label in result["labels"])
     assert all(cell == 0 for row in result["grid"] for cell in row)
 
 
-def test_modify_funnel_buckets_by_tier_and_stage():
+def test_modify_funnel_buckets_by_week_and_stage():
+    """This week's proposals land in the last row; one pinned two weeks back lands earlier."""
+    from writeback.models import ModificationProposal
     from writeback.tests.factories import ModificationProposalFactory
 
-    # T1 applied × 2, T2 pending × 1, T3 rejected × 1.
-    ModificationProposalFactory(tier=1, status="applied")
-    ModificationProposalFactory(tier=1, status="applied")
-    ModificationProposalFactory(tier=2, status="pending")
-    ModificationProposalFactory(tier=3, status="rejected")
+    ModificationProposalFactory(status="applied")
+    ModificationProposalFactory(status="applied")
+    ModificationProposalFactory(status="pending")
+    older = ModificationProposalFactory(status="rejected")
+    ModificationProposal.objects.filter(pk=older.pk).update(
+        created_at=timezone.now() - timedelta(days=14)
+    )
 
     result = usage_analytics.modify_funnel(window_days=30)
     assert result["total"] == 4
 
     stage_idx = {s: j for j, s in enumerate(result["stages"])}
-    tier_idx = {t: i for i, t in enumerate(result["tiers"])}
-    assert result["grid"][tier_idx[1]][stage_idx["applied"]] == 2
-    assert result["grid"][tier_idx[2]][stage_idx["pending"]] == 1
-    assert result["grid"][tier_idx[3]][stage_idx["rejected"]] == 1
-
-
-def test_modify_funnel_appends_untiered_row_only_when_nonzero():
-    """Tier=None proposals collapse into 'untiered' — but only when present."""
-    from writeback.tests.factories import ModificationProposalFactory
-
-    ModificationProposalFactory(tier=None, status="failed")
-
-    result = usage_analytics.modify_funnel(window_days=30)
-    assert "untiered" in result["tiers"]
-    untiered_idx = result["tiers"].index("untiered")
-    failed_idx = result["stages"].index("failed")
-    assert result["grid"][untiered_idx][failed_idx] == 1
+    this_week = result["grid"][-1]
+    assert this_week[stage_idx["applied"]] == 2
+    assert this_week[stage_idx["pending"]] == 1
+    assert this_week[stage_idx["rejected"]] == 0
+    assert sum(row[stage_idx["rejected"]] for row in result["grid"][:-1]) == 1
+    assert result["totals"] == {
+        "pending": 1,
+        "approved": 0,
+        "applied": 2,
+        "rejected": 1,
+        "failed": 0,
+    }
 
 
 # activity_heatmap
@@ -978,59 +953,61 @@ def test_cohort_retention_grid_inactive_cohort_member_is_zero_pct():
 # ── Tab 7 helpers ───────────────────────────────────────────────────────────
 
 
-# proposal_acceptance_rate_by_tier
+# proposal_acceptance_rate
 
 
-def test_proposal_acceptance_empty_returns_none_pct_per_tier():
-    result = usage_analytics.proposal_acceptance_rate_by_tier(window_days=30)
+def test_proposal_acceptance_empty_returns_none_pct():
+    result = usage_analytics.proposal_acceptance_rate(window_days=30)
     assert result["overall_total"] == 0
-    assert [t["tier"] for t in result["by_tier"]] == [1, 2, 3]
-    for t in result["by_tier"]:
-        assert t["total"] == 0
-        assert t["accepted_pct"] is None
-        assert t["meets_target"] is False
+    assert result["overall"]["total"] == 0
+    assert result["overall"]["accepted_pct"] is None
+    assert result["overall"]["meets_target"] is False
+    assert result["by_guardian"] == []
 
 
 def test_proposal_acceptance_collapses_approved_and_applied():
     """'Accepted' = approved + applied — both count as 'good enough to land'."""
     from writeback.tests.factories import ModificationProposalFactory
 
-    ModificationProposalFactory(tier=1, status="applied")
-    ModificationProposalFactory(tier=1, status="approved")
-    ModificationProposalFactory(tier=1, status="rejected")
-    ModificationProposalFactory(tier=1, status="pending")
+    ModificationProposalFactory(status="applied")
+    ModificationProposalFactory(status="approved")
+    ModificationProposalFactory(status="rejected")
+    ModificationProposalFactory(status="pending")
 
-    result = usage_analytics.proposal_acceptance_rate_by_tier(window_days=30)
-    t1 = next(t for t in result["by_tier"] if t["tier"] == 1)
-    assert t1["total"] == 4
-    assert t1["applied"] == 2
-    # 2/4 = 50%
-    assert t1["accepted_pct"] == 50.0
-    # Below T1's 90% target.
-    assert t1["meets_target"] is False
+    result = usage_analytics.proposal_acceptance_rate(window_days=30)
+    assert result["overall"]["total"] == 4
+    assert result["overall"]["applied"] == 2
+    assert result["overall"]["accepted_pct"] == 50.0  # 2/4, below the 70% target
+    assert result["overall"]["meets_target"] is False
 
 
-def test_proposal_acceptance_meets_target_when_above_threshold():
+def test_proposal_acceptance_meets_target_at_the_boundary():
     from writeback.tests.factories import ModificationProposalFactory
 
-    for _ in range(9):
-        ModificationProposalFactory(tier=1, status="applied")
-    ModificationProposalFactory(tier=1, status="rejected")
+    for _ in range(7):
+        ModificationProposalFactory(status="applied")
+    for _ in range(3):
+        ModificationProposalFactory(status="rejected")
 
-    result = usage_analytics.proposal_acceptance_rate_by_tier(window_days=30)
-    t1 = next(t for t in result["by_tier"] if t["tier"] == 1)
-    assert t1["accepted_pct"] == 90.0  # at the boundary
-    assert t1["meets_target"] is True
+    result = usage_analytics.proposal_acceptance_rate(window_days=30)
+    assert result["overall"]["accepted_pct"] == 70.0
+    assert result["overall"]["meets_target"] is True
 
 
-def test_proposal_acceptance_excludes_tier_none_rows():
-    """Tier-None rows are early-validation failures, not a tier signal."""
+def test_proposal_acceptance_splits_by_guardian_verdict():
+    """A recorded skip is its own verdict; only verdicts that occurred are listed, in display order."""
     from writeback.tests.factories import ModificationProposalFactory
 
-    ModificationProposalFactory(tier=None, status="failed")
+    ModificationProposalFactory(status="applied", verification_status="verified")
+    ModificationProposalFactory(status="rejected", verification_status="conflict")
+    ModificationProposalFactory(status="applied", verification_status="conflict")
+    ModificationProposalFactory(status="applied", guardian_skipped=True)
 
-    result = usage_analytics.proposal_acceptance_rate_by_tier(window_days=30)
-    assert result["overall_total"] == 0
+    result = usage_analytics.proposal_acceptance_rate(window_days=30)
+    assert [g["verdict"] for g in result["by_guardian"]] == ["verified", "conflict", "skipped"]
+    conflict = next(g for g in result["by_guardian"] if g["verdict"] == "conflict")
+    assert (conflict["total"], conflict["applied"], conflict["accepted_pct"]) == (2, 1, 50.0)
+    assert result["overall"]["total"] == 4
 
 
 # provider_mix_summary

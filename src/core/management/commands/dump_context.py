@@ -103,7 +103,7 @@ USAGE EXAMPLES:
 
 COMBINING FLAGS — REAL WORKFLOW EXAMPLES:
 
-    "I'm starting a new LLM chat to work on Tier 2 validation":
+    "I'm starting a new LLM chat to work on the Modify verify step":
     $ python manage.py dump_context --preset writeback
 
     "I need the LLM to understand my whole project structure":
@@ -121,7 +121,7 @@ COMBINING FLAGS — REAL WORKFLOW EXAMPLES:
 BUILT-IN PRESETS:
     ┌──────────────┬──────────────────────────────────────────────────────┐
     │  writeback   │ --apps writeback --skeleton --full-apps writeback   │
-    │              │ --docs writeback guardian                            │
+    │              │ --docs writeback_V3 guardian                         │
     ├──────────────┼──────────────────────────────────────────────────────┤
     │  overview    │ --tree --skeleton --docs all                        │
     ├──────────────┼──────────────────────────────────────────────────────┤
@@ -749,7 +749,7 @@ DEFAULT_PRESETS = {
         "apps": ["writeback"],
         "skeleton": True,
         "full_apps": ["writeback"],
-        "docs": ["writeback", "guardian"],
+        "docs": ["writeback_V3", "guardian"],
     },
     "overview": {
         "tree": True,
@@ -824,8 +824,8 @@ def resolve_docs(docs_dir: Path, doc_names: list[str]) -> list[Path]:
     Supports:
       - "all" → everything in docs/
       - "architecture" → docs/architecture.md
-      - "writeback" → docs/writeback/ (all files inside)
-      - "tier1-reference" → docs/writeback/tier1-reference.md (fuzzy find)
+      - "writeback_V3" → docs/writeback_V3/ (all files inside)
+      - "decision-log" → docs/writeback_V3/decision-log.md (fuzzy find)
     """
     if not docs_dir.exists():
         return []

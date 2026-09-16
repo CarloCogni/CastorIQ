@@ -144,7 +144,7 @@
 <div class="card mb-4" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
     <div class="card-body">
         <div class="d-flex align-items-center justify-content-between mb-2">
-            <h6 class="mb-0 fs-7 text-secondary text-uppercase">Modify funnel by tier (30d)</h6>
+            <h6 class="mb-0 fs-7 text-secondary text-uppercase">Modify funnel by week (30d)</h6>
             <span class="text-secondary fs-8">{{ modify_funnel.total }} proposals</span>
         </div>
         {% if modify_funnel.total > 0 %}
@@ -343,7 +343,7 @@
         });
     }
 
-    // ── Modify funnel (grouped bars per tier × stage) ────────────────────
+    // ── Modify funnel (grouped bars per ISO week × stage) ────────────────
     const mfData = readJson("modify-funnel-data");
     if (mfData && mfData.total > 0) {
         const STAGE_COLORS = {
@@ -355,18 +355,15 @@
         };
         const datasets = mfData.stages.map((stage, sj) => ({
             label: stage,
-            data: mfData.tiers.map((_, ti) => mfData.grid[ti][sj]),
+            data: mfData.labels.map((_, wi) => mfData.grid[wi][sj]),
             backgroundColor: (STAGE_COLORS[stage] || "#94a3b8") + "AA",
             borderColor: STAGE_COLORS[stage] || "#94a3b8",
             borderWidth: 1.5,
             borderRadius: 3,
         }));
-        const tierLabels = mfData.tiers.map((t) =>
-            t === "untiered" ? "untiered" : `T${t}`
-        );
         new Chart(document.getElementById("modifyFunnelChart"), {
             type: "bar",
-            data: { labels: tierLabels, datasets: datasets },
+            data: { labels: mfData.labels, datasets: datasets },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,

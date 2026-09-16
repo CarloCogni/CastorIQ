@@ -158,4 +158,4 @@ Run artifacts are in `runs/` (gitignored — every figure above is reproduced in
 ## Consequences recorded elsewhere
 
 - The general lesson is entry 3 in [known-limitations.md](../known-limitations.md) — an intent absent from a slot schema gets substituted, not refused.
-- The SET/REMOVE asymmetry is documented as a durable contract in [writeback/tier1-reference.md](../writeback/tier1-reference.md).
+- The SET/REMOVE asymmetry is documented as a durable contract in `docs/writeback/tier1-reference.md` (V2; deleted with the tiers on 2026-09-15, readable in git history before `b7e6c20`).

@@ -13,45 +13,19 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+# Findings are matched to key cases through the production alias table, so
+# "U-value" counts as ThermalTransmittance here exactly as it does in the scanner.
+from writeback.services.property_aliases import (  # noqa: F401  (re-exported)
+    PROPERTY_ALIASES,
+    canonical_property,
+)
+
 EXPECTED_VALUES = frozenset({"conflict", "no_conflict"})
 SEVERITY_VALUES = frozenset({"clear", "marginal", "missing", "none"})
-
-# Property names the scanner may use for the same thing. Findings are matched
-# to key cases through this table, so "U-value" counts as ThermalTransmittance.
-PROPERTY_ALIASES: dict[str, str] = {
-    "firerating": "FireRating",
-    "fireresistance": "FireRating",
-    "fireresistanceclass": "FireRating",
-    "fireresistancerating": "FireRating",
-    "fireclass": "FireRating",
-    "thermaltransmittance": "ThermalTransmittance",
-    "uvalue": "ThermalTransmittance",
-    "u": "ThermalTransmittance",
-    "acousticrating": "AcousticRating",
-    "soundreductionindex": "AcousticRating",
-    "soundinsulation": "AcousticRating",
-    "rw": "AcousticRating",
-    "r'w": "AcousticRating",
-    "loadbearing": "LoadBearing",
-    "isexternal": "IsExternal",
-    "external": "IsExternal",
-    "extendtostructure": "ExtendToStructure",
-}
 
 
 class RavCorpusError(ValueError):
     """The key file is malformed."""
-
-
-def canonical_property(name: str) -> str:
-    """Normalise a property label to the key's canonical spelling.
-
-    Strips spaces, hyphens, underscores and case, then looks the result up in
-    ``PROPERTY_ALIASES``. Unknown names come back stripped but otherwise as-is,
-    so a finding on a property the key never mentions is still a clean string.
-    """
-    squashed = "".join(ch for ch in name.casefold() if ch.isalnum() or ch == "'")
-    return PROPERTY_ALIASES.get(squashed, name.strip())
 
 
 @dataclass(frozen=True)

@@ -10,7 +10,21 @@
     .group-hover-container:hover .group-hover-hidden { display: none !important; }
     .transition-opacity { transition: opacity 0.2s ease; }
     .btn-xs { font-size: 0.75rem; padding: 2px; }
+    /* Apply saved collapse before #project-sidebar mounts to avoid expand flash */
+    html.castor-sidebar-pref-collapsed #project-sidebar.sidebar {
+        margin-left: -280px;
+    }
 </style>
+<script>
+/* Persist Castor project sidebar collapse across full navigations / HTMX. */
+(function () {
+    try {
+        if (sessionStorage.getItem("castor.projectSidebar.collapsed") === "1") {
+            document.documentElement.classList.add("castor-sidebar-pref-collapsed");
+        }
+    } catch (e) { /* private mode / blocked storage */ }
+})();
+</script>
 {% endblock %}
 
 {% block content %}
@@ -23,8 +37,16 @@
     <div class="border-bottom bg-body d-flex align-items-center px-3 flex-shrink-0">
 
         {% if not facilities_is_occupant_mode %}
-        <button class="btn btn-link text-secondary me-2 p-2" onclick="toggleSidebar()" title="Toggle Sidebar">
-            <i class="bi bi-layout-sidebar"></i>
+        <button type="button"
+                class="btn btn-link text-secondary me-2 p-2"
+                id="project-sidebar-toggle"
+                data-testid="project-sidebar-toggle"
+                data-castor-sidebar-toggle="1"
+                onclick="toggleSidebar()"
+                title="Toggle Sidebar"
+                aria-controls="project-sidebar"
+                aria-expanded="true">
+            <i class="bi bi-layout-sidebar" aria-hidden="true"></i>
         </button>
         {% endif %}
 
@@ -118,11 +140,42 @@ window.autoGrow = function(el) {
     }
 };
 
-// Global Sidebar Toggle Function
+// Global Sidebar Toggle — session-persisted (survives filter/pagination/tab GETs)
+window.CASTOR_SIDEBAR_COLLAPSED_KEY = "castor.projectSidebar.collapsed";
+
+window.setProjectSidebarCollapsed = function (collapsed) {
+    const sidebar = document.getElementById("project-sidebar");
+    if (!sidebar) return;
+    const next = !!collapsed;
+    sidebar.classList.toggle("sidebar-collapsed", next);
+    document.documentElement.classList.toggle("castor-sidebar-pref-collapsed", next);
+    try {
+        sessionStorage.setItem(window.CASTOR_SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+    } catch (e) { /* ignore */ }
+    document.querySelectorAll("[data-castor-sidebar-toggle]").forEach(function (btn) {
+        btn.setAttribute("aria-expanded", next ? "false" : "true");
+    });
+};
+
+window.applyProjectSidebarCollapsedState = function () {
+    let collapsed = false;
+    try {
+        collapsed = sessionStorage.getItem(window.CASTOR_SIDEBAR_COLLAPSED_KEY) === "1";
+    } catch (e) {
+        collapsed = document.documentElement.classList.contains("castor-sidebar-pref-collapsed");
+    }
+    window.setProjectSidebarCollapsed(collapsed);
+};
+
 function toggleSidebar() {
-    const sidebar = document.getElementById('project-sidebar');
-    sidebar.classList.toggle('sidebar-collapsed');
+    const sidebar = document.getElementById("project-sidebar");
+    if (!sidebar) return;
+    window.setProjectSidebarCollapsed(!sidebar.classList.contains("sidebar-collapsed"));
 }
+
+window.applyProjectSidebarCollapsedState();
+document.addEventListener("DOMContentLoaded", window.applyProjectSidebarCollapsedState);
+document.body.addEventListener("htmx:afterSettle", window.applyProjectSidebarCollapsedState);
 
 // Safety checks for upload scripts
 if (typeof csrfToken === 'undefined') { var csrfToken = '{{ csrf_token }}'; }
