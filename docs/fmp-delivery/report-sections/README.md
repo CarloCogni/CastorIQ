@@ -1,7 +1,7 @@
 # Memory section sources
 
 One Markdown file per section of `CastorIQ_Final_Memory_MAIN.docx`, in
-document order, plus `appendix-e.md` for the appendices. The words are
+document order, plus `appendix-e.md` and `appendix-f.md` for the appendices. The words are
 reviewed here, in git, not in Word.
 
 Build (from the repository root):
@@ -18,7 +18,10 @@ uv run --with python-docx python docs/fmp-delivery/tools/rewrite_appendices.py -
 
 Without `--review` only the submission files are written. The memory build
 refuses to save on an evaluative number missing from `docs/evaluation/`, a
-withdrawn figure, or more than 5,000 counted words. The review build refuses
+figure that `docs/evaluation/recount.py` recomputes from the run files but
+cannot find in its table row, a withdrawn figure, or more than 5,000 counted
+words. The appendices build refuses to save when an Appendix F link names a
+missing file or symbol, or a file git does not track. The review build refuses
 to save unless accepting every change gives the submission text plus the
 review notes, and rejecting every change gives the original draft.
 
@@ -39,5 +42,9 @@ Syntax the tools understand:
   headings or a phrase; do not put a marker inside `**bold**`.
 - `[[DRAWING n]]` keeps the draft's existing image n; `[[IMAGE path]]`
   inserts a new one.
+- In `appendix-f.md` only: `[[path]]` and `[[path::symbol]]` become links to
+  the repository at the tag `fmp-final`, to the line that defines the symbol
+  (`tools/code_links.py`). The line numbers are read when the document is
+  built, so rebuild on the commit you tag.
 
 Section files 01–08 get a `§ n` label paragraph; 00 and 09–11 do not.

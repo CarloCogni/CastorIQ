@@ -7,8 +7,10 @@ content of ``report-sections/00-*.md`` … ``11-*.md``, using the document's own
 paragraph and table formatting as templates. Writes ``…_MAIN_v3.docx``.
 
 Before saving it checks that every fraction and decimal in the evaluative
-sections appears in an evaluation record, that no withdrawn figure or V2 term
-survives, and that the body stays within the word limit.
+sections appears in an evaluation record, that every figure
+``docs/evaluation/recount.py`` recomputes from the run files sits in its table
+row, that no withdrawn figure or V2 term survives, and that the body stays
+within the word limit.
 
 With ``--review`` it also writes ``…_MAIN_v3_REVIEW.docx`` for the team: the
 review colours of ``{yellow}…{/yellow}`` markers, the colour legend and the
@@ -36,6 +38,9 @@ from docx.shared import Emu
 from lxml import etree
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "docs/evaluation"))
+import recount  # noqa: E402  (lives beside the records it recounts)
+
 DELIVERY = ROOT / "docs/fmp-delivery/delivery-docs"
 SOURCE = DELIVERY / "CastorIQ_Final_Memory_MAIN.docx"
 TARGET = DELIVERY / "CastorIQ_Final_Memory_MAIN_v3.docx"
@@ -85,7 +90,9 @@ ALLOWED_NUMBERS = {
     "0.10": "the requirement limit of the marginal RAV case; the record writes it as 0.10 in prose",
 }
 FRACTION = re.compile(r"(?<![\d.])(\d[\d,]*)\s*(?:/|of)\s*(\d[\d,]*)(?![\d.])")
-SECTION_REF = re.compile(r"\b(?:Tables?|Sections?|Figures?)\s+\d+(?:\.\d+)*")
+SECTION_REF = re.compile(
+    r"\b(?:Tables?|Sections?|Figures?)\s+\d+(?:\.\d+)*(?:\s+(?:to|and)\s+\d+(?:\.\d+)*)?"
+)
 DECIMAL = re.compile(r"(?<![\d.])\d+\.\d+(?![\d.])")
 
 
@@ -287,22 +294,27 @@ def footnotes_part(document):
     return next(r.target_part for r in document.part.rels.values() if r.reltype == RT.FOOTNOTES)
 
 
-def fix_footnotes(document, prune: bool) -> list[str]:
-    """Reword the footnotes in FOOTNOTE_TEXT; with ``prune``, drop unreferenced ones.
+def fix_footnotes(document) -> list[str]:
+    """Reword the footnotes in FOOTNOTE_TEXT, drop unreferenced ones, order by first use.
 
+    Word numbers footnotes by reference order anyway; LibreOffice also needs
+    the part in that order.
     Returns the texts of the footnotes that remain.
     """
     part = footnotes_part(document)
     root = etree.fromstring(part.blob)
-    referenced = {r.get(qn("w:id")) for r in document.element.body.iter(qn("w:footnoteReference"))}
+    order: list[str] = []
+    for ref in document.element.body.iter(qn("w:footnoteReference")):
+        if ref.get(qn("w:id")) not in order:
+            order.append(ref.get(qn("w:id")))
+    notes = [f for f in root.iter(qn("w:footnote")) if not f.get(qn("w:type"))]
+    for footnote in notes:
+        root.remove(footnote)
+    by_id = {f.get(qn("w:id")): f for f in notes}
     kept = []
-    for footnote in list(root.iter(qn("w:footnote"))):
-        footnote_id = footnote.get(qn("w:id"))
-        if footnote.get(qn("w:type")):
-            continue  # separators
-        if prune and footnote_id not in referenced:
-            root.remove(footnote)
-            continue
+    for footnote_id in order:
+        footnote = by_id[footnote_id]
+        root.append(footnote)
         texts = list(footnote.iter(qn("w:t")))
         if footnote_id in FOOTNOTE_TEXT:
             texts[0].text = FOOTNOTE_TEXT[footnote_id]
@@ -365,7 +377,7 @@ def build_document(review: bool):
     replace_body(document, elements)
     if not review:
         md.strip_highlights(document.element.body)
-    footnotes = fix_footnotes(document, prune=not review)
+    footnotes = [] if review else fix_footnotes(document)
     return document, redline.lines_of(notes), footnotes
 
 
@@ -374,6 +386,7 @@ def build_review(clean) -> int:
     document, review_only, _ = build_document(review=True)
     original = docx.Document(str(SOURCE))
     counts = redline.mark(original, document)
+    fix_footnotes(document)  # after marking, so the order follows the marked body
     problems = redline.check(document, clean, original, review_only)
     colours: dict[str, int] = {}
     for hl in document.element.body.iter(qn("w:highlight")):
@@ -394,6 +407,10 @@ def main(argv: list[str]) -> int:
     missing = check_numbers()
     for line in missing:
         print(f"UNSOURCED  {line}")
+    results = (SECTIONS / "05-results.md").read_text(encoding="utf-8")
+    for figure in recount.missing_from(results):
+        missing.append(figure)
+        print(f"RECOUNT    Table {figure.table}, {figure.row}: {figure.value} not in its row")
     clean, _, footnotes = build_document(review=False)
     words, problems = check_output(clean, footnotes)
     for line in problems:

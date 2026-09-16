@@ -42,7 +42,7 @@ harness-computed diff (`ifc_processor/services/code_sandbox.py`, `ifc_diff.py`;
 honest threat model: a speed bump, the diff and the human are the gates); scope
 gate and flag rule (`writeback/services/verifier.py`); locked, fingerprint-checked
 approval with a guarded claim (`execution_service.py`, `proposal_service.py`);
-2,672 collected tests + 19 Playwright e2e (2026-09-16); benchmarks index
+2,676 collected tests + 19 Playwright e2e (2026-09-16); benchmarks index
 `docs/benchmarks.md`.
 
 - ✅ Concurrency on one file: file row and proposal row locked from the

@@ -40,4 +40,4 @@ The default deployment runs language-model inference and embedding locally, so n
 
 ## 3.5 Identity and access
 
-Access is enforced in two layers: a project membership tier (owner, editor, viewer) and nine functional roles with validity windows tied to contract durations. The role scopes the surfaces a user sees: occupants see a portal; contractors see permits and assigned work; facilities managers see operations; designers and engineers see Ask, Modify and Explore. The write path requires the editor tier at the HTTP and WebSocket layer, not only in the interface.
+Access is enforced in two layers: a project membership tier (owner, editor, viewer) and nine functional roles with validity windows tied to contract durations. The role scopes the surfaces a user sees, from an occupant portal to the full Modify tab. The write path requires the editor tier at the HTTP and WebSocket layer, not only in the interface.

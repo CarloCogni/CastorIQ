@@ -10,6 +10,11 @@ and writes ``…_APPENDICES_v3.docx``:
   D.3 and D.7 are fixed.
 - Appendix E is appended from ``report-sections/appendix-e.md``; its table is
   the findings table of the dated record, so the two cannot drift apart.
+- Appendix F is appended from ``report-sections/appendix-f.md``: where every
+  figure of the memory's Section 5.2 lives in the repository. Its ``[[path]]``
+  and ``[[path::symbol]]`` references become links at the tag
+  (``code_links.py``); a missing file or symbol, or a linked file git does not
+  track, stops the build.
 
 With ``--review`` it also writes ``…_APPENDICES_v3_REVIEW.docx``: the review
 note from ``report-sections/review-legend-appendices.md`` at the top, Appendix E
@@ -23,9 +28,11 @@ from __future__ import annotations
 
 import copy
 import re
+import subprocess
 import sys
 from pathlib import Path
 
+import code_links
 import docx
 import docx_markdown as md
 import docx_redline as redline
@@ -40,11 +47,13 @@ REVIEW_TARGET = DELIVERY / "CastorIQ_Final_Memory_APPENDICES_v3_REVIEW.docx"
 REVIEW_NOTE = ROOT / "docs/fmp-delivery/report-sections/review-legend-appendices.md"
 MAIN = DELIVERY / "CastorIQ_Final_Memory_MAIN.docx"
 APPENDIX_E = ROOT / "docs/fmp-delivery/report-sections/appendix-e.md"
+APPENDIX_F = ROOT / "docs/fmp-delivery/report-sections/appendix-f.md"
 RECORD = ROOT / "docs/evaluation/2026-09-16-expert-testing-v3.md"
 FIGURE_A7 = ROOT / "docs/fmp-delivery/figures/figA7-writeback-models.png"
 TEXT_WIDTH_DXA = 8666
 MAX_FIGURE_HEIGHT_EMU = int(8.2 * 914400)
 FINDINGS_WEIGHTS = [8, 17, 14, 61]
+EVIDENCE_WEIGHTS = [26, 74]  # Appendix F: what, where
 
 A5_TEXT = (
     "The Modify path centres on ModificationProposal. Since the rewrite of 15 September 2026 it holds "
@@ -143,8 +152,20 @@ def record_table() -> list[list[str]]:
     return next(b for b in md.parse_blocks(section) if b.kind == "table").rows
 
 
-def appendix_e(document) -> list:
-    """Build Appendix E with the document's own appendix formatting."""
+def appendix(
+    document,
+    markdown: str,
+    *,
+    record_rows: list[list[str]] | None = None,
+    table_weights: list[float] | None = None,
+    table_highlight: str | None = None,
+) -> list:
+    """Build one appended appendix in the document's own appendix formatting.
+
+    ``[[RECORD TABLE]]`` stands for ``record_rows``; other tables are rendered
+    from the Markdown. Bullets become indented body paragraphs, because the
+    appendices define no list numbering.
+    """
     paragraphs = document.paragraphs
     page_break = next(
         p._p for p in paragraphs if p._p.find(".//" + qn("w:pageBreakBefore")) is not None
@@ -158,30 +179,78 @@ def appendix_e(document) -> list:
     table_template = docx.Document(str(MAIN)).tables[1]._tbl
     part = document.part
 
+    def table(rows: list[list[str]]):
+        return md.table(
+            table_template,
+            rows,
+            part,
+            total_width=TEXT_WIDTH_DXA,
+            font_size=15,
+            code_size=13,
+            weights=table_weights,
+            highlight=table_highlight,  # rendered in the review copy only
+        )
+
     elements = [copy.deepcopy(page_break)]
-    for block in md.parse_blocks(APPENDIX_E.read_text(encoding="utf-8")):
+    for block in md.parse_blocks(markdown):
         if block.kind == "h1":
             elements.append(md.paragraph(title, block.text, part))
         elif block.kind == "h2":
             elements.append(md.paragraph(heading, block.text, part))
         elif block.kind == "tabcap":
             elements.append(md.paragraph(caption, block.text, part, code_size=16))
+        elif block.kind == "table":
+            elements.append(table(block.rows))
         elif block.text == "[[RECORD TABLE]]":
-            elements.append(
-                md.table(
-                    table_template,
-                    record_table(),
-                    part,
-                    total_width=TEXT_WIDTH_DXA,
-                    font_size=15,
-                    code_size=13,
-                    weights=FINDINGS_WEIGHTS,
-                    highlight="cyan",  # rendered in the review copy only
-                )
-            )
+            elements.append(table(record_rows or []))
+        elif block.kind == "bullet":
+            elements.append(bullet(body, block.text, part))
         else:
             elements.append(md.paragraph(body, block.text, part, code_size=19))
     return elements
+
+
+def bullet(template, text: str, part):
+    """A body paragraph with a hanging bullet."""
+    el = md.paragraph(template, "•\u00a0\u00a0" + text, part, code_size=19)
+    ppr = el.find(qn("w:pPr"))
+    ind = ppr.makeelement(qn("w:ind"), {qn("w:left"): "360", qn("w:hanging"): "240"})
+    jc = ppr.find(qn("w:jc"))
+    if jc is None:
+        jc = ppr.makeelement(qn("w:jc"), {})
+        ppr.append(jc)
+    jc.set(qn("w:val"), "left")  # justified bullets stretch around long code paths
+    jc.addprevious(ind)
+    return el
+
+
+def appendix_e(document) -> list:
+    """Appendix E: the testing log of the rewritten write path, table from the record."""
+    return appendix(
+        document,
+        APPENDIX_E.read_text(encoding="utf-8"),
+        record_rows=record_table(),
+        table_weights=FINDINGS_WEIGHTS,
+        table_highlight="cyan",
+    )
+
+
+def appendix_f(document) -> tuple[list, list[str]]:
+    """Appendix F: where every §5.2 figure lives; returns the elements and linked paths."""
+    markdown = code_links.resolve(APPENDIX_F.read_text(encoding="utf-8"), ROOT)
+    linked = re.findall(r"/(?:blob|tree)/" + code_links.TAG + r"/([^)#]+)", markdown)
+    return appendix(document, markdown, table_weights=EVIDENCE_WEIGHTS), linked
+
+
+def untracked(paths: list[str]) -> list[str]:
+    """Linked paths git does not track (they would 404 at the tag)."""
+    tracked = subprocess.run(
+        ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.splitlines()
+    files = set(tracked)
+    return sorted(
+        {p for p in paths if p not in files and not any(t.startswith(p + "/") for t in tracked)}
+    )
 
 
 def review_note(document) -> list:
@@ -203,8 +272,12 @@ def build_document(review: bool):
     done = fix_appendix_a(document) + fix_appendix_d(document)
     body = document.element.body
     sect_pr = body.find(qn("w:sectPr"))
-    for element in appendix_e(document):
+    f_elements, linked = appendix_f(document)
+    for element in appendix_e(document) + f_elements:
         sect_pr.addprevious(element)
+    missing = untracked(linked)
+    if missing:
+        raise code_links.CodeLinkError(f"linked but not tracked by git: {', '.join(missing)}")
     notes = review_note(document) if review else []
     first = next(body.iterchildren())
     for element in notes:

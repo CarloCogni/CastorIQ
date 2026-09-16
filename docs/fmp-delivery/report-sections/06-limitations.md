@@ -4,7 +4,7 @@
 
 **Base models write weak IfcOpenShell code.** A 7B code model hallucinates helpers and mis-selects subtypes. Status: contained by design. Because the code runs on a copy and its effect is measured, a wrong attempt ends in a repair or a rejection, never in a wrong proposal that passes as right (46 of 46, Table 5.2). The cost is the pass rate, the ceiling of the local model rather than of the design. Grounding is the open half: exact class names are required and materials are not offered (Section 5.4).
 
-**OCR degradation on scanned documents.** The primary extractor silently degraded retrieval on rasterised PDFs. Status: mitigated. A GLM-OCR layer runs as automatic fallback on sparse text, locally. It is described by its published OmniDocBench result (Ouyang et al., 2024)[^3]; no Castor-side accuracy has been measured.
+**OCR on scanned documents.** The primary extractor silently degraded retrieval on rasterised PDFs. Status: mitigated for convenience. A free, open-source GLM-OCR layer runs locally as automatic fallback on sparse text, described by its published OmniDocBench result (Ouyang et al., 2024)[^3]. Its accuracy is not measured and is not expected to match frontier multimodal models. For precision, a user can extract the text of a scanned document with such a model, for example Gemini, save it as a text PDF and upload that instead.
 
 {cyan}**Read-path grounding.** Testing found that entity descriptions carry properties from a fixed keyword list, so IsExternal is reported absent while the write path reads it from the same index, and that "none of the walls" can be asserted from half the walls (`erez.csv` rows 27, 42, 43, 90). Status: open; the fix is a one-line list change, re-embedding, and a coverage statement in answers.{/cyan}
 

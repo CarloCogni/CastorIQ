@@ -30,7 +30,9 @@ Layout:
   `_v3.docx` files from the sections in the originals' own formatting and
   check every evaluative number against `docs/evaluation/`; with `--review`
   they also build the review copies, using `docx_redline.py` for the tracked
-  changes.
+  changes; `code_links.py` turns Appendix F's references into links at the
+  tag. `docs/evaluation/recount.py` recomputes the memory's tables from
+  `runs/`.
 - `figures/`: Figures 1, 3 and A.7 with the commands that regenerate them.
 
 ## Future work (not in the FMP scope)

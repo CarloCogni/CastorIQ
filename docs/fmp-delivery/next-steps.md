@@ -15,7 +15,7 @@ it lives (`docs/evaluation/`, `runs/`, `fixtures/`). Updated 2026-09-16.
       `_v3.docx` is lost on the next rebuild. The memory build refuses to save
       if a figure in the abstract, §5 or §6 is not in a record under
       `docs/evaluation/`, if a withdrawn figure or V2 term survives, or if the
-      body passes 5,000 words (4,955 now; tables, glossary and references
+      body passes 5,000 words (4,977 now; tables, glossary and references
       excluded).
 - [x] **Review copies for the team** (2026-09-16): `…_MAIN_v3_REVIEW.docx`
       and `…_APPENDICES_v3_REVIEW.docx`, built with `--review`. They restore
@@ -46,6 +46,19 @@ it lives (`docs/evaluation/`, `runs/`, `fixtures/`). Updated 2026-09-16.
       IfcOpenShell and pgvector added.
 - [x] **Leftover files from the V3 docs pass**: none left (`git status`
       2026-09-16 shows only the delivery work).
+- [x] **Every §5.2 figure traceable to code** (2026-09-16). Appendix F maps
+      each table to its command, scorer, corpus, tests, record and run file,
+      with line-level links at the tag. `uv run python docs/evaluation/recount.py`
+      recomputes Tables 5.2 to 5.4 from `runs/` with no model, and the memory
+      build refuses a figure it cannot recount. The five Modify run files were
+      never in git until this date; they are now. The "key entities reached"
+      row is backed by `benchmark_rav --coverage` and the record
+      `2026-09-16-rav-retrieval-coverage.md` (11/15 → 15/15 reproduced; 5/15 →
+      15/15 by every constraining document added).
+- [ ] **Rebuild both documents on the commit you tag**, because Appendix F's
+      line anchors are read at build time:
+      `uv run --with python-docx python docs/fmp-delivery/tools/rewrite_memory.py --review`
+      and the same for `rewrite_appendices.py`; commit the regenerated files.
 - [ ] **Cut the tag on the final commit**, after Maria's and Erez's material is in:
       ```bash
       git tag -a fmp-final -m "FMP submission, 27 Sep 2026"
@@ -100,8 +113,9 @@ Without the labelled file the row cannot stay in the memory. To keep it:
       saves without an UNSOURCED or PROBLEM line on the final sources, and
       the submitted file is the one it wrote.
 - [ ] Table 5.5 still matches `pytest --collect-only` at the tagged commit
-      (2,672 in `src/` + 19 in `tests/e2e` on 2026-09-16).
+      (2,676 in `src/` + 19 in `tests/e2e` on 2026-09-16, after the coverage
+      tests).
 - [ ] `cd src && uv run pytest -q -p no:warnings` is green and
       `uv run ruff check` is clean at the tagged commit.
-- [ ] The memory's links open (nine: the two tag folders in §5 and the
-      seven record links in Table 5.1). They 404 until the tag is pushed.
+- [ ] The memory's and Appendix F's links open. They 404 until the tag is
+      pushed; open a few line anchors to confirm they land on the definition.

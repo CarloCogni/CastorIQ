@@ -14,7 +14,7 @@ The read-write core converged faster than planned, and the freed capacity went i
 
 The third phase completed lifecycle coverage: 5D cost on the Schedule surface, the full Facilities suite (Section 4.4) and the IFC viewer in the 4D Link workspace. All modules were demonstrated at Zigurat Student Week in June 2026 (Section 5.4). Hardening followed: GLM-OCR for scanned PDFs, BYOK, the real-time layer, an invite-only hosted beta at castoriq.io, and AGPL-3.0 licensing. Facilities gained Documents, asset edits written back into the IFC model, LLM-drafted work orders and requests, and 360 time-lapse comparison in Spaces.
 
-The demonstration's most consistent criticism was the absence of hard numbers. The answer was a measurement programme (Section 5.2): a first write-path benchmark on 2026-08-05; a RAV baseline on 2026-08-30 that located the layer's bottleneck in retrieval; and on 2026-09-15 the retrieval fix and the replacement of the tiered write path by the pipeline of Section 3.2, each measured the day it landed. Two team members ran structured manual testing against independent ground truth throughout (Section 5.4). The automated suite now collects 2,672 tests.
+The demonstration's most consistent criticism was the absence of hard numbers. The answer was a measurement programme (Section 5.2): a first write-path benchmark on 2026-08-05; a RAV baseline on 2026-08-30 that located the layer's bottleneck in retrieval; and on 2026-09-15 the retrieval fix and the replacement of the tiered write path by the pipeline of Section 3.2, each measured the day it landed. Two team members ran structured manual testing against independent ground truth throughout (Section 5.4).
 
 ## 4.4 Seven delivered surfaces
 

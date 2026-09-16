@@ -6,8 +6,10 @@ the body of the rebuilt document and the original side by side:
 
 - paragraphs, pictures and tables are aligned in order; an unmatched pair of
   paragraphs whose words are similar enough counts as an edit;
-- an edited paragraph gets a word-level redline (``w:ins`` / ``w:del``) that
-  keeps the new formatting, colours and links;
+- a lightly edited paragraph gets a word-level redline (``w:ins`` / ``w:del``)
+  that keeps the new formatting, colours and links; unchanged fragments of one
+  or two words between changes are folded into the change so the marks read
+  as phrases; a heavily rewritten paragraph is shown whole, old then new;
 - a new paragraph, picture or table is marked inserted; an old one that has
   no counterpart is copied back in at its place and marked deleted.
 
@@ -32,9 +34,17 @@ from docx.oxml.ns import qn
 
 AUTHOR = "CastorIQ V3 rebuild"
 PAIR_CUTOFF = 0.5
+WORD_LEVEL_CUTOFF = 0.75  # below this, a paired paragraph is shown as whole old + whole new
+ISLAND_WORDS = 2  # unchanged runs this short between two changes join the change
 FIRST_ID = 10000
 PLACEHOLDER_BASE = 0xE000  # private-use code points stand in for hyperlinks
-TOKEN = re.compile(r"[\ue000-\uf8ff]|[^\s\ue000-\uf8ff]+\s*|\s+")
+TOKEN = re.compile(
+    r"[\ue000-\uf8ff]"  # an atom (hyperlink or footnote reference)
+    r"|\w+(?:['’\-]\w+)*\s*"  # a word with its trailing space
+    r"|[^\w\s\ue000-\uf8ff]\s*"  # one punctuation mark with its trailing space
+    r"|\s+"
+)
+WORD = re.compile(r"\w")
 XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
 # CT_Settings children that precede w:trackRevisions.
 SETTINGS_BEFORE_TRACK = {
@@ -243,6 +253,10 @@ def deleted_copy(element, old_document, new_document, revisions: Revisions):
     for tag in ("w:highlight", "w:bookmarkStart", "w:bookmarkEnd"):
         for found in list(el.iter(qn(tag))):
             found.getparent().remove(found)
+    # A footnote may be referenced once only; deleted text drops its markers.
+    for ref in list(el.iter(qn("w:footnoteReference"))):
+        run = ref.getparent()
+        run.getparent().remove(run)
     _relink(el, old_document, new_document)
     if el.tag == qn("w:tbl"):
         mark_table(el, revisions, "w:del")
@@ -289,7 +303,7 @@ def redline_paragraph(old_p, new_p, atoms: Atoms, revisions: Revisions) -> None:
         position += len(token)
 
     matcher = difflib.SequenceMatcher(None, old_tokens, new_tokens, autojunk=False)
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+    for tag, i1, i2, j1, j2 in fold_islands(matcher.get_opcodes(), new_tokens):
         deleted_text = atoms.expand("".join(old_tokens[i1:i2]))
         if tag in ("delete", "replace") and deleted_text:
             wrapper = revisions.mark("w:del")
@@ -310,6 +324,31 @@ def redline_paragraph(old_p, new_p, atoms: Atoms, revisions: Revisions) -> None:
                     new_p.append(wrapper)
     for other in others:
         new_p.append(other)
+
+
+def fold_islands(opcodes, new_tokens: list[str]) -> list[tuple[str, int, int, int, int]]:
+    """Merge short unchanged runs between two changes into one replacement.
+
+    ``~~a~~ b ~~c~~`` with a one-word ``b`` reads better as ``~~a b c~~`` followed by
+    the new phrase; the text is the same after accept or reject.
+    """
+    ops = [tuple(op) for op in opcodes]
+    folded = True
+    while folded:
+        folded = False
+        for k in range(1, len(ops) - 1):
+            tag, _, _, j1, j2 = ops[k]
+            words = sum(bool(WORD.search(t)) for t in new_tokens[j1:j2])
+            if (
+                tag == "equal"
+                and words <= ISLAND_WORDS
+                and ops[k - 1][0] != "equal" != ops[k + 1][0]
+            ):
+                before, after = ops[k - 1], ops[k + 1]
+                ops[k - 1 : k + 2] = [("replace", before[1], after[2], before[3], after[4])]
+                folded = True
+                break
+    return ops
 
 
 def _new_pieces(paragraph, atoms: Atoms):
@@ -424,7 +463,10 @@ def mark(original, rebuilt) -> dict[str, int]:
         for element in pending:
             new.element.addprevious(element)
         pending = []
-        if op == "edit":
+        if op == "edit" and _similarity(old, new) < WORD_LEVEL_CUTOFF:
+            new.element.addprevious(deleted_copy(old.element, original, rebuilt, revisions))
+            mark_inserted_paragraph(new.element, revisions)
+        elif op == "edit":
             redline_paragraph(old.element, new.element, atoms, revisions)
         elif op == "insert" and new.kind == "tbl":
             mark_table(new.element, revisions, "w:ins")
