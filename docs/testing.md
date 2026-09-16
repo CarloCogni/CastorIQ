@@ -114,7 +114,6 @@ Castor/
       test_models.py            ← ModificationProposal, GitCommit __str__ and defaults
       test_views.py             ← Approve/reject/apply auth gates
       test_consumers.py         ← Async WebSocket consumer — @pytest.mark.asyncio
-      test_modification_pipeline.py  ← Full Tier 1 via CapturingEmitter — @pytest.mark.slow
 ```
 
 **Root `tests/conftest.py`** provides cross-app fixtures used when the test spans more than one Django app — e.g. a view test that needs a user, project, and IFC file together. **App-level `conftest.py`** (currently only `writeback/tests/conftest.py`) provides specialised fixtures that are only meaningful in that domain, importing factories from sibling apps.

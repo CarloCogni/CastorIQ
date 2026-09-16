@@ -23,12 +23,16 @@ the implementer second.
 
 ## Relationship to the rest of `docs/`
 
-- [`../writeback/`](../writeback/) is the **V2** record: overview, tier references, Guardian,
-  conflict scan. It is left untouched on purpose. It is the "before" that
-  `what-changed.md` links into. When V3 ships it gets a one-line superseded banner and
-  nothing else.
+- The **V2** docs (`docs/writeback/`: overview, tier references) were deleted with the V2 code
+  on 2026-09-15. They stay readable in git history before commit `b7e6c20`
+  (`git show b7e6c20^:docs/writeback/overview.md`). `what-changed.md` is the "before and after"
+  in one place.
+- [`../guardian.md`](../guardian.md) and [`../conflict-scan.md`](../conflict-scan.md) describe
+  the two document-checking subsystems that V3 kept: Guardian runs inside the Modify pipeline
+  (spec A-4); the conflict scan is a separate tab and out of this folder's scope.
 - [`../specs/writeback/pipeline-architecture.md`](../specs/writeback/pipeline-architecture.md)
-  is the V2 architecture summary. `spec.md` here is its V3 successor.
+  is the one-page V3 architecture summary for `docs/architecture.md`; `spec.md` here is the
+  contract behind it.
 - [`../fmp-delivery/`](../fmp-delivery/) tracks delivery readiness. This folder is a source
   of evidence for it, not a copy of it.
 

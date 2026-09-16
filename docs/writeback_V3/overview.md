@@ -32,7 +32,9 @@ ground    (no LLM)    facts from the database, as exact strings: every storey, e
    ▼
 generate  (LLM #1)    the model writes two functions in one block: select(model)
    │                  returns the target entities; modify(model, targets) changes
-   │                  those and only those.
+   │                  those and only those. Or it answers with one REJECT: line and
+   │                  a reason (a greeting, a question, geometry, nothing to change),
+   │                  which ends the request in one call.
    ▼
 run       (no LLM)    a separate process opens a scratch copy of the file, snapshots
    │                  it, runs select then modify, snapshots again, and returns the
@@ -53,7 +55,8 @@ approve               fingerprint check → the scratch copy replaces the origin
                       atomically → git commit → index updated from the diff
 ```
 
-Two model calls, three with Guardian. V2 spent five to eight. Every example below is written
+Two model calls, three with Guardian; a repair adds one, at most two, and Guardian's document
+search adds one embedding query. V2 spent five to eight. Every example below is written
 against the benchmark fixture, `Ifc4_SampleHouse.ifc`: two storeys, four spaces, five walls,
 three doors.
 
@@ -73,7 +76,7 @@ three doors.
    *Ground Floor*, keep the walls, return them. And `modify`: for each target, set *FireRating*
    in *Pset_WallCommon* to *EI60*.
 
-3. **Run.** A child process copies the file, opens it, snapshots it, runs `select` (5 walls, since
+3. **Run.** The pipeline copies the file; a child process opens the copy, snapshots it, runs `select` (5 walls, since
    IfcWallStandardCase is a kind of IfcWall), runs `modify` on those five, snapshots again,
    diffs, and writes the scratch copy. It returns the five GlobalIds and the diff: five property
    changes, all on the five walls, no geometry moved, no entity added or removed.
@@ -160,7 +163,10 @@ Everything below existed in V2 and survives. Each one answers a different questi
   documents confirm or contradict the change, and the answer is on the card before the human
   decides. It advises, it never blocks, and in V3 the user can skip it per request when they know
   the documents are silent. *Does the documentation agree?*
-- **Benchmark.** Around ninety prompts against the sample house above, each with the expected
+- **Failure record.** Every decline, three-strikes rejection and failed approval is stored as a
+  structured failure record with the last code the model wrote, and shown in the chat as a card
+  with a retry path. *What went wrong, and how often?*
+- **Benchmark.** Ninety-eight prompts (95 scored, three advisory) against the sample house above, each with the expected
   targets and the expected diff written in plain words. It scores whether the right entities were
   selected, whether the diff matches expectation, and whether nothing else in the file moved. It
   is also how the coder model is chosen. *Does this work, measurably, on this hardware?*
@@ -178,8 +184,8 @@ Everything below existed in V2 and survives. Each one answers a different questi
 
 Castor runs all inference locally. Modify uses a code-tuned model; Ask keeps its own prose-tuned
 model. The one-sentence explanation is written by the Modify model, so a request pays no model
-swap. If the bake-off shows the coder's prose is poor, the explainer call is pointed at the Ask
-model with a one-line change; there is no setting for it.
+swap. The bake-off scored that sentence ten of ten on a ten-case sample, so it stays there; there
+is no setting for it.
 
 | Graphics memory | Modify model | Note |
 |---|---|---|

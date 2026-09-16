@@ -172,7 +172,7 @@ Read the relevant skill file before generating code in that domain.
 
 ## When Modifying Code
 
-- Before `writeback/`: Read `.claude/skills/writeback-ops.md` FIRST, then `docs/writeback_V3/` (`docs/writeback/` is the V2 record, kept as history)
+- Before `writeback/`: Read `.claude/skills/writeback-ops.md` FIRST, then `docs/writeback_V3/`
 - Before `chat/RAG`: Read `docs/rag-pipeline.md`
 - Before `ifc_processor/`: Read `docs/ifc-processor.md`
 - Before adding views: Keep them dumb. Create or extend a service.

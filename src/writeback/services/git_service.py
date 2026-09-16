@@ -20,7 +20,7 @@ class GitService:
     """
     File-level Git tracking for IFC models.
 
-    Each project gets its own bare repository. IFC files are
+    Each project gets its own repository with a working tree. IFC files are
     tracked as regular files — no LFS, no submodules.
 
     Usage:

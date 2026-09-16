@@ -1,8 +1,9 @@
 # Writeback V3 — What changed from V2
 
-One table per phase, three columns: what V2 did, what V3 does, why. The V2 side links into
-[`../writeback/`](../writeback/), which is unchanged and remains the record of V2. Read
-[`overview.md`](overview.md) first if V3 is new to you.
+One table per phase, three columns: what V2 did, what V3 does, why. The V2 docs were deleted
+with the V2 code; they stay readable in git history before commit `b7e6c20`
+(`git show b7e6c20^:docs/writeback/overview.md`). Read [`overview.md`](overview.md) first if V3
+is new to you.
 
 ## The one-sentence version
 
@@ -16,43 +17,43 @@ code did to the file**. Understanding is checked by outcome, not by intermediate
 
 | V2 | V3 | Why |
 |---|---|---|
-| Five stages: triage splits the sentence into segments, a slot extractor fills pset / property / value per segment, an entity resolver pins targets with up to three model turns, a deterministic tier router, an intent assembler builds the dict the validators read ([overview](../writeback/overview.md#pipeline-at-a-glance)) | Two stages: *ground* (no model) reads the file's storeys, spaces, type counts and property sets from the index and hands them over as exact strings; *generate* (one model call) writes a read-only `select` function and a `modify` function | Every V2 hand-off was a place for meaning to drift with nothing checking. V3 has no intermediate representation to drift; the selection is executed and its result inspected |
+| Five stages: triage splits the sentence into segments, a slot extractor fills pset / property / value per segment, an entity resolver pins targets with up to three model turns, a deterministic tier router, an intent assembler builds the dict the validators read | Two stages: *ground* (no model) reads the file's storeys, spaces, type counts and property sets from the index and hands them over as exact strings; *generate* (one model call) writes a read-only `select` function and a `modify` function | Every V2 hand-off was a place for meaning to drift with nothing checking. V3 has no intermediate representation to drift; the selection is executed and its result inspected |
 
 ### Choosing the target entities
 
 | V2 | V3 | Why |
 |---|---|---|
-| The model had to fit the request into a seven-key filter spec (type, storey, name pattern, GlobalIds, tag, description, property match) resolved by substring matching ([Tier 1 filters](../writeback/tier1-reference.md#filters)). "The internal doors" had no key | The model writes ifcopenshell code, composing eight thin helpers with raw api. Grounding injects the real storey / space / pset names so the code uses strings that exist. The targets are listed with evidence (type, container, one property) on the card | Targeting was the largest churn cluster in V2's history. Compression into a fixed schema and vocabulary guessing were the two causes; both are removed rather than patched |
+| The model had to fit the request into a seven-key filter spec (type, storey, name pattern, GlobalIds, tag, description, property match) resolved by substring matching. "The internal doors" had no key | The model writes ifcopenshell code, composing eight thin helpers with raw api. Grounding injects the real storey / space / pset names so the code uses strings that exist. The targets are listed with evidence (type, container, one property) on the card | Targeting was the largest churn cluster in V2's history. Compression into a fixed schema and vocabulary guessing were the two causes; both are removed rather than patched |
 
 ### Deciding what to do
 
 | V2 | V3 | Why |
 |---|---|---|
-| Router picks a tier; Tier 1 validator checks against pre-coded handlers, Tier 2 validator checks a plan, Tier 3 tries a closed set of typed operations first and only falls back to generated code ([tier 2](../writeback/tier2-reference.md), [tier 3](../writeback/tier3-reference.md)) | One path: the model writes `modify(model, targets)` in the same block as `select`. No tiers, no router, no validators | Three tiers meant three code paths, three test suites, and a router whose mistakes were invisible. The safety they bought is bought instead by the diff |
+| Router picks a tier; Tier 1 validator checks against pre-coded handlers, Tier 2 validator checks a plan, Tier 3 tries a closed set of typed operations first and only falls back to generated code | One path: the model writes `modify(model, targets)` in the same block as `select`. No tiers, no router, no validators | Three tiers meant three code paths, three test suites, and a router whose mistakes were invisible. The safety they bought is bought instead by the diff |
 
 ### Previewing the change
 
 | V2 | V3 | Why |
 |---|---|---|
-| Preview rendered from the journal's own records; for generated code there was no preview at all ("effects are unknowable until the code runs") ([tier 3 UI](../writeback/tier3-reference.md#ui-presentation)) | Select and modify run on a scratch copy before the user sees anything; the preview is a real before/after diff of the file, and the scratch copy is kept | A preview built from what the model *said* it would do is a description, not evidence. The diff is evidence |
+| Preview rendered from the journal's own records; for generated code there was no preview at all ("effects are unknowable until the code runs") | Select and modify run on a scratch copy before the user sees anything; the preview is a real before/after diff of the file, and the scratch copy is kept | A preview built from what the model *said* it would do is a description, not evidence. The diff is evidence |
 
 ### Reviewing the change
 
 | V2 | V3 | Why |
 |---|---|---|
-| A reviewer model read the generated code against the request and gave a verdict ([Tier3Reviewer](../writeback/tier3-reference.md#tier3reviewer--llm-code-review)) | A model reads the code **and the diff, without the request**, and writes one sentence on what the change does. The user compares that with what they asked. There is no verdict | A model reading code against the request shares the coder's blind spots and can parrot the request. Blind back-translation cannot parrot; it is the one check that targets "right entities, wrong operation" |
+| A reviewer model read the generated code against the request and gave a verdict | A model reads the code **and the diff, without the request**, and writes one sentence on what the change does. The user compares that with what they asked. There is no verdict | A model reading code against the request shares the coder's blind spots and can parrot the request. Blind back-translation cannot parrot; it is the one check that targets "right entities, wrong operation" |
 
 ### The approval gate
 
 | V2 | V3 | Why |
 |---|---|---|
-| For generated code, the user had to acknowledge the code block in a separate request before the approve button worked | Acknowledgement moves to flagged diff rows: a value that is not in the request, an entity added or removed. The ticks travel in the approve request itself; normal rows need nothing; the code is collapsed | Facilities users do not read Python. They do read "FireRating: EI30 → EI60 on 5 walls" and a red row beneath it |
+| For generated code, the user had to acknowledge the code block in a separate request before the approve button worked | Acknowledgement moves to flagged diff rows: a value or a property name that is not in the request, an entity added or removed. The ticks travel in the approve request itself; normal rows need nothing; the code is collapsed | Facilities users do not read Python. They do read "FireRating: EI30 → EI60 on 5 walls" and a red row beneath it |
 
 ### Executing the change
 
 | V2 | V3 | Why |
 |---|---|---|
-| The journal was replayed per operation type by in-memory handlers, or for one code mutation by the sandbox; the sandbox trusted the code's own list of changes ([journal](../writeback/overview.md#the-mutationjournal)) | The scratch copy the user approved is swapped over the original after the fingerprint check. The code does not run again; the code reports nothing; the diff was computed by the harness | The code's self-reported changes were the model grading its own work. Swapping the reviewed file makes the approved diff and the applied diff the same bytes, with no second execution to drift |
+| The journal was replayed per operation type by in-memory handlers, or for one code mutation by the sandbox; the sandbox trusted the code's own list of changes | The scratch copy the user approved is swapped over the original after the fingerprint check. The code does not run again; the code reports nothing; the diff was computed by the harness | The code's self-reported changes were the model grading its own work. Swapping the reviewed file makes the approved diff and the applied diff the same bytes, with no second execution to drift |
 
 ### Updating the index and checking the documents
 
@@ -81,7 +82,8 @@ their tests:** triage
 classifier, slot extractor, entity resolver, tier router, intent assembler, Tier 1 and Tier 2
 validators, Tier 3 operation planner, filter builder, FilterEngine, the model-backed half of the
 hint generator, the mutation journal, its executor, its builder and its diff renderer, the Tier 3
-reviewer. Their references stay readable in [`../writeback/`](../writeback/).
+reviewer. Their reference docs were deleted with them and stay readable in git history
+(`git show b7e6c20^:docs/writeback/`).
 
 **Kept, untouched:** per-project git storage, the file fingerprint, the round-trip diff, the
 sandbox process model and its forbidden-pattern and import guards.
@@ -102,9 +104,8 @@ diff flag rule, the kept scratch copy, the Guardian toggle.
 
 ## The safety story, layer by layer
 
-V2 documented seven sandbox layers for generated code
-([safety architecture](../writeback/tier3-reference.md#safety-architecture)). What happens to
-each:
+V2 documented seven sandbox layers for generated code (its Tier 3 reference, now in git
+history). What happens to each:
 
 | V2 layer | V3 |
 |---|---|
@@ -127,5 +128,5 @@ V3 replaces it with maximal verification. That has to be argued, not swapped sil
 |---|---|---|
 | Modify | the same general model as Ask | a code-tuned model, sized to the graphics memory tier: 7B on 8 GB, 14B on 12 GB, 30B on 24 GB |
 | Ask | prose model | unchanged |
-| Explanation of a change | the Modify model | the Modify model; the Ask model with a one-line change if the bake-off shows the coder's sentence is poor |
+| Explanation of a change | the Modify model | the Modify model; the bake-off scored its sentence ten of ten on a ten-case sample, so there is no override |
 | How the default is chosen | by hand | by the benchmark bake-off, scoring targets match, diff match and integrity per model |

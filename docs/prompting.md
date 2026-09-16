@@ -159,16 +159,16 @@ I'm working on the write-back system.
 
 Task: [What needs to change or be built]
 
-Relevant tier: [1 GREEN / 2 ORANGE / 3 RED / unsure]
+Relevant step: [ground / generate / run / verify / approve / unsure]
 
 Before writing code, confirm:
-1. Which tier handles this?
+1. Which pipeline step does this touch?
 2. Which existing services are involved?
-3. What's the validation flow?
+3. What deterministic check sits behind the change?
 
 Key constraints:
 - IFC file is source of truth (DB is index)
-- Minimal authority: LLM never exercises more power than needed
+- Maximal verification: the model writes code; the diff on a copy is the gate; the code never runs twice
 - Guardian advises, never blocks
 - All changes go through Git commit
 

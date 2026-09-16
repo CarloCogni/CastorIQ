@@ -29,7 +29,7 @@
 
 In AEC projects, information lives in two disconnected worlds: **BIM models** (IFC files with geometry, properties, spatial hierarchy) and **technical documents** (fire safety reports, thermal specs, structural calculations). When one changes, the other rarely follows — leading to costly errors, rework, and liability.
 
-CastorIQ is a bi-directional LLM assistant that bridges both. Ask cross-cuts the model and the docs and answers with citations. Modify proposes property changes in plain language and routes them through a risk-stratified review pipeline before touching the IFC. Every approved change is a Git commit on a per-project repository.
+CastorIQ is a bi-directional LLM assistant that bridges both. Ask cross-cuts the model and the docs and answers with citations. Modify turns a plain-language request into a small piece of IfcOpenShell code, runs it on a copy, and shows the measured diff for approval before touching the IFC. Every approved change is a Git commit on a per-project repository.
 
 The hosted beta lives at **[castoriq.io](https://castoriq.io)** — invite-only, manual vetting.
 
@@ -40,7 +40,7 @@ The hosted beta lives at **[castoriq.io](https://castoriq.io)** — invite-only,
 **What you do**
 
 - **Ask** — Natural-language queries across the IFC model and any uploaded specs. Answers cite the entity or page they came from.
-- **Modify** — Propose property changes in plain English. A three-tier review pipeline keeps low-risk edits fast and high-risk edits reviewable.
+- **Modify** — Propose property changes in plain English. The model writes the change as code; what the code did to a copy is diffed, gated and approved by a human.
 - **Explore** — Click through floor plans, points of interest, and uploaded media — no BIM viewer required.
 
 **What backs it**
@@ -119,7 +119,7 @@ Detailed docs live in [`docs/`](docs/):
 - **[Architecture](docs/architecture.md)** — system design, data models, data flow
 - **[Conventions](docs/conventions.md)** — code style, Django patterns, developer guidelines
 - **[UI/UX](docs/ui-ux.md)** — interface design, layout, interaction patterns
-- **[Write-back system](docs/writeback/overview.md)** — RSAA framework, tier escalation, agent architecture
+- **[Write-back system](docs/writeback_V3/overview.md)** — code-and-verify pipeline, maximal verification, what changed from V2
 - **[RAG pipeline](docs/rag-pipeline.md)** — embedding flow, retrieval, citation rendering
 - **[BYOK setup](docs/byok-setup.md)** — bring your own Anthropic or Groq key
 - **[Testing](docs/testing.md)** — test strategy, layers, running the suite

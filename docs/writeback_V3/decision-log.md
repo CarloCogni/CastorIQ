@@ -3,9 +3,11 @@
 Dated entries, newest last. Each gives the decision, the alternative rejected, and the rationale
 in a sentence or two. The full argument is in the frozen brainstorm,
 [`../brainstorming/modify_pipeline_V3.md`](../brainstorming/modify_pipeline_V3.md), cited by
-section. Entries marked *review* come from the 2026-09-14 design review against the Zen of
-Python, and entries marked *review 2* from the code-grounded review the same day; where a later
-entry replaces an earlier one, the earlier one is kept and marked **superseded** so the trail
+section. Entries are grouped by the pass that produced them: *review* (the 2026-09-14 design review
+against the Zen of Python), *review 2* (the code-grounded review the same day), *build*
+(2026-09-15), *review 3* to *review 6* (code reviews of the built pipeline and the first live
+cases, 2026-09-15) and *review 7* (the documentation pass after the V2 docs were deleted); where
+a later entry replaces an earlier one, the earlier one is kept and marked **superseded** so the trail
 stays readable.
 
 **2026-09-11 — One path: generated code. Tiers dropped.** Rejected: keeping the three-tier
@@ -621,3 +623,36 @@ selection, with a repair text that says what `select()` must return. Rejected: t
 parent's children list (a storey's fifty spaces as one row, and a legitimate re-parenting charged
 to both storeys), and trusting the prompt sentence "zones are never placed in a storey", which
 the 7B had just ignored.
+
+
+---
+
+### Review 7 entries, 2026-09-15 (documentation pass)
+
+The V2 docs (`docs/writeback/`) were deleted the same day; this folder was then read end to end
+against `src/` and against every file it links to.
+
+**review 7 — The V2 docs are history, not a sibling folder.** `docs/writeback/` is gone with the
+V2 code; the V3 docs cite git history before `b7e6c20` instead of linking. Rejected: a superseded
+banner on six files nobody should read first. Two of the six were not V2 docs at all: Guardian and
+the conflict scan survive in V3, so `guardian.md` (query section rewritten to the diff-based rule,
+the skip toggle added) and `conflict-scan.md` moved to `docs/` unchanged in substance.
+
+**review 7 — The spec says what the code does, in the places it did not.** Recorded and fixed:
+the `REJECT:` answer had no requirement row (now C-6); the per-call token and wall-clock caps, the
+three grounding caps the enumeration omitted, the git snapshot before the swap and the rollback on
+a failed approval, the target summary the explainer also sees, Guardian's embedding call, the
+fifty-target cap on the card, and the failure record were named nowhere in `spec.md` or
+`overview.md`. Corrected: "seven columns" (eight, `explainer_model`), the scratch name (`uuid8`,
+not the proposal id), `util.selector` (no helper uses it), "the single `get_llm` call" (three
+carry `num_ctx`, as U-4 requires), "already so card" (a chat message, no row), "the chat falls
+back to the request" (the chat shows the placeholder; the commit subject falls back), "a child
+process copies the file" (the pipeline copies, the child opens). V-1 moved to `verified` on the
+review 5 integrity re-read. The build order became a build record and the explainer open item
+closed on the ten-case sample.
+
+**review 7 — Recorded, not changed.** `git_service.py` called the repository "bare" in its
+docstring (fixed); the e2e mock in `tests/e2e/test_modify_flow.py` still shapes a V2 payload
+(`tier`, `operation`, `diff_preview`) and should be checked against the live socket payload;
+`Tier1Writer` / `Tier2Writer` in `ifc_processor` are live classes used by Facilities and Model
+Quality, not V2 pipeline code, and keep their names.

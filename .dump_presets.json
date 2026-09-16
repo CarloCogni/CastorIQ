@@ -4,7 +4,7 @@
     "apps": ["writeback"],
     "skeleton": true,
     "full_apps": ["writeback"],
-    "docs": ["writeback",  "guardian"],
+    "docs": ["writeback_V3", "guardian"],
     "compact": true
   },
   "overview": {

@@ -432,7 +432,7 @@ class AssetService:
         """Hard-delete an asset.
 
         M2 does NOT emit an ``FMDelta`` on delete: a ``DELETE_IFCASSET`` op
-        would require Tier 3 entity deletion, which is out of FM scope for
+        would require deleting the IFC entity, which is out of FM scope for
         v1. Any pending deltas on the asset survive via their denormalized
         ``entity_guid`` (the ``asset`` FK goes ``SET_NULL``).
         """
