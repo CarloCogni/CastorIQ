@@ -1,0 +1,115 @@
+{
+  "fixture": "open-house",
+  "model_label": "llama3.1:8b",
+  "started_at": "2026-09-16T00:44:37.405198+00:00",
+  "results": [
+    {
+      "case_id": "t1-count-doors",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "1",
+      "answer": "**Door Count**\nAccording to the database index of the IFC4 model, there is a total of **1** door in the model. This count includes subtypes such as `IfcDoorStandardCase`.",
+      "latency_s": 5.513370711996686,
+      "notes": []
+    },
+    {
+      "case_id": "t1-count-windows",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "5",
+      "answer": "**Entity Count Analysis**\n\nAccording to the verified computed fact, the building has a total of **5** windows. This count was determined by a **COUNT** operation over the parsed entities of type **IfcWindow** (including its subtypes: **IfcWindowStandardCase**) in the IFC4 model database.\n\n**Source:** Database index of IFC4 model\n\n**Entity Type:** IfcWindow (and subtypes)",
+      "latency_s": 1.9078101290069753,
+      "notes": []
+    },
+    {
+      "case_id": "t1-count-walls",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "4",
+      "answer": "**Entity Count Analysis**\n\nAccording to the verified computed facts, there are **4** walls in total in the IFC model. This count was determined by a `COUNT` operation over the parsed entities of type `IfcWall` (including subtypes `IfcWallElementedCase` and `IfcWallStandardCase`) in the database index of the IFC4 model.\n\n**Source:** Database index of IFC4 model, calculated using `COUNT` method.",
+      "latency_s": 2.0796099769941065,
+      "notes": []
+    },
+    {
+      "case_id": "t1-count-spaces",
+      "tier": 1,
+      "passed": false,
+      "skipped": true,
+      "expected": "",
+      "answer": "",
+      "latency_s": 0.0,
+      "notes": [
+        "fixture has no IfcSpace"
+      ]
+    },
+    {
+      "case_id": "t1-storeys",
+      "tier": 1,
+      "passed": false,
+      "skipped": true,
+      "expected": "",
+      "answer": "",
+      "latency_s": 0.0,
+      "notes": [
+        "fixture has no named storeys"
+      ]
+    },
+    {
+      "case_id": "t1-schema",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "IFC4",
+      "answer": "**IFC Schema Version**\nAccording to the IFC file header, the IFC schema version of this model is **IFC4**.\nSource: IfcOpenHouse_IFC4.ifc, IFC file header.",
+      "latency_s": 1.1105664950009668,
+      "notes": []
+    },
+    {
+      "case_id": "t2-materials",
+      "tier": 2,
+      "passed": true,
+      "skipped": false,
+      "expected": "Brick",
+      "answer": "**Materials Used in Building Elements**\n=====================================\n\nAccording to the IFC model, the following materials are used in the building elements:\n\n| Element Type | Material | Thickness |\n| --- | --- | --- |\n| North wall (IfcWallStandardCase) | Brick | 360 mm |\n\nThe IFC model shows that the North wall is made of Brick with a thickness of 360 mm.\n\nThere is no information provided about the materials used in the slabs. The IFC model only mentions the slabs as being unnamed and without any material properties.\n\n**Note:** The IFC model does not provide information about the materials used in the other building elements, such as the roof, footing, doors, windows, plates, and site.",
+      "latency_s": 3.498449998005526,
+      "notes": [
+        "matched 1 material name(s)"
+      ]
+    },
+    {
+      "case_id": "t2-spaces",
+      "tier": 2,
+      "passed": false,
+      "skipped": true,
+      "expected": "",
+      "answer": "",
+      "latency_s": 0.0,
+      "notes": [
+        "fixture has no named spaces"
+      ]
+    },
+    {
+      "case_id": "t2-fire-rating",
+      "tier": 2,
+      "passed": false,
+      "skipped": false,
+      "expected": "any of ('fire', 'rating'), non-refusal",
+      "answer": "### Fire Rating of Doors and Walls\n\nAccording to the IFC model, there is no explicit information about the fire rating of the doors and walls.\n\nHowever, we can analyze the properties of the elements:\n\n* The doors (IfcDoor) do not have any fire rating properties.\n* The walls (IfcWallStandardCase) do not have any fire rating properties.\n\nIt is worth noting that the IFC model does not provide any information about the fire rating of the doors and walls. This information might be available in the project documents.\n\n### Possible Locations for Fire Rating Information\n\n* Check the project documents for any specifications or reports related to fire safety and fire ratings.\n* Look for any property sets or attributes in the IFC model that might contain fire rating information.\n\n### Conclusion\n\nI could not find this information in the uploaded project files.",
+      "latency_s": 3.8378205750050256,
+      "notes": []
+    },
+    {
+      "case_id": "t2-external-walls",
+      "tier": 2,
+      "passed": true,
+      "skipped": false,
+      "expected": "any of ('external', 'exterior'), non-refusal",
+      "answer": "**External Walls and Storey Locations**\n\nAccording to the IFC model, external walls are identified by their `GlobalId` and `IfcWall` type. The model shows the following external walls:\n\n| GlobalId | IfcWall Type | Storey |\n| --- | --- | --- |\n| #1234 | IfcWall | 1 |\n\nHowever, since the storey list only contains one storey, and the elevation of the unnamed storey is `None`, we cannot determine the exact storey location of the external walls.\n\n**Note:** The IFC model does not provide explicit information about the storey locations of external walls. The storey list only contains one storey, and the elevation of the unnamed storey is unknown.",
+      "latency_s": 3.307658784004161,
+      "notes": []
+    }
+  ]
+}

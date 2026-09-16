@@ -114,8 +114,9 @@ RAV corpus (`fixtures/benchmark/rav/`); facilities/maintenance surfaces.
   absent-property conflicts on doors and slabs, and inter-document
   disagreements are model failures, not retrieval ones; named in the record.
 - 🔶 Ask/RAG benchmark: first run 2026-09-15, record
-  `docs/evaluation/2026-09-15-ask-benchmark.md` (10 questions × 4 public
-  models, answer-level scoring). hit@k / MRR still open.
+  `docs/evaluation/2026-09-15-ask-benchmark.md` — Tier 1 20/22, Tier 2
+  11/14 on `llama3.1:8b` across four public models, answer-level
+  scoring, failures named. hit@k / MRR still open.
 - ⬜ Adversarial sandbox corpus + measured block rate (programme item 5).
 - ⬜ Corpus edges named in the bake-off record (the Revit `:285330` suffix,
   whether a curtain wall is a wall): decide in the corpus, in writing, before

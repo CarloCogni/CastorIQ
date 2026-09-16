@@ -1,0 +1,113 @@
+{
+  "fixture": "office-a",
+  "model_label": "llama3.1:8b",
+  "started_at": "2026-09-16T00:46:41.165474+00:00",
+  "results": [
+    {
+      "case_id": "t1-count-doors",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "102",
+      "answer": "**Door Count in the Model**\nAccording to the verified computed facts, there are **102** doors in the model. This count was determined by a **COUNT** operation over the parsed entities of type **IfcDoor** in the IFC2X3 model database index.",
+      "latency_s": 1.3245951400022022,
+      "notes": []
+    },
+    {
+      "case_id": "t1-count-windows",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "69",
+      "answer": "**Entity Count Analysis**\n\nAccording to the verified computed facts, the building has a total of **69** windows. This count was determined by a **COUNT** operation over the parsed entities of type **IfcWindow** in the IFC2X3 model database.\n\n**Source:** Database index of IFC2X3 model\n**Method:** COUNT over parsed entities of type IfcWindow",
+      "latency_s": 1.7130912909924518,
+      "notes": []
+    },
+    {
+      "case_id": "t1-count-walls",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "487",
+      "answer": "**Entity Count Analysis**\n\nAccording to the verified computed fact, there are **487** walls in total in the Office_A project.\n\n**Breakdown:**\n\n* Type: IfcWall (and its subtypes: IfcWallStandardCase)\n* Method: COUNT over parsed entities\n* Source: database index of IFC2X3 model\n\nNote: This count only includes walls and their subtypes, and does not include other types of entities.",
+      "latency_s": 1.9889534910034854,
+      "notes": []
+    },
+    {
+      "case_id": "t1-count-spaces",
+      "tier": 1,
+      "passed": false,
+      "skipped": false,
+      "expected": "99",
+      "answer": "**Number of Spaces**\nThere are **24** spaces defined in the model.\n\nThe IFC model shows 24 Space elements, each with its own unique GlobalID and properties.",
+      "latency_s": 2.109028249004041,
+      "notes": []
+    },
+    {
+      "case_id": "t1-storeys",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "Level 1, Level 2, Roof",
+      "answer": "**Building Storey List**\n=======================\n\nThe IFC model contains the following building storeys:\n\n* Level 1\n* Level 2\n* Roof\n\nThese storey names were extracted from the model database using a spatial tree walk (IfcBuildingStorey nodes) method. The elevations for each storey are:\n\n| Storey Name | Elevation (m) |\n| --- | --- |\n| Level 1 | 0.0 |\n| Level 2 | 4.2672 |\n| Roof | 7.9248 |\n\nAccording to the extracted data, the model contains 3 storeys.",
+      "latency_s": 2.968799622001825,
+      "notes": [
+        "matched 3/3"
+      ]
+    },
+    {
+      "case_id": "t1-schema",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "IFC2X3",
+      "answer": "**IFC Schema Version**\nAccording to the IFC file header, the IFC schema version for this model is **IFC2X3**.\n\n**Source:** Office_A_20110811.ifc",
+      "latency_s": 1.0133849330013618,
+      "notes": []
+    },
+    {
+      "case_id": "t2-materials",
+      "tier": 2,
+      "passed": true,
+      "skipped": false,
+      "expected": "Metal - Stud Layer, Plasterboard, Laminate - Ivory, Matte, Insulation - Insulated Panel, Metal - Firring, Wood - Sheathing - plywood, Default, Misc. Air Layers - Air Space, Ceiling Tile 600 x 600, Masonry - Brick",
+      "answer": "According to the IFC model, the following materials are used in the building elements:\n\n**Exterior Walls:**\n\n* Masonry - Brick (0.09 m)\n* Misc. Air Layers - Air Space (0.025 m)\n* Wood - Sheathing - plywood (0.019 m)\n* Metal - Stud Layer (0.152 m)\n* Plasterboard (0.016 m)\n\n**Interior Walls:**\n\n* Metal - Stud Layer (0.038 m)\n* Plasterboard (0.016 m)\n\n**Roof Walls:**\n\n* Masonry - Brick (0.09 m)\n* Misc. Air Layers - Air Space (0.025 m)\n* Wood - Sheathing - plywood (0.019 m)\n* Metal - Stud Layer (0.152 m)\n* Plasterboard (0.016 m)\n\nNote that the IFC model shows a consistent set of material layers for the exterior and roof walls, while the interior walls have a different set of material layers.\n\nHere is a summary of the materials used in the building elements:\n\n| Material | Exterior Walls | Interior Walls | Roof Walls |\n| --- | --- | --- | --- |\n| Masonry - Brick | |  |\n| Misc. Air Layers - Air Space | |  |\n| Wood - Sheathing - plywood | |  |\n| Metal - Stud Layer | | |\n| Plasterboard | | | |\n\nAccording to the IFC model, the materials used in the building elements are consistent across the different types of walls.",
+      "latency_s": 8.898433743001078,
+      "notes": [
+        "matched 5 material name(s)"
+      ]
+    },
+    {
+      "case_id": "t2-spaces",
+      "tier": 2,
+      "passed": true,
+      "skipped": false,
+      "expected": "203, 121, 140, 201, 237, 143, 113, 221, 135, 141",
+      "answer": "**Spaces/Rooms in the Building**\n================================\n\nAccording to the IFC model, the following spaces/rooms exist in the building:\n\n* Secure Doc Room (ID: 205)\n* Corridor (ID: 223, 202, 141, 121, 142, 201)\n* Open Office (ID: 221, 140, 237, 146, 203, 114, 113, 229)\n* Message Center (ID: 131)\n* Stair (ID: S202)\n\nThese spaces/rooms are identified by their unique IDs and names, and are located on various levels within the building.\n\n**Note:** The exact number and types of spaces/rooms may vary depending on the specific requirements and needs of the building.",
+      "latency_s": 5.65428048701142,
+      "notes": [
+        "matched 17 space name(s)"
+      ]
+    },
+    {
+      "case_id": "t2-fire-rating",
+      "tier": 2,
+      "passed": true,
+      "skipped": false,
+      "expected": "any of ('fire', 'rating'), non-refusal",
+      "answer": "The fire rating of the doors and walls is 'Fire Rating'.",
+      "latency_s": 1.5613856870040763,
+      "notes": []
+    },
+    {
+      "case_id": "t2-external-walls",
+      "tier": 2,
+      "passed": false,
+      "skipped": false,
+      "expected": "any of ('external', 'exterior'), non-refusal",
+      "answer": "**External Walls and Storey Locations**\n\nTo answer this question, I'll need to analyze the IFC model data. Unfortunately, the provided excerpts don't contain information about external walls or their locations. However, I can tell you that the IFC model has been analyzed using a spatial tree walk method to extract building storey information.\n\n**Storey List**\n\nAccording to the provided data, the building has the following storeys:\n\n| Storey Name | Elevation (m) |\n| --- | --- |\n| Level 1 | 0.0 |\n| Level 2 | 4.2672 |\n| Roof | 7.9248 |\n\nHowever, without further information about the IFC model's entity relationships or specific wall properties, I cannot determine which walls are external walls or their locations on the storeys.\n\n**IFC Model Analysis**\n\nThe IFC model shows the following building storey nodes:\n\n* Level 1 (Elevation: 0.0 m)\n* Level 2 (Elevation: 4.2672 m)\n* Roof (Elevation: 7.9248 m)\n\nHowever, I could not find this information in the uploaded project files regarding external walls and their locations on the storeys.",
+      "latency_s": 5.475078952993499,
+      "notes": []
+    }
+  ]
+}

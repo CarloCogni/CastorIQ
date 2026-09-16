@@ -110,6 +110,8 @@ Significant benchmark runs get a dated write-up in `docs/evaluation/`. These rec
 
 - [2026-08-05 — Natural-Language Write-Back Benchmark](evaluation/2026-08-05-writeback-nl-benchmark.md) — first full run of harness B; found a silent removal-intent corruption (success reported while writing the wrong value across five walls) and a `SET_ATTRIBUTE` crash.
 - [2026-09-15 — Writeback V3 bake-off](evaluation/2026-09-15-writeback-v3-bakeoff.md) — first rows of the V3 harness: 7B coder 41/95 on 8 GB, Claude ceiling 65/95, integrity 46/46 by independent re-read, explainer prose 10/10; the 14B and 30B rows pending a larger machine.
+- [2026-09-15 — RAV retrieval fix, before/after](evaluation/2026-09-15-rav-retrieval-fix.md) — harness D with `--repeat 3` on two models: recall 0.16 → 0.65 (`qwen2.5-coder:7b`) and 0.20 → 0.77 (`llama3.1:8b`), every key entity reached by its right document; ablation attributes the gain to the retrieval passes and value verification.
+- [2026-09-15 — Ask benchmark](evaluation/2026-09-15-ask-benchmark.md) — first published run of harness C: Tier 1 20/22, Tier 2 11/14 on `llama3.1:8b` across four public models; failures named per case.
 - [2026-08-30 — RAV Conflict-Scan Benchmark](evaluation/2026-08-30-rav-benchmark.md) — first measured RAV run (harness D): P 0.29 / R 0.20 on the planted corpus, and the finding that the bottleneck is entity↔chunk retrieval (4/15 key entities never retrieved; two conflict cases structurally unreachable at top-K 5), not LLM comparison.
 
 ---
