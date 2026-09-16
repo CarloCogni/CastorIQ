@@ -573,6 +573,15 @@ class ConflictScanService:
         stats["retrieval"] = dict(self.retrieval_stats)
         return stats
 
+    def build_retrieval_map(self) -> dict[IFCEntity, list[DocumentChunk]]:
+        """The entity → requirement-chunk map a scan would compare, with no model call.
+
+        Exposed for the RAV benchmark's ``--coverage`` report: it shows which
+        entities retrieval reaches, from which documents, before any LLM runs.
+        ``retrieval_stats`` holds the pair counts per pass afterwards.
+        """
+        return self._build_entity_chunk_map(self._get_requirement_chunks())
+
     def _get_requirement_chunks(self) -> list[DocumentChunk]:
         """
         Return document chunks that contain AEC compliance keywords.

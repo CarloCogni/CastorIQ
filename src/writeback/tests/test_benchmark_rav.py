@@ -329,3 +329,102 @@ def test_report_column_suffixes_repeats_after_the_first():
 
     assert first.column == "default"
     assert second.column == "default#2"
+
+
+# ── Retrieval coverage ────────────────────────────────────────────────────────
+
+
+def _coverage_corpus() -> RavCorpus:
+    """Two groups; W1 is targeted by two documents, D1 by one."""
+    return RavCorpus(
+        ifc="x.ifc",
+        groups={"walls": ("W1", "W2"), "doors": ("D1",)},
+        cases=(
+            _case(
+                id="FS-01", document="fire-safety-strategy", group="walls", global_ids=("W1", "W2")
+            ),
+            _case(id="TH-01", document="thermal-specification", group="walls", global_ids=("W1",)),
+            _case(id="FS-02", document="fire-safety-strategy", group="doors", global_ids=("D1",)),
+        ),
+    )
+
+
+def test_coverage_counts_reached_and_fully_reached_entities():
+    """W1 is reached by fire only (not full), W2 by fire (full), D1 by nothing."""
+    # Arrange
+    corpus = _coverage_corpus()
+    reach = {"W1": {"fire-safety-strategy"}, "W2": {"fire-safety-strategy"}}
+
+    # Act
+    from writeback.services.benchmark.rav.coverage import coverage_from_map
+
+    report = coverage_from_map(corpus, reach, entity_first=False)
+
+    # Assert
+    assert report.reached() == (2, 3)
+    assert report.fully_reached() == (1, 3)
+    assert report.by_group() == {"walls": (2, 1, 2), "doors": (0, 0, 1)}
+    w1 = next(e for e in report.entities if e.global_id == "W1")
+    assert w1.required_documents == ("fire-safety-strategy", "thermal-specification")
+    assert not w1.fully_reached
+
+
+def test_coverage_reach_from_a_document_without_a_case_does_not_count_as_right():
+    """Being reached by an unrelated document still leaves the constraining one missing."""
+    # Arrange
+    from writeback.services.benchmark.rav.coverage import coverage_from_map
+
+    corpus = _coverage_corpus()
+    reach = {"D1": {"acoustic-and-structural-notes"}}
+
+    # Act
+    report = coverage_from_map(corpus, reach, entity_first=True)
+
+    # Assert
+    d1 = next(e for e in report.entities if e.global_id == "D1")
+    assert d1.reached and not d1.fully_reached
+    assert report.as_dict()["reached_by_every_constraining_document"] == 0
+
+
+def test_retrieval_coverage_maps_chunks_to_document_stems_and_counts_non_key_types(monkeypatch):
+    """The service's map is read by GlobalId and document stem; non-key entities are tallied."""
+    # Arrange
+    from collections import namedtuple
+    from types import SimpleNamespace
+
+    from writeback.services.benchmark.rav import coverage
+
+    Entity = namedtuple("Entity", "global_id ifc_type")
+
+    def chunk(name):
+        return SimpleNamespace(document=SimpleNamespace(name=name))
+
+    mapping = {
+        Entity("W1", "IfcWall"): [
+            chunk("fire-safety-strategy.pdf"),
+            chunk("thermal-specification.pdf"),
+        ],
+        Entity("X9", "IfcCovering"): [chunk("fire-safety-strategy.pdf")],
+    }
+    seen = {}
+
+    class FakeScanner:
+        def __init__(self, project, user, *, entity_first):
+            seen["entity_first"] = entity_first
+            self.retrieval_stats = {"by_reference": 1, "by_label": 0, "by_embedding": 2}
+
+        def build_retrieval_map(self):
+            return mapping
+
+    monkeypatch.setattr("writeback.services.conflict_scan_service.ConflictScanService", FakeScanner)
+
+    # Act
+    report = coverage.retrieval_coverage(object(), _coverage_corpus(), entity_first=True)
+
+    # Assert
+    assert seen["entity_first"] is True
+    assert report.reached() == (1, 3)
+    assert report.fully_reached() == (1, 3)
+    assert report.non_key_reached == {"IfcCovering": 1}
+    assert report.pairs_by_pass == {"by_reference": 1, "by_label": 0, "by_embedding": 2}
+    assert "1/3" in coverage.render_coverage([report])

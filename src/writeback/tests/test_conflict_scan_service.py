@@ -899,6 +899,22 @@ class TestEntityFirstRetrieval:
         assert scan_service.retrieval_stats["by_reference"] == 3
         assert scan_service.retrieval_stats["by_embedding"] == 0
 
+    def test_build_retrieval_map_maps_the_requirement_chunks(self, scan_service, monkeypatch):
+        """The public map is the entity map of the requirement chunks, built without the LLM."""
+        # Arrange
+        chunks = [object()]
+        monkeypatch.setattr(scan_service, "_get_requirement_chunks", lambda: chunks)
+        monkeypatch.setattr(
+            scan_service, "_build_entity_chunk_map", lambda given: {"entity": list(given)}
+        )
+
+        # Act
+        mapping = scan_service.build_retrieval_map()
+
+        # Assert
+        assert mapping == {"entity": chunks}
+        scan_service.llm.invoke.assert_not_called()
+
     def test_label_pass_needs_a_property_mention(self, scan_service, ifc_file):
         """'walls' alone pulls nothing; 'walls' plus 'U-value' pulls every wall."""
         from ifc_processor.tests.factories import IFCEntityFactory

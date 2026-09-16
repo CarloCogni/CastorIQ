@@ -77,9 +77,12 @@ uv run manage.py benchmark_rav --project <uuid> --setup                     # up
 uv run manage.py benchmark_rav --project <uuid> --repeat 3 --json ../runs/rav.json   # score 3×, save artifact
 uv run manage.py benchmark_rav --project <uuid> --repeat 3 --baseline ../runs/rav.json  # delta vs the variance floor
 uv run manage.py benchmark_rav --project <uuid> --ablate                    # mitigation ablation table
+uv run manage.py benchmark_rav --project <uuid> --coverage --json ../runs/cov.json   # retrieval coverage, no model call
 ```
 
-Corpus conventions and editing rules: [`fixtures/benchmark/rav/README.md`](../fixtures/benchmark/rav/README.md). Key parsing and the scoring maths are unit-tested without an LLM in `src/writeback/tests/test_benchmark_rav.py`.
+`--coverage` rebuilds the scanner's entity–chunk map (`ConflictScanService.build_retrieval_map`) with the entity-first passes off and on and reports, per key group, how many key entities any requirement chunk reaches and how many are reached by every document whose key cases target them. It reads stored embeddings only, so it needs the database but no model (`writeback/services/benchmark/rav/coverage.py`).
+
+Corpus conventions and editing rules: [`fixtures/benchmark/rav/README.md`](../fixtures/benchmark/rav/README.md). The figures the final memory cites from Harnesses B, C and D are recomputed from the committed artifacts, with no database or model, by `uv run python docs/evaluation/recount.py`. Key parsing and the scoring maths are unit-tested without an LLM in `src/writeback/tests/test_benchmark_rav.py`.
 
 ### Related tools
 

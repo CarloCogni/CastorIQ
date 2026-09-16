@@ -27,6 +27,10 @@ Usage::
     # Variance floor: three runs per variant, mean and min-max in the table and the artifact.
     cd src && uv run manage.py benchmark_rav --project <uuid> --repeat 3 --json ../runs/rav.json
 
+    # Retrieval coverage only, no model call: which key entities the requirement
+    # chunks reach with the entity-first passes off and on.
+    cd src && uv run manage.py benchmark_rav --project <uuid> --coverage --json ../runs/cov.json
+
 Conflicts the run creates are deleted afterwards unless ``--keep-conflicts``.
 """
 
@@ -49,6 +53,11 @@ from writeback.services.benchmark.rav import (
     diff_rav_runs,
     load_key,
     render_rav_report,
+)
+from writeback.services.benchmark.rav.coverage import (
+    render_coverage,
+    retrieval_coverage,
+    write_coverage_json,
 )
 from writeback.services.benchmark.rav.report import load_baseline, write_json
 
@@ -89,6 +98,11 @@ class Command(BaseCommand):
             help=f"Upload and process the PDFs in {DEFAULT_DOCS} into the project, then exit.",
         )
         parser.add_argument("--ablate", action="store_true", help="Run the full ablation sweep.")
+        parser.add_argument(
+            "--coverage",
+            action="store_true",
+            help="Report which key entities retrieval reaches (passes off and on); no model call.",
+        )
         parser.add_argument("--no-type-gate", action="store_true")
         parser.add_argument("--no-keyword-filter", action="store_true")
         parser.add_argument(
@@ -138,6 +152,10 @@ class Command(BaseCommand):
 
         self._check_documents(project, corpus)
 
+        if options["coverage"]:
+            self._coverage(project, corpus, options)
+            return
+
         variants = list(ABLATION_VARIANTS) if options["ablate"] else [self._settings_from(options)]
         runner = RavRunner(project, keep_conflicts=options["keep_conflicts"])
 
@@ -178,6 +196,22 @@ class Command(BaseCommand):
             self.stdout.write(f"\nartifact written: {path}")
 
     # ── Helpers ────────────────────────────────────────────
+
+    def _coverage(self, project: Project, corpus, options) -> None:
+        """Print and optionally save the retrieval coverage for both settings."""
+        reports = [
+            retrieval_coverage(project, corpus, entity_first=False),
+            retrieval_coverage(project, corpus, entity_first=True),
+        ]
+        self.stdout.write(render_coverage(reports))
+        if options["json"]:
+            key = Path(options["key"]).resolve()
+            try:
+                key_label = str(key.relative_to(RAV_ROOT.parents[2]))
+            except ValueError:
+                key_label = str(key)
+            path = write_coverage_json(reports, options["json"], key_label)
+            self.stdout.write(f"\nartifact written: {path}")
 
     @staticmethod
     def _settings_from(options) -> ScanSettings:
