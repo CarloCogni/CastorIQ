@@ -4,7 +4,11 @@
 The delivery documents use direct formatting (no custom paragraph styles), so
 new content is built by deep-copying a paragraph or table the document already
 contains and replacing its runs. Supported inline syntax: ``**bold**``,
-```code```, ``[label](url)``. Supported blocks are parsed by ``parse_blocks``.
+```code```, ``[label](url)``, ``[^N]`` (a reference to footnote id N of the
+source document), and the team's review colours
+``{yellow}…{/yellow}`` (also cyan, magenta, green). Colours are rendered only
+after ``set_review(True)``; the submission build drops them. Supported blocks
+are parsed by ``parse_blocks``.
 """
 
 from __future__ import annotations
@@ -18,7 +22,12 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
 
-INLINE = re.compile(r"(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))")
+INLINE = re.compile(r"(\*\*[^*]+\*\*|`[^`]+`|\[\^\d+\]|\[[^\]]+\]\([^)]+\))")
+FOOTNOTE = re.compile(r"\[\^(\d+)\]")
+REVIEW_COLOURS = ("yellow", "cyan", "magenta", "green")
+HIGHLIGHT = re.compile(r"\{(yellow|cyan|magenta|green)\}(.*?)\{/\1\}")
+MARKER = re.compile(r"\{/?(?:yellow|cyan|magenta|green)\}")
+_review = {"on": False}
 LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 CODE_FONT = "Consolas"
 LINK_COLOR = "1b5fb4"
@@ -29,6 +38,30 @@ CONTENT_TAGS = {
     qn("w:bookmarkStart"),
     qn("w:bookmarkEnd"),
 }
+
+
+def set_review(on: bool) -> None:
+    """Render the review colours (True) or drop them (False, the submission build)."""
+    _review["on"] = on
+
+
+def strip_markers(text: str) -> str:
+    """Remove the review colour markers, keeping the text they wrap."""
+    return MARKER.sub("", text)
+
+
+def colour_segments(text: str) -> list[tuple[str, str | None]]:
+    """Split text into (segment, colour) pieces; colour is None outside markers."""
+    pieces: list[tuple[str, str | None]] = []
+    position = 0
+    for match in HIGHLIGHT.finditer(text):
+        if match.start() > position:
+            pieces.append((text[position : match.start()], None))
+        pieces.append((match.group(2), match.group(1)))
+        position = match.end()
+    if position < len(text):
+        pieces.append((text[position:], None))
+    return pieces
 
 
 @dataclass
@@ -72,22 +105,23 @@ def _line_block(line: str) -> Block:
     for prefix, kind in (("### ", "h3"), ("## ", "h2"), ("# ", "h1"), ("- ", "bullet")):
         if line.startswith(prefix):
             return Block(kind, line[len(prefix) :])
+    bare = strip_markers(line)
     drawing = re.fullmatch(r"\[\[DRAWING (\d+)\]\]", line)
     if drawing:
         return Block("drawing", drawing.group(1))
     image = re.fullmatch(r"\[\[IMAGE (.+)\]\]", line)
     if image:
         return Block("image", image.group(1))
-    if re.match(r"Figure \d+\. ", line):
+    if re.match(r"Figure \d+\. ", bare):
         return Block("figcap", line)
-    if re.match(r"Table [\dA-Z]+(\.\d+)?\. ", line):
+    if re.match(r"Table [\dA-Z]+(\.\d+)?\. ", bare):
         return Block("tabcap", line)
     return Block("para", line)
 
 
 def plain_text(text: str) -> str:
-    """Strip inline Markdown to the text a reader sees."""
-    text = LINK.sub(r"\1", text)
+    """Strip inline Markdown and colour markers to the text a reader sees."""
+    text = FOOTNOTE.sub("", LINK.sub(r"\1", strip_markers(text)))
     return text.replace("**", "").replace("`", "")
 
 
@@ -181,6 +215,7 @@ def make_run(
     size: int | None = None,
     color: str | None = None,
     underline: bool = False,
+    highlight: str | None = None,
 ):
     """Build a w:r element with a copy of ``rpr`` and the requested overrides."""
     run = OxmlElement("w:r")
@@ -197,6 +232,8 @@ def make_run(
     if size:
         _set(props, "w:sz", val=str(size))
         _set(props, "w:szCs", val=str(size))
+    if highlight:
+        _set(props, "w:highlight", val=highlight)
     run.append(props)
     t = OxmlElement("w:t")
     t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
@@ -215,24 +252,54 @@ def add_inline(
     code_size: int | None = None,
     bold_all: bool = False,
 ) -> None:
-    """Append runs for ``text`` (with inline Markdown) to a paragraph element."""
-    for token in INLINE.split(text):
-        if not token:
-            continue
-        if token.startswith("**") and token.endswith("**"):
-            paragraph_el.append(make_run(token[2:-2], rpr, bold=True, size=size))
-        elif token.startswith("`") and token.endswith("`"):
-            paragraph_el.append(
-                make_run(token[1:-1], rpr, code=True, size=code_size or size, bold=bold_all)
-            )
-        elif LINK.fullmatch(token):
-            label, url = LINK.fullmatch(token).groups()
-            paragraph_el.append(_hyperlink(label, url, rpr, part, size=size, code_size=code_size))
-        else:
-            paragraph_el.append(make_run(token, rpr, size=size, bold=bold_all))
+    """Append runs for ``text`` (inline Markdown and colour markers) to a paragraph element."""
+    for segment, colour in colour_segments(text):
+        hl = colour if _review["on"] else None
+        for token in INLINE.split(segment):
+            if not token:
+                continue
+            if token.startswith("**") and token.endswith("**"):
+                run = make_run(token[2:-2], rpr, bold=True, size=size, highlight=hl)
+            elif token.startswith("`") and token.endswith("`"):
+                run = make_run(
+                    token[1:-1], rpr, code=True, size=code_size or size, bold=bold_all, highlight=hl
+                )
+            elif FOOTNOTE.fullmatch(token):
+                run = footnote_run(FOOTNOTE.fullmatch(token).group(1))
+            elif LINK.fullmatch(token):
+                label, url = LINK.fullmatch(token).groups()
+                run = _hyperlink(
+                    label, url, rpr, part, size=size, code_size=code_size, highlight=hl
+                )
+            else:
+                run = make_run(token, rpr, size=size, bold=bold_all, highlight=hl)
+            paragraph_el.append(run)
 
 
-def _hyperlink(label: str, url: str, rpr, part, *, size: int | None, code_size: int | None):
+def footnote_run(footnote_id: str):
+    """A superscript reference to an existing footnote, as the source document writes it."""
+    run = OxmlElement("w:r")
+    rpr = OxmlElement("w:rPr")
+    align = OxmlElement("w:vertAlign")
+    align.set(qn("w:val"), "superscript")
+    rpr.append(align)
+    run.append(rpr)
+    ref = OxmlElement("w:footnoteReference")
+    ref.set(qn("w:id"), footnote_id)
+    run.append(ref)
+    return run
+
+
+def _hyperlink(
+    label: str,
+    url: str,
+    rpr,
+    part,
+    *,
+    size: int | None,
+    code_size: int | None,
+    highlight: str | None = None,
+):
     """Build an external w:hyperlink; a label wrapped in backticks keeps the code font."""
     r_id = part.relate_to(url, RT.HYPERLINK, is_external=True)
     link = OxmlElement("w:hyperlink")
@@ -249,6 +316,7 @@ def _hyperlink(label: str, url: str, rpr, part, *, size: int | None, code_size: 
                 size=(code_size if is_code else None) or size,
                 color=LINK_COLOR,
                 underline=True,
+                highlight=highlight,
             )
         )
     return link
@@ -278,11 +346,13 @@ def table(
     font_size: int,
     code_size: int,
     weights: list[float] | None = None,
+    highlight: str | None = None,
 ):
     """Build a table from ``template_tbl`` (header row + body row) with new rows.
 
     Column widths are proportional to ``weights`` or, when absent, to the longest
     plain-text cell of each column, with a floor so short columns stay legible.
+    ``highlight`` colours every non-empty cell (review build only).
     """
     tbl = copy.deepcopy(template_tbl)
     tpl_rows = tbl.findall(qn("w:tr"))
@@ -316,6 +386,8 @@ def table(
             _set_cell_width(tc_pr, widths[c])
             p_template = tc.find(qn("w:p"))
             new_p = empty_copy(p_template)
+            if highlight and text:
+                text = f"{{{highlight}}}{text}{{/{highlight}}}"
             add_inline(new_p, text, base_rpr(p_template), part, size=font_size, code_size=code_size)
             tc.remove(p_template)
             tc.append(new_p)

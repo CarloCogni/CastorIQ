@@ -11,7 +11,12 @@ and writes ``…_APPENDICES_v3.docx``:
 - Appendix E is appended from ``report-sections/appendix-e.md``; its table is
   the findings table of the dated record, so the two cannot drift apart.
 
-    uv run --with python-docx python docs/fmp-delivery/tools/rewrite_appendices.py
+With ``--review`` it also writes ``…_APPENDICES_v3_REVIEW.docx``: the review
+note from ``report-sections/review-legend-appendices.md`` at the top, Appendix E
+in cyan, and Word tracked changes against the original, verified the same way
+as the memory's review copy.
+
+    uv run --with python-docx python docs/fmp-delivery/tools/rewrite_appendices.py [--review]
 """
 
 from __future__ import annotations
@@ -23,6 +28,7 @@ from pathlib import Path
 
 import docx
 import docx_markdown as md
+import docx_redline as redline
 from docx.oxml.ns import qn
 from docx.shared import Emu
 
@@ -30,6 +36,8 @@ ROOT = Path(__file__).resolve().parents[3]
 DELIVERY = ROOT / "docs/fmp-delivery/delivery-docs"
 SOURCE = DELIVERY / "CastorIQ_Final_Memory_APPENDICES.docx"
 TARGET = DELIVERY / "CastorIQ_Final_Memory_APPENDICES_v3.docx"
+REVIEW_TARGET = DELIVERY / "CastorIQ_Final_Memory_APPENDICES_v3_REVIEW.docx"
+REVIEW_NOTE = ROOT / "docs/fmp-delivery/report-sections/review-legend-appendices.md"
 MAIN = DELIVERY / "CastorIQ_Final_Memory_MAIN.docx"
 APPENDIX_E = ROOT / "docs/fmp-delivery/report-sections/appendix-e.md"
 RECORD = ROOT / "docs/evaluation/2026-09-16-expert-testing-v3.md"
@@ -168,6 +176,7 @@ def appendix_e(document) -> list:
                     font_size=15,
                     code_size=13,
                     weights=FINDINGS_WEIGHTS,
+                    highlight="cyan",  # rendered in the review copy only
                 )
             )
         else:
@@ -175,13 +184,54 @@ def appendix_e(document) -> list:
     return elements
 
 
-def main() -> int:
-    """Apply the fixes, append Appendix E, check, save."""
+def review_note(document) -> list:
+    """The review callout for the top of the appendices, in the memory's callout format."""
+    paragraphs = docx.Document(str(MAIN)).paragraphs
+    label = next(p._p for p in paragraphs if "REVIEW COPY" in p.text)
+    legend = next(p._p for p in paragraphs if p.text.strip().startswith("Yellow ="))
+    elements = []
+    for block in md.parse_blocks(REVIEW_NOTE.read_text(encoding="utf-8")):
+        template = label if block.kind == "h2" else legend
+        elements.append(md.paragraph(template, "  " + block.text, document.part, code_size=15))
+    return elements
+
+
+def build_document(review: bool):
+    """The fixed appendices with Appendix E; in review mode also the note and colours."""
+    md.set_review(review)
     document = docx.Document(str(SOURCE))
     done = fix_appendix_a(document) + fix_appendix_d(document)
-    sect_pr = document.element.body.find(qn("w:sectPr"))
+    body = document.element.body
+    sect_pr = body.find(qn("w:sectPr"))
     for element in appendix_e(document):
         sect_pr.addprevious(element)
+    notes = review_note(document) if review else []
+    first = next(body.iterchildren())
+    for element in notes:
+        first.addprevious(element)
+    return document, done, redline.lines_of(notes)
+
+
+def build_review(clean) -> int:
+    """Write the review copy with tracked changes; verify the redline."""
+    document, _, review_only = build_document(review=True)
+    original = docx.Document(str(SOURCE))
+    counts = redline.mark(original, document)
+    problems = redline.check(document, clean, original, review_only)
+    print(f"review: {counts}")
+    for line in problems:
+        print(f"PROBLEM    {line}")
+    if problems:
+        print("review copy not saved")
+        return 1
+    document.save(str(REVIEW_TARGET))
+    print(f"saved {REVIEW_TARGET.relative_to(ROOT)}")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    """Apply the fixes, append Appendix E, check, save; ``--review`` adds the review copy."""
+    document, done, _ = build_document(review=False)
     for item in done:
         print(f"fixed      {item}")
     full = "\n".join(p.text for p in document.paragraphs)
@@ -198,8 +248,10 @@ def main() -> int:
         return 1
     document.save(str(TARGET))
     print(f"saved {TARGET.relative_to(ROOT)}")
-    return 0
+    if "--review" not in argv:
+        return 0
+    return build_review(document)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

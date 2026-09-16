@@ -8,9 +8,9 @@ FMI Corporation and PlanGrid (2018). Construction Disconnected: The High Cost of
 
 IfcOpenShell contributors (2025). IfcOpenShell, version 0.8.4 [software]. https://ifcopenshell.org.
 
-ISO 16739-1:2018. Industry Foundation Classes (IFC) for data sharing in the construction and facility management industries — Part 1: Data schema. International Organization for Standardization.
+{green}ISO 16739-1:2018. Industry Foundation Classes (IFC) for data sharing in the construction and facility management industries — Part 1: Data schema. International Organization for Standardization.{/green}
 
-ISO 19650-1:2018. Organization and digitization of information about buildings and civil engineering works, including building information modelling (BIM) — Information management using building information modelling — Part 1: Concepts and principles. International Organization for Standardization.
+{green}ISO 19650-1:2018. Organization and digitization of information about buildings and civil engineering works, including building information modelling (BIM) — Information management using building information modelling — Part 1: Concepts and principles. International Organization for Standardization.{/green}
 
 Lewis, P., Perez, E., Piktus, A. et al. (2020). Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks. Advances in Neural Information Processing Systems (NeurIPS), 33. arXiv:2005.11401.
 

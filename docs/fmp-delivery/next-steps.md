@@ -15,9 +15,21 @@ it lives (`docs/evaluation/`, `runs/`, `fixtures/`). Updated 2026-09-16.
       `_v3.docx` is lost on the next rebuild. The memory build refuses to save
       if a figure in the abstract, §5 or §6 is not in a record under
       `docs/evaluation/`, if a withdrawn figure or V2 term survives, or if the
-      body passes 5,000 words (4,951 now; tables, glossary and references
+      body passes 5,000 words (4,955 now; tables, glossary and references
       excluded).
-- [ ] **Team review of the v3 documents.** Every §8 line was edited; each
+- [x] **Review copies for the team** (2026-09-16): `…_MAIN_v3_REVIEW.docx`
+      and `…_APPENDICES_v3_REVIEW.docx`, built with `--review`. They restore
+      the draft's four review colours where they still apply, the colour
+      legend, a "what changed and why" table, and Word tracked changes against
+      the team's originals; revision tracking is on for teammates' own edits.
+      Three of the draft's six footnotes still applied and are back in the
+      clean files (STEP format; OCR figures, reworded to the vendor source;
+      security test commit); the other three belonged to removed text.
+- [ ] **Team review of the v3 documents.** Send the two `_REVIEW` files.
+      Teammates comment in Word; move accepted wording into
+      `report-sections/*.md` and rebuild (edits made in the docx are not
+      carried over automatically). Submit only the files without `_REVIEW`
+      in their names. Every §8 line was edited; each
       person confirms their own. Pavla: §1, the ISO references, Appendix D.
       Islam: §4.4 (Schedule). Maria: §5.4 (her Solibri rows, `maria.csv`
       row 14). Erez: §5.4, §6.3 and Appendix E (his rows 83–97).

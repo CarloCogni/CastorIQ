@@ -2,7 +2,7 @@
 
 ## 3.1 Data sources and preparation
 
-The system operates on two data categories. Structured BIM data consists of IFC files parsed with IfcOpenShell (IfcOpenShell contributors, 2025) against the IFC4 schema; IFC2x3 uploads are converted to IFC4 in-pipeline. Entities are extracted with their GlobalIds, covering spatial hierarchy (IfcBuilding, IfcBuildingStorey), building elements (IfcWall, IfcDoor, IfcWindow) and their property sets. Unstructured documentation comprises PDF and DOCX fire safety reports, thermal specifications, acoustic analyses and structural calculations, extracted page by page with section structure preserved where possible.
+The system operates on two data categories. Structured BIM data consists of IFC files in STEP Physical Format[^1], parsed with IfcOpenShell (IfcOpenShell contributors, 2025) against the IFC4 schema; IFC2x3 uploads are converted to IFC4 in-pipeline. Entities are extracted with their GlobalIds, covering spatial hierarchy (IfcBuilding, IfcBuildingStorey), building elements (IfcWall, IfcDoor, IfcWindow) and their property sets. Unstructured documentation comprises PDF and DOCX fire safety reports, thermal specifications, acoustic analyses and structural calculations, extracted page by page with section structure preserved where possible.
 
 [[DRAWING 2]]
 

@@ -21,12 +21,16 @@ Layout:
 
 - `delivery-docs/`: what gets submitted. The team's originals
   (`CastorIQ_Final_Memory_MAIN.docx`, `…_APPENDICES.docx`), the testing
-  spreadsheet, the judging criteria, and the generated `…_v3.docx` files.
+  spreadsheet, the judging criteria, the generated `…_v3.docx` files (to
+  submit) and the `…_v3_REVIEW.docx` files (for the team only: colours,
+  change table, tracked changes against the originals).
 - `report-sections/`: the memory's text, one Markdown file per section, plus
   `appendix-e.md`. This is where the words are edited.
 - `tools/`: `rewrite_memory.py` and `rewrite_appendices.py` build the
   `_v3.docx` files from the sections in the originals' own formatting and
-  check every evaluative number against `docs/evaluation/`.
+  check every evaluative number against `docs/evaluation/`; with `--review`
+  they also build the review copies, using `docx_redline.py` for the tracked
+  changes.
 - `figures/`: Figures 1, 3 and A.7 with the commands that regenerate them.
 
 ## Future work (not in the FMP scope)

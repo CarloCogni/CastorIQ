@@ -10,7 +10,14 @@ Before saving it checks that every fraction and decimal in the evaluative
 sections appears in an evaluation record, that no withdrawn figure or V2 term
 survives, and that the body stays within the word limit.
 
-    uv run --with python-docx python docs/fmp-delivery/tools/rewrite_memory.py
+With ``--review`` it also writes ``…_MAIN_v3_REVIEW.docx`` for the team: the
+review colours of ``{yellow}…{/yellow}`` markers, the colour legend and the
+"what changed" table after the abstract (``review-legend.md``,
+``review-changes.md``), and Word tracked changes against the original. The
+review copy is checked too: accepting every change must give the clean
+document plus the review notes, rejecting every change must give the original.
+
+    uv run --with python-docx python docs/fmp-delivery/tools/rewrite_memory.py [--review]
 """
 
 from __future__ import annotations
@@ -22,14 +29,20 @@ from pathlib import Path
 
 import docx
 import docx_markdown as md
+import docx_redline as redline
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml.ns import qn
 from docx.shared import Emu
+from lxml import etree
 
 ROOT = Path(__file__).resolve().parents[3]
 DELIVERY = ROOT / "docs/fmp-delivery/delivery-docs"
 SOURCE = DELIVERY / "CastorIQ_Final_Memory_MAIN.docx"
 TARGET = DELIVERY / "CastorIQ_Final_Memory_MAIN_v3.docx"
+REVIEW_TARGET = DELIVERY / "CastorIQ_Final_Memory_MAIN_v3_REVIEW.docx"
 SECTIONS = ROOT / "docs/fmp-delivery/report-sections"
+REVIEW_NOTES = (SECTIONS / "review-legend.md", SECTIONS / "review-changes.md")
+CHANGES_WEIGHTS = [16, 38, 46]  # section, what changed, why
 EVIDENCE = sorted((ROOT / "docs/evaluation").glob("*.md")) + sorted(
     (ROOT / "docs/evaluation/testing-log").glob("*.csv")
 )
@@ -55,7 +68,18 @@ FORBIDDEN = (
     "Ning et al",
     "Irani",
     "Autodesk / FMI",
+    "reference workstation",
 )
+# Footnotes of the source document whose wording no longer holds; the rest are kept
+# as written, and the clean build drops the ones nothing references any more.
+FOOTNOTE_TEXT = {
+    "3": (
+        "GLM-OCR's published figures, not measured on Castor: about 1.86 pages per second "
+        "at single concurrency, and 94.62 on OmniDocBench V1.5 at release "
+        "(docs/ocr-pipeline.md)."
+    ),
+}
+EXPECTED_FOOTNOTES = {"1", "3", "5"}  # STEP format, OCR figures, security test commit
 # Figures legitimately absent from docs/evaluation, with where they come from.
 ALLOWED_NUMBERS = {
     "0.10": "the requirement limit of the marginal RAV case; the record writes it as 0.10 in prose",
@@ -79,6 +103,10 @@ class Templates:
         self.tabcap = self._find(paragraphs, lambda p: p.text.startswith("Table 1."))
         self.glossary = self._find(paragraphs, lambda p: p.text.startswith("AECO"))
         self.reference = self._find(paragraphs, lambda p: p.text.startswith("Autodesk"))
+        self.callout_label = self._find(paragraphs, lambda p: "REVIEW COPY" in p.text)
+        self.callout_legend = self._find(
+            paragraphs, lambda p: p.text.strip().startswith("Yellow =")
+        )
         self.pagebreak = self._find(
             paragraphs, lambda p: p._p.find(".//" + qn("w:br")) is not None and not p.text.strip()
         )
@@ -130,10 +158,14 @@ def keep_with_next(element) -> None:
         ppr.insert(0, keep)
 
 
-def build(document, tpl: Templates) -> list:
-    """Render every section file into a list of body elements."""
+def build(document, tpl: Templates, review: bool) -> tuple[list, list]:
+    """Render every section file into body elements; also return the review notes.
+
+    In the review build the colour legend and the change table follow the abstract.
+    """
     part = document.part
     elements: list = []
+    notes: list = []
     for path in sorted(SECTIONS.glob("[0-9][0-9]-*.md")):
         number = int(path.name[:2])
         blocks = md.parse_blocks(path.read_text(encoding="utf-8"))
@@ -147,7 +179,36 @@ def build(document, tpl: Templates) -> list:
                 keep_with_next(element)
             elements.append(element)
         if number == 0:
+            if review:
+                notes = review_notes(document, tpl)
+                elements += notes
             elements.append(copy.deepcopy(tpl.pagebreak))
+    return elements, notes
+
+
+def review_notes(document, tpl: Templates) -> list:
+    """The review callout: ``##`` lines are labels, paragraphs the legend, tables the changes."""
+    elements = []
+    for path in REVIEW_NOTES:
+        for block in md.parse_blocks(path.read_text(encoding="utf-8")):
+            if block.kind == "table":
+                elements.append(
+                    md.table(
+                        tpl.table,
+                        block.rows,
+                        document.part,
+                        total_width=TEXT_WIDTH_DXA,
+                        font_size=15,
+                        code_size=13,
+                        weights=CHANGES_WEIGHTS,
+                    )
+                )
+            elif block.kind == "h2":
+                elements.append(md.paragraph(tpl.callout_label, "  " + block.text, document.part))
+            else:
+                elements.append(
+                    md.paragraph(tpl.callout_legend, "  " + block.text, document.part, code_size=15)
+                )
     return elements
 
 
@@ -221,6 +282,37 @@ def replace_body(document, elements: list) -> None:
         document.part.drop_rel(r_id)
 
 
+def footnotes_part(document):
+    """The package part holding the footnotes (a generic part in python-docx)."""
+    return next(r.target_part for r in document.part.rels.values() if r.reltype == RT.FOOTNOTES)
+
+
+def fix_footnotes(document, prune: bool) -> list[str]:
+    """Reword the footnotes in FOOTNOTE_TEXT; with ``prune``, drop unreferenced ones.
+
+    Returns the texts of the footnotes that remain.
+    """
+    part = footnotes_part(document)
+    root = etree.fromstring(part.blob)
+    referenced = {r.get(qn("w:id")) for r in document.element.body.iter(qn("w:footnoteReference"))}
+    kept = []
+    for footnote in list(root.iter(qn("w:footnote"))):
+        footnote_id = footnote.get(qn("w:id"))
+        if footnote.get(qn("w:type")):
+            continue  # separators
+        if prune and footnote_id not in referenced:
+            root.remove(footnote)
+            continue
+        texts = list(footnote.iter(qn("w:t")))
+        if footnote_id in FOOTNOTE_TEXT:
+            texts[0].text = FOOTNOTE_TEXT[footnote_id]
+            for extra in texts[1:]:
+                extra.text = ""
+        kept.append("".join(t.text or "" for t in footnote.iter(qn("w:t"))))
+    part._blob = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+    return kept
+
+
 def check_numbers() -> list[str]:
     """Every fraction and decimal in the evaluative sections must occur in a record."""
     corpus = "\n".join(p.read_text(encoding="utf-8") for p in EVIDENCE)
@@ -243,12 +335,13 @@ def check_numbers() -> list[str]:
     return sorted(set(missing))
 
 
-def check_output(document) -> tuple[int, list[str]]:
+def check_output(document, footnotes: list[str]) -> tuple[int, list[str]]:
     """Word count of the counted body, plus any forbidden string that survived."""
     counted = md.body_text(document, UNCOUNTED)
     words = sum(len(text.split()) for _, text in counted)
     full = "\n".join(p.text for p in document.paragraphs)
     full += "\n".join(c.text for t in document.tables for row in t.rows for c in row.cells)
+    full += "\n".join(footnotes)
     problems = [f"forbidden string survived: {s!r}" for s in FORBIDDEN if s in full]
     rsaa = [t for h, t in md.body_text(document, ()) if "RSAA" in t and h != "Glossary"]
     problems += [f"RSAA outside the glossary: {t[:60]}" for t in rsaa]
@@ -257,32 +350,66 @@ def check_output(document) -> tuple[int, list[str]]:
         problems.append(f"{highlights} highlights left")
     if words > WORD_LIMIT:
         problems.append(f"body is {words} words, limit {WORD_LIMIT}")
+    refs = {r.get(qn("w:id")) for r in document.element.body.iter(qn("w:footnoteReference"))}
+    if refs != EXPECTED_FOOTNOTES or len(footnotes) != len(EXPECTED_FOOTNOTES):
+        problems.append(f"footnote references {sorted(refs)}, {len(footnotes)} footnotes kept")
     return words, problems
 
 
-def main() -> int:
-    """Build, check, save."""
+def build_document(review: bool):
+    """The rebuilt document, with colours and review notes when ``review`` is set."""
+    md.set_review(review)
+    document = docx.Document(str(SOURCE))
+    templates = Templates(document)
+    elements, notes = build(document, templates, review)
+    replace_body(document, elements)
+    if not review:
+        md.strip_highlights(document.element.body)
+    footnotes = fix_footnotes(document, prune=not review)
+    return document, redline.lines_of(notes), footnotes
+
+
+def build_review(clean) -> int:
+    """Write the review copy: colours, notes, tracked changes; verify the redline."""
+    document, review_only, _ = build_document(review=True)
+    original = docx.Document(str(SOURCE))
+    counts = redline.mark(original, document)
+    problems = redline.check(document, clean, original, review_only)
+    colours: dict[str, int] = {}
+    for hl in document.element.body.iter(qn("w:highlight")):
+        colours[hl.get(qn("w:val"))] = colours.get(hl.get(qn("w:val")), 0) + 1
+    print(f"review: {counts}; highlighted runs {colours}")
+    for line in problems:
+        print(f"PROBLEM    {line}")
+    if problems:
+        print("review copy not saved")
+        return 1
+    document.save(str(REVIEW_TARGET))
+    print(f"saved {REVIEW_TARGET.relative_to(ROOT)}")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    """Build, check, save; with ``--review`` also the review copy."""
     missing = check_numbers()
     for line in missing:
         print(f"UNSOURCED  {line}")
-    document = docx.Document(str(SOURCE))
-    templates = Templates(document)
-    replace_body(document, build(document, templates))
-    removed = md.strip_highlights(document.element.body)
-    words, problems = check_output(document)
+    clean, _, footnotes = build_document(review=False)
+    words, problems = check_output(clean, footnotes)
     for line in problems:
         print(f"PROBLEM    {line}")
-    print(f"highlights removed from the cover: {removed}")
     print(
         f"counted body words (paragraphs, excluding {', '.join(UNCOUNTED)}; tables excluded): {words}"
     )
     if missing or problems:
         print("not saved")
         return 1
-    document.save(str(TARGET))
+    clean.save(str(TARGET))
     print(f"saved {TARGET.relative_to(ROOT)}")
-    return 0
+    if "--review" not in argv:
+        return 0
+    return build_review(clean)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
