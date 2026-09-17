@@ -1,7 +1,9 @@
 # writeback/tests/test_guardian_service.py
 """Tests for GuardianService — LLM and embedding service always mocked.
 
-V3: the query and the prompt are built from the proposal's measured diff.
+V3: the prompt is built from the proposal's measured diff. The document
+search runs two queries (the diff row and the request text, *review 10*),
+unioned and deduped by chunk id.
 """
 
 import json
@@ -9,11 +11,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from documents.tests.factories import DocumentChunkFactory
 from ifc_processor.tests.factories import IFCEntityFactory
 from writeback.models import ModificationProposal
 from writeback.services.guardian_service import (
+    REQUEST_QUERY_CAP,
     GuardianService,
     build_guardian_query,
+    build_request_query,
     camel_to_words,
 )
 from writeback.tests.factories import WALL_IDS, ModificationProposalFactory, sample_diff
@@ -168,6 +173,24 @@ class TestGuardianCheck:
             ModificationProposal.VerificationStatus.FAILED,
         )
 
+    def test_check_searches_with_both_the_diff_row_and_the_request_text(
+        self, ifc_file, walls, mock_llm, mock_embed
+    ):
+        """review 10: the diff-row query alone missed a real requirement (proposal 9173ae8f)."""
+        guardian = _make_guardian(mock_llm, mock_embed)
+        proposal = ModificationProposalFactory(
+            ifc_file=ifc_file,
+            created_by=ifc_file.project.owner,
+            request_text="Set FireRating to EI60 — required by Brannkonsept.pdf, p.2",
+        )
+
+        with patch.object(guardian, "_search_documents", return_value=[]) as mock_search:
+            guardian.check(proposal)
+
+        queries = mock_search.call_args.args[1]
+        assert queries == [build_guardian_query(proposal), build_request_query(proposal)]
+        assert "Brannkonsept.pdf" in queries[1]
+
 
 @pytest.mark.django_db
 class TestBuildGuardianQuery:
@@ -201,6 +224,94 @@ class TestBuildGuardianQuery:
             ifc_file=ifc_file, diff=diff, explanation="Adds one zone."
         )
         assert build_guardian_query(proposal) == "Adds one zone."
+
+
+@pytest.mark.django_db
+class TestBuildRequestQuery:
+    """The request text, capped, is the second search query (review 10)."""
+
+    def test_short_request_is_used_as_is(self, ifc_file):
+        proposal = ModificationProposalFactory(
+            ifc_file=ifc_file, request_text="Set FireRating to EI60 on wall :285330"
+        )
+        assert build_request_query(proposal) == "Set FireRating to EI60 on wall :285330"
+
+    def test_long_request_is_capped(self, ifc_file):
+        proposal = ModificationProposalFactory(ifc_file=ifc_file, request_text="x" * 1000)
+        query = build_request_query(proposal)
+        assert len(query) == REQUEST_QUERY_CAP == 512
+
+    def test_whitespace_is_stripped(self, ifc_file):
+        proposal = ModificationProposalFactory(ifc_file=ifc_file, request_text="  hello  ")
+        assert build_request_query(proposal) == "hello"
+
+
+def _vec(*head: float) -> list[float]:
+    """A 1024-dim vector with ``head`` in the first slots, zero elsewhere."""
+    return list(head) + [0.0] * (1024 - len(head))
+
+
+@pytest.mark.django_db
+class TestSearchDocumentsUnion:
+    """_search_documents unions two queries, dedupes by chunk id, keeps the best distance."""
+
+    def test_a_chunk_found_by_either_query_is_returned(self, ifc_file, mock_llm):
+        guardian = _make_guardian(mock_llm, MagicMock())
+        chunk_a = DocumentChunkFactory(document__project=ifc_file.project, embedding=_vec(1.0, 0.0))
+        chunk_b = DocumentChunkFactory(document__project=ifc_file.project, embedding=_vec(0.0, 1.0))
+        guardian.embedding_service.embed_query = lambda q: {
+            "qa": _vec(1.0, 0.0),
+            "qb": _vec(0.0, 1.0),
+        }[q]
+
+        result = guardian._search_documents(ifc_file.project, ["qa", "qb"])
+
+        assert {c.id for c in result} == {chunk_a.id, chunk_b.id}
+
+    def test_a_chunk_found_by_both_queries_keeps_the_lower_distance(self, ifc_file, mock_llm):
+        guardian = _make_guardian(mock_llm, MagicMock())
+        # cosine distance to (1,0) ≈ 0.219; to (0,1) ≈ 0.375 — query "qa" wins.
+        shared = DocumentChunkFactory(document__project=ifc_file.project, embedding=_vec(1.0, 0.8))
+        guardian.embedding_service.embed_query = lambda q: {
+            "qa": _vec(1.0, 0.0),
+            "qb": _vec(0.0, 1.0),
+        }[q]
+
+        result = guardian._search_documents(ifc_file.project, ["qa", "qb"])
+
+        assert len(result) == 1 and result[0].id == shared.id
+        assert result[0].distance == pytest.approx(0.219, abs=0.001)
+
+    def test_identical_queries_are_embedded_once(self, ifc_file, mock_llm):
+        guardian = _make_guardian(mock_llm, MagicMock())
+        DocumentChunkFactory(document__project=ifc_file.project, embedding=_vec(1.0, 0.0))
+        embed = MagicMock(return_value=_vec(1.0, 0.0))
+        guardian.embedding_service.embed_query = embed
+
+        guardian._search_documents(ifc_file.project, ["same text", "same text"])
+
+        embed.assert_called_once_with("same text")
+
+    def test_a_chunk_outside_threshold_for_both_queries_is_dropped(self, ifc_file, mock_llm):
+        guardian = _make_guardian(mock_llm, MagicMock())
+        DocumentChunkFactory(document__project=ifc_file.project, embedding=_vec(-1.0, 0.0))
+        guardian.embedding_service.embed_query = lambda q: {
+            "qa": _vec(1.0, 0.0),
+            "qb": _vec(0.0, 1.0),
+        }[q]
+
+        result = guardian._search_documents(ifc_file.project, ["qa", "qb"])
+
+        assert result == []
+
+    def test_blank_and_empty_queries_are_skipped(self, ifc_file, mock_llm):
+        guardian = _make_guardian(mock_llm, MagicMock())
+        embed = MagicMock(return_value=_vec(1.0, 0.0))
+        guardian.embedding_service.embed_query = embed
+
+        guardian._search_documents(ifc_file.project, ["", "   ", "real query"])
+
+        embed.assert_called_once_with("real query")
 
 
 def test_camel_to_words():

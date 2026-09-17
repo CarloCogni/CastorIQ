@@ -578,6 +578,32 @@ update the model
 # diff: Pset_DoorCommon.FireRating = 120 x3
 change fire rating on all doors to 120
 
+# 18.7 — over-refusal: entity named only by its Name string, no type word, no storey (2026-09-17)
+# targets: IfcDoor x1 named ":285959"
+# diff: Pset_DoorCommon.FireRating = EI30 x1
+set FireRating to EI30 on :285959
+
+# 18.8 — over-refusal: entity given only by GlobalId, no type stated (2026-09-17)
+# guid: IfcWall named ":285395"
+# targets: IfcWall x1 named ":285395"
+# diff: Pset_WallCommon.FireRating = EI120 x1
+set FireRating to EI120 on {GUID}
+
+# 18.9 — over-refusal: "IfcWall" as the literal class name, mixed with IfcWallStandardCase (2026-09-17)
+# targets: IfcWall x5
+# diff: Pset_WallCommon.FireRating = EI90 x5
+set FireRating to EI90 on every IfcWall
+
+# 18.10 — over-refusal: a counted definite phrase (2026-09-17)
+# targets: IfcDoor x2 where Pset_DoorCommon.IsExternal = false
+# diff: Pset_DoorCommon.FireRating = EI60 x2
+set FireRating to EI60 on the two internal doors
+
+# 18.11 — over-refusal: material assignment, indirect phrasing (2026-09-17)
+# targets: IfcWall x5
+# diff: Materials = Concrete C30/37 x5
+the walls need a Concrete C30/37 material assigned, please set it
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 19. EDGE CASES
@@ -635,4 +661,4 @@ set IsExternal to false on every door in the entrance hall
 # diff: Container = 1 - Living room x2
 move the bed and the desk from the bedroom into the living room
 
-# END OF FILE — 98 prompts across 20 sections.
+# END OF FILE — 104 prompts across 20 sections.

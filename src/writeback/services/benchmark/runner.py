@@ -155,8 +155,20 @@ class BenchmarkRunner:
         )
         emitter = CapturingEmitter()
         started = time.perf_counter()
+        prompt = case.prompt
+        if case.guid_source is not None:
+            resolved = resolve_targets(self.ifc_file, case.guid_source)
+            if len(resolved) != 1:
+                result.duration_seconds = time.perf_counter() - started
+                result.outcome = "error"
+                result.error = (
+                    f"guid: expected exactly 1 entity for {case.guid_source.describe()}, "
+                    f"found {len(resolved)}"
+                )
+                return result
+            prompt = prompt.replace("{GUID}", next(iter(resolved)))
         try:
-            outcome = self.pipeline.run(case.prompt, ifc_file=self.ifc_file, emitter=emitter)
+            outcome = self.pipeline.run(prompt, ifc_file=self.ifc_file, emitter=emitter)
         except NoChangeError as e:
             result.duration_seconds = time.perf_counter() - started
             result.outcome = "no_change"

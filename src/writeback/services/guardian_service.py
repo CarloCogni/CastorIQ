@@ -9,9 +9,16 @@ flags potential conflicts before the user approves.
 This is the "second opinion" that makes Castor bidirectional:
   IFC ←→ Documents
 
-V3: the search query and the LLM prompt are built from the proposal's
-measured diff (spec A-4), not from an intent structure. One function,
-:func:`build_guardian_query`, reads the dominant aggregated row.
+V3: the search queries and the LLM prompt are built from the proposal's
+measured diff and its request text (spec A-4), not from an intent structure.
+:func:`build_guardian_query` reads the dominant aggregated row;
+:func:`build_request_query` is the request text, capped, added 2026-09-17
+after a real case (proposal 9173ae8f) showed the diff-row query alone misses
+a requirement stated in the request's own words — a document citation, a
+term in another language, anything the diff row cannot reconstruct from a
+type/property/value triple. Results from both queries are unioned by chunk
+id, keeping the best (lowest) distance per chunk, before the existing
+relevance threshold applies.
 """
 
 from __future__ import annotations
@@ -95,10 +102,12 @@ Analyze whether these documents confirm, conflict with, or say nothing about thi
 
 
 def build_guardian_query(proposal: ModificationProposal) -> str:
-    """The document search query, from the dominant aggregated diff row.
+    """The primary document search query, from the dominant aggregated diff row.
 
     "wall" + "fire rating" + "EI60" → ``wall fire rating EI60``. Falls back to
     the explanation, then the request, when the diff has no property row.
+    Precise, but built from nothing the user actually wrote — see
+    :func:`build_request_query` for the second query that covers that gap.
     """
     row = dominant_row(proposal)
     if row is None:
@@ -109,6 +118,25 @@ def build_guardian_query(proposal: ModificationProposal) -> str:
     if isinstance(row.after, str) and row.after:
         parts.append(row.after)
     return " ".join(p for p in parts if p).strip() or proposal.request_text
+
+
+#: A search query embeds best short; the request text is free-form user input,
+#: so it is capped rather than sent in full. 512 characters comfortably covers
+#: any real Modify request (the case that motivated this — a request carrying
+#: a full document citation — was ~190 chars) with headroom, while bounding a
+#: pasted paragraph that would otherwise dilute the query's own vector and
+#: cost more to embed than a one-sentence request ever needs.
+REQUEST_QUERY_CAP = 512
+
+
+def build_request_query(proposal: ModificationProposal) -> str:
+    """The request text as a second search query, capped at :data:`REQUEST_QUERY_CAP`.
+
+    Lets the request's own words — a document name, a clause, a term in
+    another language — compete for the same chunks the diff-row query
+    cannot reach on its own.
+    """
+    return (proposal.request_text or "").strip()[:REQUEST_QUERY_CAP]
 
 
 def dominant_row(proposal: ModificationProposal) -> DiffRow | None:
@@ -136,8 +164,10 @@ class GuardianService:
     Cross-references a ModificationProposal against project documents.
 
     Flow:
-        1. Build a targeted search query from the proposal's diff
-        2. Vector-search DocumentChunks (docs only, not IFC entities)
+        1. Build two targeted search queries: the dominant diff row, and the
+           request text (capped)
+        2. Vector-search DocumentChunks with both, unioned by chunk id and
+           deduped keeping the best distance (docs only, not IFC entities)
         3. If relevant chunks found → LLM pass to classify verdict
         4. Save results to proposal.verification_* fields
 
@@ -172,10 +202,11 @@ class GuardianService:
         try:
             project = proposal.ifc_file.project
 
-            search_query = build_guardian_query(proposal)
-            logger.info(f"Guardian search query: '{search_query}'")
+            diff_query = build_guardian_query(proposal)
+            request_query = build_request_query(proposal)
+            logger.info(f"Guardian search queries: diff={diff_query!r} request={request_query!r}")
 
-            chunks = self._search_documents(project, search_query)
+            chunks = self._search_documents(project, [diff_query, request_query])
 
             if not chunks:
                 proposal.verification_status = ModificationProposal.VerificationStatus.UNKNOWN
@@ -229,34 +260,53 @@ class GuardianService:
     def _search_documents(
         self,
         project,
-        query: str,
+        queries: list[str],
         top_k: int = 5,
     ) -> list[DocumentChunk]:
         """
-        Vector search against project document chunks only.
+        Vector search against project document chunks only, unioned across queries.
 
-        Returns chunks sorted by relevance, filtered by threshold.
+        Each distinct, non-empty query is embedded and searched independently
+        (top_k nearest each); a chunk found by more than one query keeps its
+        best (lowest) distance. The existing top_k and relevance threshold
+        apply to the merged result, so the worst-case prompt size to
+        :meth:`_evaluate` is unchanged from a single-query search. Two equal
+        query strings are embedded once, not twice.
         """
-        query_vector = self.embedding_service.embed_query(query)
-        if not query_vector:
-            return []
+        best: dict[int, DocumentChunk] = {}
+        embedded: set[str] = set()
 
-        chunks = list(
-            DocumentChunk.objects.filter(
-                document__project=project,
-                document__status="completed",
-                embedding__isnull=False,
+        for query in queries:
+            query = (query or "").strip()
+            if not query or query in embedded:
+                continue
+            embedded.add(query)
+
+            query_vector = self.embedding_service.embed_query(query)
+            if not query_vector:
+                continue
+
+            candidates = (
+                DocumentChunk.objects.filter(
+                    document__project=project,
+                    document__status="completed",
+                    embedding__isnull=False,
+                )
+                .select_related("document")
+                .annotate(distance=CosineDistance("embedding", query_vector))
+                .order_by("distance")[:top_k]
             )
-            .select_related("document")
-            .annotate(distance=CosineDistance("embedding", query_vector))
-            .order_by("distance")[:top_k]
-        )
+            for chunk in candidates:
+                existing = best.get(chunk.id)
+                if existing is None or chunk.distance < existing.distance:
+                    best[chunk.id] = chunk
 
-        relevant = [c for c in chunks if c.distance <= self.RELEVANCE_THRESHOLD]
+        ranked = sorted(best.values(), key=lambda c: c.distance)
+        relevant = [c for c in ranked if c.distance <= self.RELEVANCE_THRESHOLD][:top_k]
 
         logger.info(
-            f"Guardian doc search: {len(chunks)} candidates, "
-            f"{len(relevant)} above threshold ({self.RELEVANCE_THRESHOLD})"
+            f"Guardian doc search: {len(embedded)} quer{'y' if len(embedded) == 1 else 'ies'} embedded, "
+            f"{len(best)} unique candidate(s), {len(relevant)} above threshold ({self.RELEVANCE_THRESHOLD})"
         )
 
         return relevant

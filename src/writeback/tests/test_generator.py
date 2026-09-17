@@ -139,7 +139,7 @@ def test_prompt_has_a_creation_recipe_and_does_not_refuse_creation():
     assert 'root.create_entity(ifc_class="<IfcClass>", name="<name>")' in SYSTEM_PROMPT
     assert "never model.create_entity" in SYSTEM_PROMPT
     assert "group.assign_group(products=targets, group=zone)" in SYSTEM_PROMPT
-    assert "names nothing to change or\ncreate" in SYSTEM_PROMPT
+    assert "a request that names\nnothing to change or create" in SYSTEM_PROMPT
     assert "names no identifiable target" not in SYSTEM_PROMPT
 
 

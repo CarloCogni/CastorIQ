@@ -798,28 +798,7 @@ const ModifyChat = {
                 this._hideProgressTracker();
                 if (data.status === 'proposed') {
                     this._applySuperseded(data.superseded_ids);
-                    if (data.chain && data.proposals) {
-                        const chainIds = data.proposals.map(p => p.id);
-                        const chainBanner = `
-                            <div class="message message-assistant">
-                                <div class="message-avatar" style="background-color: var(--castor-accent);"><i class="bi bi-tools"></i></div>
-                                <div class="message-content">
-                                    <div class="alert alert-info fs-8 mb-0 d-flex justify-content-between align-items-center">
-                                        <span><i class="bi bi-link-45deg me-1"></i>Chained operation: ${data.proposals.length} steps</span>
-                                        <button class="btn btn-sm btn-success"
-                                                onclick="ModifyChat.approveChain(${JSON.stringify(chainIds).replace(/"/g, '&quot;')})">
-                                            <i class="bi bi-check-all me-1"></i>Approve All
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>`;
-                        this.chatEl.insertAdjacentHTML('beforeend', chainBanner);
-                        data.proposals.forEach((p, i) => {
-                            this._appendProposalCard(p, `Step ${i + 1} of ${data.proposals.length}`);
-                        });
-                    } else {
-                        this._appendProposalCard(data.proposal);
-                    }
+                    this._appendProposalCardHtml(data.proposal.html);
                 }
                 break;
             case 'error':
@@ -885,23 +864,12 @@ const ModifyChat = {
     },
 
     _renderPhaseDetail(phase, detail) {
+        // detail only ever carries targets, flags and verdict (spec U-3); tier,
+        // operation, entities_count and steps_count were V2 keys never sent here.
         const parts = [];
-        if (detail.tier !== undefined) {
-            const tierColors = {1: '#22c55e', 2: '#f97316', 3: '#ef4444'};
-            parts.push(`<span class="badge rounded-pill text-white ms-1 fs-9" style="background-color:${tierColors[detail.tier] || '#6b7280'}">Tier ${detail.tier}</span>`);
-        }
-        if (detail.operation) {
-            parts.push(`<span class="badge bg-secondary-subtle text-secondary fs-9 ms-1">${detail.operation}</span>`);
-        }
-        if (detail.entities_count !== undefined) {
-            parts.push(`<span class="text-secondary fs-9 ms-1">(${detail.entities_count} entit${detail.entities_count === 1 ? 'y' : 'ies'})</span>`);
-        }
         if (detail.verdict) {
             const vColors = {verified: 'success', conflict: 'danger', unknown: 'secondary', failed: 'secondary'};
             parts.push(`<span class="badge bg-${vColors[detail.verdict] || 'secondary'}-subtle text-${vColors[detail.verdict] || 'secondary'} fs-9 ms-1">${detail.verdict}</span>`);
-        }
-        if (detail.steps_count !== undefined) {
-            parts.push(`<span class="text-secondary fs-9 ms-1">(${detail.steps_count} step${detail.steps_count === 1 ? '' : 's'})</span>`);
         }
         return parts.join('');
     },
@@ -961,28 +929,7 @@ const ModifyChat = {
 
             if (data.status === 'proposed') {
                 this._applySuperseded(data.superseded_ids);
-                if (data.chain && data.proposals) {
-                    const chainIds = data.proposals.map(p => p.id);
-                    const chainBanner = `
-                        <div class="message message-assistant">
-                            <div class="message-avatar" style="background-color: var(--castor-accent);"><i class="bi bi-tools"></i></div>
-                            <div class="message-content">
-                                <div class="alert alert-info fs-8 mb-0 d-flex justify-content-between align-items-center">
-                                    <span><i class="bi bi-link-45deg me-1"></i>Chained operation: ${data.proposals.length} steps</span>
-                                    <button class="btn btn-sm btn-success"
-                                            onclick="ModifyChat.approveChain(${JSON.stringify(chainIds).replace(/"/g, '&quot;')})">
-                                        <i class="bi bi-check-all me-1"></i>Approve All
-                                    </button>
-                                </div>
-                            </div>
-                        </div>`;
-                    this.chatEl.insertAdjacentHTML('beforeend', chainBanner);
-                    data.proposals.forEach((p, i) => {
-                        this._appendProposalCard(p, `Step ${i + 1} of ${data.proposals.length}`);
-                    });
-                } else {
-                    this._appendProposalCard(data.proposal);
-                }
+                this._appendProposalCardHtml(data.proposal.html);
             } else {
                 this._appendBubble('assistant', `⚠️ ${data.message}`);
             }
@@ -993,11 +940,33 @@ const ModifyChat = {
     },
 
     /* ── Approve / Reject ─────────────────────────── */
+    onFlagToggle(proposalId) {
+        // Approve stays disabled until every flagged row on this card is ticked
+        // (spec U-2); the server recomputes and refuses the mismatch either way.
+        const card = document.getElementById(`proposal-card-${proposalId}`);
+        if (!card) return;
+        const boxes = card.querySelectorAll('.flag-ack');
+        const allChecked = Array.from(boxes).every(box => box.checked);
+        const btn = document.getElementById(`proposal-execute-${proposalId}`);
+        if (btn) btn.disabled = !allChecked;
+        const hint = document.getElementById(`proposal-flag-hint-${proposalId}`);
+        if (hint) hint.style.display = allChecked ? 'none' : '';
+    },
+
     async approve(proposalId) {
         this._showLoader();
         try {
-            const conflictIds = document.getElementById(`proposal-card-${proposalId}`)?.dataset.conflictIds || '';
-            const data = await this._post({ action: 'approve', proposal_id: proposalId, conflict_ids: conflictIds });
+            const card = document.getElementById(`proposal-card-${proposalId}`);
+            const conflictIds = card?.dataset.conflictIds || '';
+            const acknowledgedKeys = Array.from(card?.querySelectorAll('.flag-ack:checked') || [])
+                .map(box => box.value)
+                .join(',');
+            const data = await this._post({
+                action: 'approve',
+                proposal_id: proposalId,
+                conflict_ids: conflictIds,
+                acknowledged_keys: acknowledgedKeys,
+            });
             this._hideLoader();
 
             if (data.status === 'applied') {
@@ -1030,57 +999,6 @@ const ModifyChat = {
             this._appendBubble('assistant', `❌ Error: ${err.message}`);
         }
     },
-
-    /* ── Tier 3 review acknowledgement gate ───────── */
-    async acknowledgeReview(proposalId, checkboxEl) {
-        // Optimistically toggle the Execute button to follow the checkbox
-        // state; revert if the server refuses. The server-side gate in
-        // _handle_approve is the source of truth either way.
-        const btn = document.getElementById(`proposal-execute-${proposalId}`);
-        if (!checkboxEl.checked) {
-            if (btn) {
-                btn.setAttribute('disabled', '');
-                btn.title = 'Tick the acknowledgement checkbox to enable';
-            }
-            return;
-        }
-        try {
-            await this._post({ action: 'acknowledge_review', proposal_id: proposalId });
-            if (btn) {
-                btn.removeAttribute('disabled');
-                btn.removeAttribute('title');
-            }
-        } catch (err) {
-            checkboxEl.checked = false;
-            this._appendBubble('assistant', `❌ Could not record acknowledgement: ${err.message}`);
-        }
-    },
-
-    async approveChain(proposalIds) {
-            this._showLoader();
-            try {
-                for (const pid of proposalIds) {
-                    const data = await this._post({ action: 'approve', proposal_id: pid });
-                    if (data.status === 'applied') {
-                        this._removeSidebarProposal(pid);
-                        this._markProposalCard(pid, 'applied');
-                    } else {
-                        this._hideLoader();
-                        this._appendBubble('assistant',
-                            `⚠️ Chain stopped at step: ${data.message}`
-                        );
-                        return;
-                    }
-                }
-                this._hideLoader();
-                this._appendBubble('assistant',
-                    `✅ Chain complete! All ${proposalIds.length} steps applied.`
-                );
-            } catch (err) {
-                this._hideLoader();
-                this._appendBubble('assistant', `❌ Chain error: ${err.message}`);
-            }
-        },
 
     /* ── Fetch helper ─────────────────────────────── */
     async _post(body) {
@@ -1187,148 +1105,18 @@ const ModifyChat = {
         this.scrollToBottom();
     },
 
-    _appendProposalCard(p, chainLabel = null) {
-        const tierColors = { 1: 'var(--castor-success, #22c55e)', 2: '#f97316', 3: '#ef4444' };
-        const tierLabels = { 1: 'GREEN', 2: 'ORANGE', 3: 'RED' };
-
-        let diffRows = '';
-        if (p.diff_preview && p.diff_preview.length) {
-            // target=_blank: pending proposal cards exist only client-side, so
-            // navigating this tab away would destroy them.
-            const exploreUrl = "{% url 'projects:explore' project.pk %}";
-            diffRows = p.diff_preview.map(r => `
-                <tr>
-                    <td class="px-2 py-1 fs-8">${r.global_id && !r.global_id.startsWith('(')
-                        ? `<a href="${exploreUrl}?focus=${encodeURIComponent(r.global_id)}" target="_blank" rel="noopener" class="text-decoration-none" title="View in 3D (opens a new tab)">${r.name} <i class="bi bi-box-arrow-up-right fs-9 opacity-50"></i></a>`
-                        : r.name}</td>
-                    <td class="px-2 py-1 fs-8 text-secondary">${r.ifc_type}</td>
-                    <td class="px-2 py-1 fs-8 font-monospace">${r.field}</td>
-                    <td class="px-2 py-1 fs-8 text-danger"><del>${r.old_value}</del></td>
-                    <td class="px-2 py-1 fs-8 text-success fw-medium">${r.new_value}</td>
-                </tr>
-            `).join('');
-        }
-
-        const card = `
-        <div class="message message-assistant">
-            <div class="message-avatar" style="background-color: var(--castor-accent);"><i class="bi bi-tools"></i></div>
-            <div class="message-content">
-                <div class="message-text mb-2">${p.explanation}</div>
-                <div class="card border-0 shadow-sm" id="proposal-card-${p.id}" data-conflict-ids="${p.conflict_ids || ModifyChat._conflictIds || ''}">
-                    <div class="card-header bg-transparent border-bottom d-flex justify-content-between align-items-center py-2">
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="badge rounded-pill text-white fs-9"
-                                  style="background-color: ${tierColors[p.tier]}">
-                                Tier ${p.tier} – ${tierLabels[p.tier]}
-                            </span>
-                            <span class="fs-8 text-secondary">${p.operation}</span>
-                            ${chainLabel ? `<span class="badge bg-purple-subtle text-purple fs-9">${chainLabel}</span>` : ''}
-                        </div>
-                        <div class="d-flex align-items-center gap-2">
-                            ${p.skill_count > 0 ? `<span class="badge bg-info-subtle text-info fs-9" title="${p.skill_count} skill example${p.skill_count !== 1 ? 's' : ''} injected"><i class="bi bi-stars me-1"></i>${p.skill_count}</span>` : ''}
-                            <span class="fs-8 text-secondary">Confidence: ${Math.round(p.confidence)}%</span>
-                        </div>
-                    </div>
-                    <div class="card-body p-3">
-                        ${p.plan_steps ? `
-                            <div class="mb-3">
-                                <h6 class="fs-8 fw-semibold text-secondary mb-2">
-                                    <i class="bi bi-list-ol me-1"></i>Execution Plan
-                                </h6>
-                                ${p.plan_steps.map((s, i) => `
-                                    <div class="d-flex align-items-start gap-2 py-1 ${i > 0 ? 'border-top' : ''}">
-                                        <span class="badge bg-secondary-subtle text-secondary rounded-pill fs-9 mt-1">${s.step}</span>
-                                        <div>
-                                            <span class="fs-8 font-monospace text-primary">${s.operation}</span>
-                                            <span class="fs-8 text-secondary ms-1">— ${s.explanation}</span>
-                                        </div>
-                                    </div>
-                                `).join('')}
-                            </div>` : ''}
-                            ${p.review ? `
-                            <div class="mb-3">
-                                <div class="d-flex align-items-center gap-2 mb-2">
-                                    <i class="bi bi-clipboard-check fs-7"></i>
-                                    <h6 class="fs-8 fw-semibold mb-0">Code Review</h6>
-                                    <span class="badge fs-9 ${p.review.verdict === 'ALIGNED' ? 'bg-success' : p.review.verdict === 'PARTIAL' ? 'bg-warning text-dark' : 'bg-danger'}">
-                                        ${p.review.verdict}
-                                    </span>
-                                </div>
-                                <p class="fs-8 text-secondary mb-2">${this._escapeHtml(p.review.summary)}</p>
-                                ${p.review.steps && p.review.steps.length ? `
-                                <ol class="fs-8 text-secondary mb-2 ps-3">
-                                    ${p.review.steps.map(s => `<li class="mb-1">${this._escapeHtml(s.description)}</li>`).join('')}
-                                </ol>` : ''}
-                                ${p.review.warnings && p.review.warnings.length ? `
-                                <div class="d-flex flex-column gap-1">
-                                    ${p.review.warnings.map(w => `
-                                        <div class="fs-8 text-warning">
-                                            <i class="bi bi-exclamation-triangle me-1"></i>${this._escapeHtml(w)}
-                                        </div>`).join('')}
-                                </div>` : ''}
-                            </div>` : ''}
-                            ${p.code ? `
-                            <div class="mb-3">
-                                <h6 class="fs-8 fw-semibold text-danger mb-2">
-                                    <i class="bi bi-code-slash me-1"></i>Generated Code — review before executing
-                                </h6>
-                                <pre class="rounded mb-0"
-                                     style="max-height: 350px; overflow: auto;"><code class="language-python hljs">${this._escapeHtml(p.code)}</code></pre>
-                            </div>` : ''}
-                        ${diffRows ? `
-                        <div class="table-responsive mb-3">
-                            <table class="table table-sm table-borderless mb-0">
-                                <thead><tr class="text-secondary">
-                                    <th class="px-2 py-1 fs-9">Entity</th>
-                                    <th class="px-2 py-1 fs-9">Type</th>
-                                    <th class="px-2 py-1 fs-9">Property</th>
-                                    <th class="px-2 py-1 fs-9">Current</th>
-                                    <th class="px-2 py-1 fs-9">New</th>
-                                </tr></thead>
-                                <tbody>${diffRows}</tbody>
-                            </table>
-                        </div>` : ''}
-                        <p class="fs-8 text-secondary mb-3">
-                            ${p.affected_count} entit${p.affected_count === 1 ? 'y' : 'ies'} will be modified.
-                        </p>
-                        ${this._guardianBadgeHTML(p.guardian)}
-                        <!-- Code acknowledgement gate — kept OUTSIDE #proposal-actions-*,
-                             whose innerHTML is replaced by _markProposalCard() on approve/reject. -->
-                        ${p.requires_code_ack ? `
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox"
-                                   id="t3-review-ack-${p.id}"
-                                   ${p.code_review_acknowledged_at ? 'checked' : ''}
-                                   onchange="ModifyChat.acknowledgeReview('${p.id}', this)">
-                            <label class="form-check-label fs-8 text-secondary" for="t3-review-ack-${p.id}">
-                                I have reviewed this code and accept responsibility for executing it.
-                            </label>
-                        </div>` : ''}
-                        <div class="d-flex gap-2" id="proposal-actions-${p.id}">
-                            <button class="btn btn-sm ${p.requires_code_ack ? 'btn-danger' : 'btn-success'} w-50"
-                                    id="proposal-execute-${p.id}"
-                                    ${p.requires_code_ack && !p.code_review_acknowledged_at ? 'disabled title="Tick the acknowledgement checkbox to enable"' : ''}
-                                    onclick="ModifyChat.approve('${p.id}')">
-                                <i class="bi ${p.requires_code_ack ? 'bi-lightning-charge' : 'bi-check-lg'} me-1"></i>${p.requires_code_ack ? 'Execute' : 'Approve'}
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary w-50"
-                                    onclick="ModifyChat.reject('${p.id}')">
-                                <i class="bi bi-x-lg me-1"></i>Reject
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>`;
-
-        this.chatEl.insertAdjacentHTML('beforeend', card);
-        // Syntax-highlight any code blocks in the new card
-        const newCard = document.getElementById(`proposal-card-${p.id}`);
-        if (newCard) {
-            newCard.querySelectorAll('pre code.language-python').forEach(block => {
-                hljs.highlightElement(block);
-            });
-        }
+    _appendProposalCardHtml(html) {
+        // The server already rendered this proposal with the one partial
+        // (proposal_card.html, spec U-1) — the same markup a page reload
+        // would show via modify_message_list.html. Insert it as-is instead
+        // of rebuilding a second copy of the card client-side.
+        const wrapper = document.createElement('div');
+        wrapper.className = 'message message-assistant';
+        wrapper.innerHTML = `<div class="message-avatar" style="background-color: var(--castor-accent);"><i class="bi bi-tools"></i></div><div class="message-content">${html}</div>`;
+        this.chatEl.appendChild(wrapper);
+        wrapper.querySelectorAll('pre code.language-python').forEach(block => {
+            hljs.highlightElement(block);
+        });
         this.scrollToBottom();
     },
 
@@ -1431,52 +1219,6 @@ const ModifyChat = {
 
     scrollToBottom() {
         this.chatEl.scrollTop = this.chatEl.scrollHeight;
-    },
-
-    // Add this helper to ModifyChat:
-    _guardianBadgeHTML(guardian) {
-        if (!guardian) return '';
-        const configs = {
-            verified: {
-                icon: 'bi-shield-check', color: 'success', bg: 'rgba(34,197,94,0.08)',
-                label: 'Docs confirm'
-            },
-            conflict: {
-                icon: 'bi-shield-exclamation', color: 'danger', bg: 'rgba(239,68,68,0.08)',
-                label: '⚠ Possible conflict'
-            },
-            unknown: {
-                icon: 'bi-shield-slash', color: 'secondary', bg: 'rgba(148,163,184,0.1)',
-                label: 'No relevant docs'
-            },
-            pending: {
-                icon: 'bi-hourglass-split', color: 'warning', bg: 'rgba(234,179,8,0.08)',
-                label: 'Checking docs…'
-            },
-            failed: {
-                icon: 'bi-shield-x', color: 'secondary', bg: 'rgba(148,163,184,0.1)',
-                label: 'Check unavailable'
-            },
-        };
-        const cfg = configs[guardian.status] || configs.unknown;
-        let html = `
-            <div class="d-flex align-items-start gap-2 p-2 rounded mt-2 mb-2" style="background:${cfg.bg}">
-                <i class="bi ${cfg.icon} text-${cfg.color} fs-7 flex-shrink-0"></i>
-                <div>
-                    <span class="fs-8 fw-medium text-${cfg.color}">${cfg.label}</span>`;
-        if (guardian.result) {
-            html += `<p class="fs-8 text-secondary mb-0">${guardian.result}</p>`;
-        }
-        if (guardian.source) {
-            html += `<small class="text-secondary fs-9">📄 ${guardian.source}</small>`;
-        }
-        html += `</div></div>`;
-        return html;
-    },
-    _escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     },
 };
 

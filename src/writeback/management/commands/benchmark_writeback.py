@@ -65,6 +65,16 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--project", required=True, help="Project UUID or name.")
         parser.add_argument(
+            "--user",
+            default="",
+            help=(
+                "Run as this user (email or username), so UserLLMConfig overrides apply the "
+                "way a real Modify request would see them. Omitted: user=None, site defaults "
+                "only, no per-user override — that path has already produced misleading "
+                "verification twice."
+            ),
+        )
+        parser.add_argument(
             "--corpus",
             default=str(DEFAULT_CORPUS),
             help=f"Prompt corpus file. Default: {DEFAULT_CORPUS}",
@@ -121,6 +131,7 @@ class Command(BaseCommand):
 
         project = self._resolve_project(options["project"])
         ifc_file = self._resolve_ifc_file(project)
+        user = self._resolve_user(options["user"])
         cases = self._load_cases(options["corpus"], options["filter"])
         repeats = max(1, options["repeat"])
         notes = dict(n.partition("=")[::2] for n in options["note"] if "=" in n)
@@ -128,11 +139,14 @@ class Command(BaseCommand):
         self.stdout.write(
             f"{len(cases)} case(s) from {Path(options['corpus']).name} "
             f"against project {project.name!r} / {Path(ifc_file.file.name).name}"
+            + (f", as user {user}" if user else "")
         )
 
         targets = options["model"] or [""]
         reports = [
-            self._run_one_model(target, project, ifc_file, cases, repeats=repeats, notes=notes)
+            self._run_one_model(
+                target, project, ifc_file, cases, user=user, repeats=repeats, notes=notes
+            )
             for target in targets
         ]
 
@@ -166,7 +180,7 @@ class Command(BaseCommand):
     # ── One model pass ─────────────────────────────────────
 
     def _run_one_model(
-        self, target: str, project, ifc_file, cases, *, repeats: int, notes: dict
+        self, target: str, project, ifc_file, cases, *, user, repeats: int, notes: dict
     ) -> BenchmarkReport:
         """Run the corpus once under `target`, restoring site config after."""
         label = target or self._current_model_label()
@@ -174,7 +188,7 @@ class Command(BaseCommand):
 
         restore = self._apply_model(target) if target else None
         try:
-            runner = BenchmarkRunner(project, ifc_file=ifc_file)
+            runner = BenchmarkRunner(project, ifc_file=ifc_file, user=user)
             results = []
             self.stdout.write(self.style.MIGRATE_HEADING(f"\n=== {label} ==="))
             for index, case in enumerate(cases, start=1):
@@ -320,6 +334,27 @@ class Command(BaseCommand):
             raise CommandError(f"Project not found: {ident!r}")
         except Project.MultipleObjectsReturned:
             raise CommandError(f"Multiple projects match {ident!r} — pass a UUID instead.")
+
+    def _resolve_user(self, ident: str):
+        """The account to run as, so UserLLMConfig overrides apply like a real request.
+
+        Empty: None, which resolves to SiteLLMConfig defaults only, no BYOK and no per-user
+        Ollama override — the anonymous path that has already produced misleading
+        verification twice.
+        """
+        if not ident:
+            return None
+        from django.contrib.auth import get_user_model
+
+        user_model = get_user_model()
+        try:
+            return user_model.objects.get(email__iexact=ident)
+        except user_model.DoesNotExist:
+            pass
+        try:
+            return user_model.objects.get(username__iexact=ident)
+        except user_model.DoesNotExist:
+            raise CommandError(f"User not found: {ident!r}")
 
     def _resolve_ifc_file(self, project):
         from ifc_processor.models import IFCFile

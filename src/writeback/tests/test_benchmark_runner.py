@@ -84,6 +84,12 @@ def _case(tmp_path, block: str):
     return parse_corpus(path)[0]
 
 
+def _case_with_prompt(tmp_path, block: str, prompt: str):
+    path = tmp_path / "c-prompt.txt"
+    path.write_text(f"# 1.1 — t\n{block}\n{prompt}\n", encoding="utf-8")
+    return parse_corpus(path)[0]
+
+
 def _outcome(
     ifc_file, targets, diff, request="set FireRating to EI60 on all walls", scratch_path=None
 ):
@@ -158,6 +164,50 @@ def test_resolve_targets_walks_from_a_space_to_its_storey(house):
     assert resolve_targets(house, TargetExpectation("IfcDoor", 1, container="1 - Living room")) == {
         "D-1"
     }
+
+
+# ── guid resolution ─────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_guid_source_is_resolved_and_substituted_before_the_pipeline_runs(house, tmp_path):
+    """A `{GUID}` placeholder becomes the real GlobalId; the corpus text never sees it."""
+    case = _case_with_prompt(
+        tmp_path,
+        '# guid: IfcWall named ":285331"\n# targets: IfcWall x1\n# diff: Pset_WallCommon.FireRating = EI60 x1',
+        "set FireRating to EI60 on {GUID}",
+    )
+    diff = _diff(
+        [
+            {
+                "global_id": "W-EXT-1",
+                "pset": "Pset_WallCommon",
+                "prop": "FireRating",
+                "before": None,
+                "after": "EI60",
+            }
+        ]
+    )
+    runner = _runner(house, _outcome(house, ["W-EXT-1"], diff))
+    result = runner.run_case(case)
+
+    assert result.outcome == "proposal"
+    runner.pipeline.run.assert_called_once()
+    called_prompt = runner.pipeline.run.call_args[0][0]
+    assert "W-EXT-1" in called_prompt
+    assert "{GUID}" not in called_prompt
+
+
+@pytest.mark.django_db
+def test_guid_source_with_no_unique_match_is_a_harness_error(house, tmp_path):
+    """A guid: line that resolves to zero or several entities never reaches the model."""
+    case = _case_with_prompt(tmp_path, '# guid: IfcWall named "no-such-wall"', "do it with {GUID}")
+    runner = _runner(house, _outcome(house, [], _diff()))
+    result = runner.run_case(case)
+
+    assert result.outcome == "error"
+    assert "expected exactly 1 entity" in result.error
+    runner.pipeline.run.assert_not_called()
 
 
 # ── scoring ───────────────────────────────────────────────────────

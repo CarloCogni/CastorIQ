@@ -24,6 +24,10 @@ Grammar::
     reject:  ["substring" / "substring"]     the request must be declined or rejected
     no-change:                               the file is already so; nothing to approve
     advisory: <why>                          run and report, never scored
+    guid:    <IfcType> named "<substring>"   resolve one entity's real GlobalId through the
+                                             index at run time and substitute it for every
+                                             ``{GUID}`` in the prompt — a GlobalId-only request
+                                             is testable without a literal GlobalId in this file
 
 Several ``targets:`` lines are a union; several ``diff:`` lines must all hold.
 A prompt with no expectation line at all is advisory. Anything the parser
@@ -50,10 +54,11 @@ _CASE_HEADER = re.compile(r"^#\s*(\d+\.\d+[a-z]?)\s*[—\-–]\s*(.*)$")
 _SECTION_HEADER = re.compile(r"^#\s*(\d+)\.\s+(\S.*)$")
 #: A field line inside a case block.
 _FIELD = re.compile(
-    r"^#\s*(targets|diff|reject|no-change|advisory|note)\s*:\s*(.*)$", re.IGNORECASE
+    r"^#\s*(targets|diff|reject|no-change|advisory|note|guid)\s*:\s*(.*)$", re.IGNORECASE
 )
 
 _TARGETS = re.compile(r"^(\w+)\s+x(\d+)(.*)$")
+_GUID_SOURCE = re.compile(r'^(\w+)\s+named\s+"([^"]+)"$')
 _IN = re.compile(r'\bin\s+"([^"]+)"')
 _NAMED = re.compile(r'\bnamed\s+"([^"]+)"')
 _WHERE = re.compile(r"\bwhere\s+([\w*]+\.\w+)\s*=\s*(.+?)\s*$")
@@ -125,6 +130,9 @@ class BenchmarkCase:
     advisory: bool = False
     advisory_note: str = ""
     notes: tuple[str, ...] = field(default_factory=tuple)
+    #: When set, the runner resolves this to one real GlobalId through the index and
+    #: substitutes it for every ``{GUID}`` in ``prompt`` before the request runs.
+    guid_source: TargetExpectation | None = None
 
     @property
     def kind(self) -> str:
@@ -214,6 +222,7 @@ def _build_case(
     reject_substrings: tuple[str, ...] = ()
     advisory_note = ""
     notes: list[str] = []
+    guid_source: TargetExpectation | None = None
 
     for line in block:
         match = _FIELD.match(line)
@@ -243,6 +252,13 @@ def _build_case(
             advisory, advisory_note = True, value
         elif key == "note":
             notes.append(value)
+        elif key == "guid":
+            parsed_guid = _parse_guid_source(value)
+            if parsed_guid is None:
+                logger.warning("Unreadable guid source at corpus line %d: %r", line_number, value)
+                advisory, advisory_note = True, f"unreadable guid source: {value}"
+            else:
+                guid_source = parsed_guid
 
     if not (targets or diffs or reject or no_change or advisory):
         advisory, advisory_note = True, "no expectation"
@@ -262,6 +278,7 @@ def _build_case(
         advisory=advisory,
         advisory_note=advisory_note,
         notes=tuple(notes),
+        guid_source=guid_source,
     )
 
 
@@ -289,6 +306,13 @@ def _parse_targets(value: str) -> TargetExpectation | None:
         where_key=where.group(1) if where else "",
         where_value=_unquote(where.group(2)) if where else "",
     )
+
+
+def _parse_guid_source(value: str) -> TargetExpectation | None:
+    match = _GUID_SOURCE.match(value.strip())
+    if not match:
+        return None
+    return TargetExpectation(ifc_type=match.group(1), count=1, named=match.group(2))
 
 
 def _parse_diff(value: str) -> DiffExpectation | None:

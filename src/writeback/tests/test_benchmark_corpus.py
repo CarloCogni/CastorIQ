@@ -14,7 +14,7 @@ from writeback.services.benchmark.corpus import CorpusError, parse_corpus
 
 CORPUS_PATH = Path(__file__).resolve().parents[3] / "fixtures/benchmark/pipeline-test-prompts.txt"
 
-EXPECTED_CASE_COUNT = 99
+EXPECTED_CASE_COUNT = 104
 
 
 def _write(tmp_path: Path, body: str) -> Path:
@@ -104,6 +104,22 @@ class TestTargetsLine:
         case = parse_corpus(path)[0]
         assert case.advisory
         assert "unreadable targets" in case.advisory_note
+
+
+class TestGuidLine:
+    def test_guid_source_resolves_a_type_and_a_name(self, tmp_path):
+        """A guid: line names what to resolve, never a literal GlobalId."""
+        path = _write(tmp_path, '# 1.1 — x\n# guid: IfcWall named ":285395"\ndo it with {GUID}\n')
+        case = parse_corpus(path)[0]
+        assert case.guid_source.ifc_type == "IfcWall"
+        assert case.guid_source.count == 1
+        assert case.guid_source.named == ":285395"
+
+    def test_unreadable_guid_source_makes_the_case_advisory(self, tmp_path):
+        path = _write(tmp_path, "# 1.1 — bad\n# guid: not a valid source\ndo it\n")
+        case = parse_corpus(path)[0]
+        assert case.advisory
+        assert "unreadable guid source" in case.advisory_note
 
 
 class TestDiffLine:
