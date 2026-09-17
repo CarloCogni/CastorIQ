@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from django.db.models import Count
 
 from ifc_processor.models import IFCEntity, IFCSpatialElement
-from ifc_processor.schema_data.lookup import properties_of, psets_for
+from ifc_processor.schema_data.lookup import ancestors, properties_of, psets_for
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ def build_grounding(ifc_file, request: str) -> Grounding:
             *(f'- "{s.entity.name}" · {_storey_name(s)}' for s in spaces),
             "",
             "## Entity counts",
-            ", ".join(f"{t} {n}" for t, n in counts.items()),
+            ", ".join(_render_type_counts(counts, schema)),
             "",
             *pset_lines,
         ]
@@ -143,6 +143,42 @@ def match_types(request: str, type_names, limit: int = _MAX_MATCHED_TYPES) -> li
 
 
 # ── Internals ──────────────────────────────────────────────────────
+
+
+def _render_type_counts(counts: dict[str, int], schema: str) -> list[str]:
+    """One line per root type; a supertype whose subtype is also indexed states the split.
+
+    ``by_type("IfcWall")`` already returns ``IfcWallStandardCase`` members, so a flat
+    "IfcWall 1" reads as if the standard-case walls do not exist. When a type's direct
+    parent is itself present in ``counts``, it is folded into the parent's line instead
+    of getting its own; the parent's line then names the split and reminds the model that
+    ``by_type`` on it already covers the subtype.
+    """
+    parent_of = {t: _direct_parent(t, schema) for t in counts}
+    children: dict[str, list[str]] = {}
+    for ifc_type, parent in parent_of.items():
+        if parent in counts:
+            children.setdefault(parent, []).append(ifc_type)
+
+    lines = []
+    for ifc_type, n in counts.items():
+        if parent_of[ifc_type] in counts:
+            continue  # rendered under its supertype below
+        kids = children.get(ifc_type)
+        if not kids:
+            lines.append(f"{ifc_type} {n}")
+            continue
+        total = n + sum(counts[k] for k in kids)
+        extra = " and ".join(f"{counts[k]} {k} (subtype of {ifc_type})" for k in kids)
+        lines.append(
+            f"{ifc_type}: {n} direct, plus {extra}; model.by_type({ifc_type!r}) returns all {total}"
+        )
+    return lines
+
+
+def _direct_parent(ifc_type: str, schema: str) -> str:
+    chain = ancestors(ifc_type, schema)
+    return chain[1] if len(chain) > 1 else ""
 
 
 def _elevation(node: IFCSpatialElement) -> str:

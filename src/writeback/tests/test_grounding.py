@@ -97,6 +97,23 @@ def test_type_counts_and_matched_type_psets(house):
 
 
 @pytest.mark.django_db
+def test_supertype_counts_state_the_subtype_split(house):
+    """IfcWallStandardCase folds into IfcWall's line: by_type("IfcWall") already covers it."""
+    for i in range(2):
+        IFCEntityFactory(
+            ifc_file=house, ifc_type="IfcWallStandardCase", name=f"Partition-{i}", properties={}
+        )
+
+    grounding = build_grounding(house, "change fire rating on all walls")
+
+    assert (
+        "IfcWall: 3 direct, plus 2 IfcWallStandardCase (subtype of IfcWall); "
+        "model.by_type('IfcWall') returns all 5" in grounding.text
+    )
+    assert "IfcWallStandardCase 2" not in grounding.text
+
+
+@pytest.mark.django_db
 def test_grounding_for_the_sample_house_is_small(house):
     """A property request injects well under 1.5k tokens."""
     grounding = build_grounding(house, "Set the fire rating of all walls to EI60")

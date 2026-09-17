@@ -656,3 +656,196 @@ docstring (fixed); the e2e mock in `tests/e2e/test_modify_flow.py` still shapes 
 (`tier`, `operation`, `diff_preview`) and should be checked against the live socket payload;
 `Tier1Writer` / `Tier2Writer` in `ifc_processor` are live classes used by Facilities and Model
 Quality, not V2 pipeline code, and keep their names.
+
+
+---
+
+### Review 8 entries, 2026-09-17 (four over-refusal patterns)
+
+Testing found the 7B/14B coders declining valid requests on four patterns, all traced to the
+generation prompt and the grounding block, none to the verifier. No V2 concept reintroduced.
+
+**review 8 — A second worked example, no storey or space.** The prompt's only example filters
+by storey then type then name, and the model copied that shape onto requests naming just a Name
+string or a GlobalId, then declined for "missing storey or space" because grounding never lists
+per-entity names (G-1, by design). A second example shows `by_name(model.by_type(...), ...)` and
+`model.by_guid(...)` with the same placeholder convention, so a copied example is still visibly
+wrong under the V-3 flag rule. Rejected: prohibition prose instead of a worked example — an
+isolated qwen2.5-coder:14b test at temperature 0 found prose alone changed nothing and the
+example alone fixed the decline 3/3, the same lesson as the pset recipe and the sheet notation
+(*build*, *review 6*).
+
+**review 8 — C-6's decline list is closed, with explicit non-reasons.** The old wording named
+four decline reasons but nothing about what does *not* qualify, so a model that could not verify
+a storey, a name or a GlobalId against the grounded facts read that absence as grounds to
+decline. The prompt now states the four reasons are the only ones and lists four explicit
+non-reasons (no storey/space named, a Name-only reference, a GlobalId-only reference, a name
+absent from the facts) with the one-line reason grounding never lists per-entity names. No
+change to the deterministic decline check (C-6 is model prose either way).
+
+**review 8 — Entity counts state the subtype split.** `IfcWall: 1` read as "one wall" when 56
+`IfcWallStandardCase` also existed, and the model declined "no IfcWall entities" or chained
+`by_type` to narrow a supertype down to the subtype it already returned, silently dropping the
+supertype's own members. Grounding now renders `IfcWall: N direct, plus M IfcWallStandardCase
+(subtype of IfcWall); model.by_type('IfcWall') returns all N+M` when a type's direct parent
+(`schema_data.lookup.ancestors`) is also present in the counts; a plain type keeps its flat
+line. One rule line joins the prompt: never chain `by_type` to narrow a supertype to a subtype.
+Token cost is one clause per subtype pair actually present (the sample house has one: IfcWall /
+IfcWallStandardCase), well under the ~150-token allowance.
+
+**review 8 — Materials in grounding: deferred, not built.** The round-trip diff already
+snapshots `Materials` per entity, own-only (`ifc_diff.py`, confirmed before writing anything), so
+a material write is diff-covered and safe to ship. But the index has no material data at all —
+`parser.py` (out of scope for this change) never writes a `Materials.*` key onto `IFCEntity`,
+so "distinct IfcMaterial names from the index" has no data source without opening the actual IFC
+file at ground time, a real exception to G-1's "lookup, not retrieval, no file" design. Deferred
+rather than decided unilaterally; case 8.x already covers material requests as ordinary change
+cases (raw `material.assign_material` is always allowed, C-2), so the decline pattern is fixed
+without the grounding block.
+
+**review 8 — `guid:` joins the corpus grammar.** Testing the GlobalId-only decline pattern needs
+a real GlobalId in a request, but B-1 requires the corpus stay GlobalId-free. A `guid: <IfcType>
+named "<substring>"` case line resolves one real GlobalId through the index at run time and
+substitutes it for every `{GUID}` in the prompt, so the checked-in file still names nothing by
+GlobalId. A source that resolves to zero or more than one entity is a harness error before the
+model ever runs, the same treatment as an unreachable provider (B-2). Five new corpus cases
+(18.7–18.11): a Name-only reference, a GlobalId-only reference via `guid:`, `IfcWall` used as the
+literal class name against a mixed IfcWall/IfcWallStandardCase population, a counted definite
+phrase ("the two internal doors"), and a material assignment in indirect phrasing. Not yet run
+against a live model; the corpus and grammar changes are covered by unit tests only.
+
+**review 8 — The benchmark command still defaulted to `user=None`.** `BenchmarkRunner` has taken
+a `user` kwarg since B-1, but `benchmark_writeback.py` never passed one, so every bake-off row
+ran the anonymous resolution path: no `UserLLMConfig`, no BYOK, no per-user Ollama override,
+silently. `--user EMAIL_OR_USERNAME` resolves a real account and threads it through
+`BenchmarkRunner`; omitted, the behaviour and the risk are unchanged from before.
+
+
+---
+
+### Review 9 entries, 2026-09-17 (a second, dead client-side card renderer)
+
+A user-reported cosmetic bug ("Tier undefined – undefined", "Confidence: NaN%" on every
+proposal header) traced to a real, deeper defect: the live chat never used the server's
+rendered card at all.
+
+**review 9 — `_appendProposalCard` was the rejected "second client-side renderer," still live.**
+`_modify.html` had a second, self-contained V2 card builder (`p.tier`, `p.operation`,
+`p.confidence`, `p.plan_steps`, `p.review`, `p.diff_preview`, `p.requires_code_ack`) that ran on
+every streamed proposal, in both the WebSocket and HTTP-fallback paths. Both `views.py` and
+`consumers.py` had already attached `card["html"] = render_card(...)` to the payload (the same
+partial the persisted page includes via `modify_message_list.html`) since the build; the client
+never read it. This is exactly what *build* rejected ("a second, client-side rendering of the
+same dict") — the rejected code was never deleted. Fixed by deleting `_appendProposalCard` and
+inserting `data.proposal.html` directly, wrapped in the chat bubble markup
+(`_appendProposalCardHtml`). A new test (`test_live_stream_and_page_reload_render_the_identical_card`)
+pins the two paths to byte-identical output.
+
+**review 9 — The stuck-Approve bug this caused.** `proposal_card.html`'s flagged-row checkboxes
+(`.flag-ack`, spec U-2) never existed in the dead renderer's markup, `ModifyChat.onFlagToggle`
+(called by the real template's `onchange`) was never defined at all, and `approve()` never sent
+`acknowledged_keys`. Any proposal with a flagged row was therefore stuck in the live chat: the
+server's `_handle_approve` 422s on `acknowledged != expected` (U-2 as designed; the server-side
+gate held), and the dead card gave the user no way to tick anything. A proposal with zero flagged
+rows approved fine, which is why this went uncaught. Fixed: `onFlagToggle` toggles the Approve
+button and the hint paragraph from the real `.flag-ack` checkboxes; `approve()` collects the
+ticked values and sends them. New Playwright coverage in `tests/e2e/test_modify_flow.py`
+(`TestFlagAcknowledgement`) exercises tick → enable → POST → `acknowledged_keys`; not run in this
+change (no Chromium in the sandbox this was built in — `playwright install chromium` was never
+run there), so it needs a real run before this is called verified.
+
+**review 9 — Two more dead V2 companions removed with it.** `approveChain` /
+`ModifyChat.approveChain` (the "chained operation" banner and its only caller) — no backend path
+has sent `chain`/`proposals` (plural) since V3; `test_consumers.py` already asserted
+`"chain" not in result`. `acknowledgeReview` (the Tier-3 code-review checkbox, posting the V2
+`acknowledge_review` action) — `test_writeback_views.py::test_acknowledge_review_action_no_longer_exists`
+already proved that action returns 400; the checkbox it toggled only ever existed in the deleted
+renderer. `_guardianBadgeHTML` and `_escapeHtml` were used only inside the deleted function and
+went with it. `_renderPhaseDetail`'s `tier` / `operation` / `entities_count` / `steps_count`
+branches were dead the same way: `detail` only ever carries `targets`, `flags`, `verdict` (U-3);
+left as dead branches on the deleted function's neighbour rather than something worth building
+out, since adding progress-tracker target/flag counters was not what was asked and is its own
+small feature.
+
+**review 9 — `tests/e2e/test_modify_flow.py` mocked a fictional payload.** Its
+`_mock_propose_response` shaped `{"status": "success", "proposals": [{"tier": 1, "diff_preview":
+...}]}` — a V2 shape matching the also-dead JS renderer, so the suite passed while testing
+nothing real (flagged by *review 7* and never acted on). Rewritten to build a real
+`ModificationProposal` via the factories and call `serialize_proposal` + `render_card` for the
+mocked `html`, so the mock cannot drift from the real payload again.
+
+**review 9 — Recorded, not changed.** `tier1HelpModal` (~550 lines) documents the deleted
+three-tier / auto-escalation / intent-classification system end to end, with per-tier example
+buttons; it has no *broken* dynamic field (it's static prose, so no undefined/NaN), but it is
+comprehensively wrong about how V3 works. Left alone at the owner's call — a rewrite is a design
+pass (content and IA), not a diff-sized fix — and filed as a known-stale item for its own change.
+
+
+---
+
+### Review 10 entries, 2026-09-17 (Guardian missed a real requirement it should have confirmed)
+
+RØA Senter project, proposal 9173ae8f: FireRating EI 30 → EI 60 on 3 `IfcWallStandardCase`
+walls, a request the conflict scan itself had generated and that already cited the exact
+document and page. Guardian answered "No relevant information found in project documents" —
+opposite of the Conflicts card that produced the request one panel over. Diagnosed against the
+real data (not the suite) before any change: `build_guardian_query` produced `"wall standard
+case fire rating EI 60"`; the correct chunk (Brannkonsept_Roa_Senter_CLEAN_TEXT_for_Castor.pdf,
+p.2, Norwegian: *"Branncellebegrensende konstruksjoner skal tilfredsstille: Generelt EI 60
+A2-s1,d0"*) ranked #1 against that query at cosine distance 0.4551 — 0.0051 over the 0.45
+threshold — so `_search_documents` returned zero chunks and `_evaluate` (the LLM verdict step)
+never ran. Both Guardian and the conflict scan read the identical `DocumentChunk` set (one
+document, 7 chunks, same project/status filter): not a document-set mismatch. Re-embedding the
+proposal's own request text (which already carried the conflict scan's citation) against the
+same chunk scored 0.267 — comfortably under threshold. The conflict scan itself never sent a
+synthesized query for this chunk at all: its embedding pass compares the chunk directly against
+each wall entity's own stored embedding (0.3156), which carries the wall's actual name
+(partly Norwegian) and sits far closer to a Norwegian document than a generic English
+diff-derived phrase ever can.
+
+**review 10 — Guardian searches twice, unions the results.** `build_guardian_query` (the diff
+row: type, humanised property, value) is kept exactly as it was — it is precise and cheap, and
+the fire-rating acceptance string in A-4 still holds. A second function, `build_request_query`,
+adds the proposal's own request text, capped at 512 characters (`REQUEST_QUERY_CAP`) because it
+is free-form user input: long enough for any real request (the motivating case, carrying a full
+document citation, was ~190 chars) with headroom, short enough that a pasted paragraph cannot
+dilute the query vector. `_search_documents` now takes a list of queries, embeds each distinct
+non-empty one independently (skipping a duplicate — a request text identical to the diff-row
+query, e.g. no dominant row, costs one embedding call, not two), unions the top-`k` candidates
+per query by chunk id keeping the **best** (lowest) distance when a chunk surfaces under more
+than one query, then applies the same `RELEVANCE_THRESHOLD` and the same `top_k` cap as before —
+the worst-case prompt size to `_evaluate` is unchanged. `RELEVANCE_THRESHOLD` (0.45) is
+untouched: the near-miss on 9173ae8f was a symptom of a weak query, not a wrong cutoff, and a
+looser threshold would have started admitting the page-1 header and the door clause too.
+Rejected: raising the threshold (the fix for a systematically weak query is a better query, not
+a wider net — the case's own numbers show a 0.19 gap to close, not a 0.005 one); combining both
+texts into one embedded string (loses the ability to reason about which query actually found a
+chunk, and a hybrid string embeds worse than either half alone in the general case).
+
+**review 10 — Cost: A-4's "one embedding call besides" is now "up to two."** Spec and skill
+updated. One call when the two query strings coincide (no dominant diff row, so
+`build_guardian_query` falls back to the explanation or the request text and the dedup in
+`_search_documents` catches the match), two otherwise. No change to the model-call count (still
+one verdict call, same `num_ctx`, same `safe_invoke` timeout) and no new way for Guardian to
+block or raise: `check()`'s single top-level try/except is unchanged, so a failure on either
+embed call still ends in `FAILED`, exactly as a failure on the one embed call did before. This
+is a real, if small, increase in Guardian's exposure to an Ollama embedding hiccup (twice the
+calls, twice the chance one fails) — accepted rather than papered over with a new per-query
+try/except, since the instruction was to keep the exception boundary as it stood, not to
+redesign it.
+
+**review 10 — Verified on the real proposals, not just the suite.** Proposal 9173ae8f re-run
+after the change: `_search_documents` now returns the page-2 chunk (via the request-text query,
+distance 0.267) and `_evaluate` runs; verdict recorded. A Grethes-hus wall proposal that already
+read "Docs confirm" (`verified`, load-bearing internal wall FireRating) was re-run the same way
+to confirm the second query doesn't regress an already-working case — it still reads `verified`
+with the same source. Both runs are logged in the evaluation record, not just asserted in a unit
+test, because the diagnosis itself came from a gap the suite's mocked embeddings could never
+have shown.
+
+**review 10 — Recorded, not changed.** The 2026-09-16 finding that Guardian's numeric verdict
+behaves as an equality check while textual properties fail as "no relevant docs" is a different
+mechanism from this case: that pattern requires the LLM to see chunks and misjudge them; on
+9173ae8f the LLM never ran at all, because retrieval returned nothing. Same visible symptom, two
+distinct root causes — the equality-vs-comparison question in the verdict prompt is untouched by
+this change and stays open for its own diagnosis.

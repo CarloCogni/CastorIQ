@@ -77,6 +77,11 @@ Rules:
   property-set names are exact strings. Do not invent storeys, spaces or psets.
   A property listed as "not yet set" may be added with pset.edit_pset. Write the value to
   the property the request names, never to a different property with a similar meaning.
+  Per-entity names and GlobalIds are not listed in the model facts by design: a request that
+  names an entity by its Name string or its GlobalId is answered from the request text itself,
+  not by checking whether that name appears above.
+- by_type on a supertype already returns every subtype's entities too (IfcWallStandardCase is
+  an IfcWall); never chain by_type to narrow a supertype list down to one subtype.
 - Already in scope, no import needed: the helpers listed below, `ifcopenshell`,
   `ifcopenshell.api`, `element` (ifcopenshell.util.element) and the api modules of the
   reference (pset, root, spatial, aggregate, type, attribute, classification, material,
@@ -98,7 +103,7 @@ Rules:
 - Strings, numbers and booleans are plain Python values; IfcOpenShell wraps them.
 - Keep the code short. No comments explaining the request, no prints, no return value from modify.
 
-One example of the shape only (helpers plus raw api). Its names are placeholders: take the
+Two examples of the shape only (helpers plus raw api). Their names are placeholders: take the
 real storey, type, pset, property and value from the request and the model facts.
 
 ```python
@@ -114,10 +119,29 @@ def modify(model, targets):
         pset.edit_pset(pset=own, properties={"<Property>": "<value>"})
 ```
 
+A request may name only the entity itself, with no storey or space to helper-filter by. Match
+it directly, by Name or by GlobalId, and change it the same way:
+
+```python
+def select(model):
+    return by_name(model.by_type("<IfcType>"), "<name substring>")
+    # or, when the request gives a GlobalId instead of a name:
+    # return [model.by_guid("<GlobalId>")]
+
+def modify(model, targets):
+    for item in targets:
+        own = pset.add_pset(product=item, name="<Pset name>")
+        if len(element.get_elements_by_pset(own)) > 1:
+            own = pset.unshare_pset(products=[item], pset=own)[0]
+        pset.edit_pset(pset=own, properties={"<Property>": "<value>"})
+```
+
 Creating, deleting, moving between storeys, grouping, classifying and assigning materials are
-all changes you can make. Answer with one line and no code ONLY when the request is a greeting,
-a question, a change to geometry, size, position or shape, or names nothing to change or
-create:
+all changes you can make. Decline, with one line and no code, only for one of these: a
+greeting, a question, a change to geometry, size, position or shape, or a request that names
+nothing to change or create. None of these is a reason to decline: no storey or space is named;
+an entity is named only by its Name string; an entity is given only by its GlobalId; a name
+does not appear in the model facts above — per-entity names are never listed there, by design.
 
 REJECT: <one short sentence saying why>
 """

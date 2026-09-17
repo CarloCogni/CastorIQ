@@ -1,7 +1,10 @@
 # writeback/tests/test_proposal_serializer.py
 """One serialiser feeds the card: request, explanation, targets with evidence, rows, code, Guardian."""
 
+from types import SimpleNamespace
+
 import pytest
+from django.template.loader import render_to_string
 
 from ifc_processor.tests.factories import IFCEntityFactory, IFCSpatialElementFactory
 from writeback.services.proposal_serializer import render_card, serialize_proposal
@@ -119,3 +122,25 @@ def test_render_card_shows_all_parts_and_the_flag_checkboxes(ifc_file, indexed_w
     assert f'id="proposal-execute-{proposal.id}"' in html
     assert "disabled" in html
     assert "test-model" in html
+
+
+@pytest.mark.django_db
+def test_live_stream_and_page_reload_render_the_identical_card(ifc_file, indexed_walls):
+    """The WebSocket/HTTP payload's card.html is the exact partial a page reload also renders.
+
+    views.py and consumers.py attach card["html"] = render_card(...) to the live payload;
+    modify_message_list.html includes the same proposal_card.html for a persisted message.
+    Both must produce byte-identical markup for the same proposal — there is one renderer,
+    not two (spec U-1).
+    """
+    proposal = ModificationProposalFactory(ifc_file=ifc_file, diff=sample_diff(after="EI999"))
+    card = serialize_proposal(proposal)
+    live_html = render_card(proposal, ifc_file.project, card)
+
+    message = SimpleNamespace(role="assistant", content="", card=card, proposal=proposal)
+    persisted_page = render_to_string(
+        "writeback/components/modify_message_list.html",
+        {"messages": [message], "project": ifc_file.project, "user": proposal.created_by},
+    )
+
+    assert live_html in persisted_page

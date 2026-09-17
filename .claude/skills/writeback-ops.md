@@ -35,7 +35,11 @@ def modify(model, targets) -> None:
 ```
 
 - `select` may use the eight `castor_select` helpers or raw ifcopenshell. Returning one
-  entity instead of a list is accepted (the child wraps it).
+  entity instead of a list is accepted (the child wraps it). Two worked examples ship in the
+  prompt: storey → type → name, and a bare reference with no storey or space (by Name via
+  `by_name`, or by GlobalId via `model.by_guid`) — grounding never lists per-entity names or
+  GlobalIds, by design, so a request naming only one of those is not declined for it (C-6,
+  *review 8*).
 - `modify` receives `select`'s result; it may narrow it, never widen it. Widening is caught
   by the scope check, not by prompt wording.
 - The prompt's example and creation recipe are written in the sheet's notation with
@@ -72,6 +76,13 @@ requested property the file lacks must be an exact string in the prompt, or the 
 writes the value into the nearest listed property. **Exactly one match happens in grounding**: lowercase substring of the request's
 words against type names with `Ifc` stripped, used only to pick which types get a pset list.
 "First floor" is resolved by the model reading the storey strings, never by a matcher.
+Entity counts state a supertype/subtype split when a type's direct parent is also indexed
+(`IfcWall: 1 direct, plus 56 IfcWallStandardCase (subtype of IfcWall); model.by_type('IfcWall')
+returns all 57`), so a plain count is never mistaken for "no entities of the supertype exist"
+and the model is told never to chain `by_type` to narrow a supertype to a subtype it already
+returns (*review 8*). Materials are not grounded: the index carries no material data
+(`parser.py`, out of scope), so a material request is answered from the request text alone —
+deferred, not decided (*review 8*).
 
 ## The api sheet — `writeback/services/api_sheet.py`
 
@@ -177,7 +188,13 @@ its `IFCElementType` row and every occurrence, no embedding regeneration (stated
 Runs at proposal time inside `ProposalService.create_proposal`, so the verdict is on the card
 before the human decides. Advisory, never blocks: wrapped in try/except, failure → status
 `failed`. Skippable per request (`skip_guardian`), stateless, the skip is recorded on the row.
-The document query is built from the dominant aggregated diff row: "wall fire rating EI60".
+Two document search queries, unioned: the dominant aggregated diff row ("wall fire rating
+EI60") and the request text (capped at 512 chars, `REQUEST_QUERY_CAP`) — the diff row is
+precise but carries nothing the user actually wrote, so a citation, a clause or a term in
+another language in the request can retrieve a chunk the diff row alone cannot (*review 10*,
+proposal 9173ae8f: the diff-row query missed a Norwegian clause at 0.4551 against the 0.45
+threshold; the request text, already carrying the term, scored 0.267). Results are deduped by
+chunk id keeping the best distance before the threshold applies; identical queries embed once.
 Uses the Modify model with the Modify `num_ctx` so a request stays on one loaded runner, built
 **for the requesting user** (BYOK, budget, call log) and called through `safe_invoke` (90 s);
 a timeout is a FAILED verdict.
@@ -222,7 +239,13 @@ scores **false** on targets and diff (it stays in the denominators); a `ModelUna
 is a harness error outside every score. Integrity re-reads the written scratch copy with
 `diff_files` + `IfcDiff.unexpected`, independently of the pipeline's gate. Diff values compare
 equal (`EI60` ≠ `REI60`). `--model provider:tag` per bake-off row; `--repeat` keeps the first
-failing run and never repeats a failed or advisory case.
+failing run and never repeats a failed or advisory case. `--user EMAIL_OR_USERNAME` runs as a
+real account so `UserLLMConfig` applies as it would for a real request; omitted, every call
+runs anonymous (site defaults only, no BYOK) — the default before *review 8*, kept for
+backward compatibility but no longer the recommended way to run a row. A `guid: <IfcType>
+named "<substring>"` case line resolves one real GlobalId through the index at run time and
+substitutes it for `{GUID}` in the prompt, so a GlobalId-only request is testable without ever
+writing a literal GlobalId into the corpus file (B-1).
 
 ---
 
@@ -237,7 +260,11 @@ failing run and never repeats a failed or advisory case.
 6. Running the code again at approval — never. Swap the reviewed scratch copy.
 7. Adding a special repair prompt for one failure kind — there is one repair rule.
 8. Storing V3 data in a V2 column (`changes`, `diff_preview`, `intent_json`, `confidence`).
-9. Serialising the card in a second place — `serialize_proposal` is the only one.
+9. Serialising the card in a second place — `serialize_proposal` is the only one. Same rule on
+   the client: the live payload's `proposal.html` (`views.py`, `consumers.py`) is the rendered
+   card — insert it, never rebuild one from the JSON fields in page-script JS (`review 8`/`9`
+   found exactly this: a second, dead client-side renderer expecting V2 keys had survived
+   in `_modify.html` since the build).
 10. Adding a setting for the explainer model or for the GPU tier — there is none.
 11. Business logic in views or consumers — services only.
 12. Letting Guardian block or raise — advisory, try/except, `failed` status.

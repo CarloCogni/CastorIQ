@@ -249,32 +249,22 @@ function viewEntityIn3D(globalId) {
 }
 
 // ── Cross-tab helpers ────────────────────────────────────────────────────────
+// Prefill format is fixed: "Regarding <name> (GlobalId: <globalId>): " (note
+// the trailing colon + space). .tab-ask/.tab-modify are real navigation links,
+// not in-page swaps, so the prefill is handed off via sessionStorage and read
+// back by the destination tab's own init code (_ask.html / _modify.html).
 function askAboutEntity(name, globalId, ifcType) {
   if (_entityModal) _entityModal.hide();
+  sessionStorage.setItem('castor.prefill.ask', 'Regarding ' + name + ' (GlobalId: ' + globalId + '): ');
   const askLink = document.querySelector('.tab-ask');
   if (askLink) askLink.click();
-  setTimeout(() => {
-    const textarea = document.querySelector('#ask-input, textarea[name="message"]');
-    if (textarea) {
-      textarea.value = 'Tell me about the ' + ifcType + ' named "' + name + '" (GlobalID: ' + globalId + ')';
-      if (window.autoGrow) autoGrow(textarea);
-      textarea.focus();
-    }
-  }, 300);
 }
 
-function modifyEntity(globalId, ifcType, name) {
+function modifyEntity(name, globalId, ifcType) {
   if (_entityModal) _entityModal.hide();
+  sessionStorage.setItem('castor.prefill.modify', 'Regarding ' + name + ' (GlobalId: ' + globalId + '): ');
   const modifyLink = document.querySelector('.tab-modify, [data-tab="modify"]');
   if (modifyLink) modifyLink.click();
-  setTimeout(() => {
-    const textarea = document.querySelector('#modify-input, textarea[name="modify_message"]');
-    if (textarea) {
-      textarea.value = 'I want to modify the ' + ifcType + ' named "' + name + '" (GlobalID: ' + globalId + ')';
-      if (window.autoGrow) autoGrow(textarea);
-      textarea.focus();
-    }
-  }, 300);
 }
 
 function copyToClipboard(text, btn) {

@@ -31,7 +31,7 @@ replace this model, check that assumption before trusting a run.
 
 ## `pipeline-test-prompts.txt`
 
-98 prompts across 20 sections. Each prompt is preceded by comment lines that
+104 prompts across 20 sections. Each prompt is preceded by comment lines that
 say what the run must produce; the expectations are **human-readable and
 GlobalId-free**, and the runner resolves them through the database index:
 
@@ -47,6 +47,10 @@ diff:    + IfcZone x3  /  - IfcWall x1                → entities created / del
 reject:  ["geometry"]                                 → must be declined or rejected
 no-change:                                            → already so; nothing to approve
 advisory: <why>                                       → run and report, never scored
+guid:    IfcWall named ":285395"                      → resolves one real GlobalId at run
+                                                        time, substituted for every {GUID} in
+                                                        the prompt — no literal GlobalId is
+                                                        ever written into this file
 ```
 
 Several `targets:` lines are a union; several `diff:` lines must all hold. A
