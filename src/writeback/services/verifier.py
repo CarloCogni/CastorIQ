@@ -9,14 +9,17 @@ the benchmark.
   or schema change, is one error string for the repair loop.
 - :func:`aggregate_rows` — rows grouped by (pset, property, before → after) with
   counts, plus one row per added or removed entity.
-- :func:`flag_rows` — **the one flag rule**: a row is flagged when something
+- :func:`flag_rows` — **the flag rule**: a row is flagged when something
   about it is not in the request. Its new value, when that is not a non-empty
   case-insensitive substring of the request (booleans and None, a removal, are
   exempt); or the name of the property it changed, when no squashed form of the
   name, no camel word of :data:`_MIN_NAME_WORD` letters or more and no
-  :data:`PROPERTY_SYNONYMS` entry appears in the request. Every added or removed
-  entity is a flagged row. ``DiffRow.flag_reason`` says which; a flag is never a
-  repair (a false positive on an unlisted phrasing costs one tick).
+  :data:`PROPERTY_SYNONYMS` entry appears in the request; or its **prior value**,
+  when the same property is overwritten from more than one distinct before-value
+  across the proposal (a scalar removal is exempt, same reasoning as the value
+  check: nothing new is written over the mix, it is just gone). Every added or
+  removed entity is a flagged row. ``DiffRow.flag_reason`` says which; a flag is
+  never a repair (a false positive on an unlisted phrasing costs one tick).
 """
 
 from __future__ import annotations
@@ -53,6 +56,7 @@ FLAG_LABELS: dict[str, str] = {
     "property": "property not in request",
     "added": "entity added",
     "removed": "entity removed",
+    "heterogeneous": "overwrites different existing values",
 }
 #: A camel word shorter than this never names a property on its own ("is", "has").
 _MIN_NAME_WORD = 4
@@ -174,9 +178,10 @@ def aggregate_rows(diff: dict) -> list[DiffRow]:
 
 
 def flag_rows(rows: list[DiffRow], request: str) -> list[DiffRow]:
-    """Apply the one flag rule in place and return the rows, flagged ones first."""
+    """Apply the flag rule in place and return the rows, flagged ones first."""
+    mixed = _mixed_prior_value_keys(rows)
     for row in rows:
-        row.flag_reason = _flag_reason(row, request)
+        row.flag_reason = _flag_reason(row, request, mixed)
         row.flagged = bool(row.flag_reason)
     return sorted(rows, key=lambda r: not r.flagged)
 
@@ -194,13 +199,35 @@ def flagged_keys(diff: dict, request: str) -> set[str]:
 # ── Internals ──────────────────────────────────────────────────────
 
 
-def _flag_reason(row: DiffRow, request: str) -> str:
-    """Why the row needs a tick: the population change, the property name or the value; "" if none."""
+def _flag_reason(row: DiffRow, request: str, mixed: set[tuple[str, str, str]]) -> str:
+    """Why the row needs a tick: population, property name, value, or a mixed prior value; "" if none."""
     if row.kind in ("added", "removed"):
         return row.kind
     if not _names_property(row, request):
         return "property"
-    return "value" if _value_absent(row, request.casefold()) else ""
+    if _value_absent(row, request.casefold()):
+        return "value"
+    return "heterogeneous" if (row.kind, row.pset, row.prop) in mixed else ""
+
+
+def _mixed_prior_value_keys(rows: list[DiffRow]) -> set[tuple[str, str, str]]:
+    """(kind, pset, prop) groups the proposal overwrites from more than one before-value.
+
+    A mass write over a heterogeneous prior state is where the user cannot know what
+    they are overwriting: nine walls at EI 90 and 271 with no rating at all both become
+    EI60, and "EI60" being the literal value typed makes the value check blind to it.
+    Counts distinct before-values, never compares them against each other, so it needs
+    no domain knowledge of what outranks what. A scalar removal (``after is None``) is
+    excluded from the count: deleting a property erases whatever was there, so a mixed
+    prior state is not a specific new value silently overwriting it, the reasoning the
+    value check already applies to removals.
+    """
+    by_key: dict[tuple[str, str, str], set[str]] = {}
+    for row in rows:
+        if row.kind not in ("property", "attribute") or row.after is None:
+            continue
+        by_key.setdefault((row.kind, row.pset, row.prop), set()).add(_norm(row.before))
+    return {key for key, befores in by_key.items() if len(befores) > 1}
 
 
 def _names_property(row: DiffRow, request: str) -> bool:

@@ -849,3 +849,59 @@ mechanism from this case: that pattern requires the LLM to see chunks and misjud
 9173ae8f the LLM never ran at all, because retrieval returned nothing. Same visible symptom, two
 distinct root causes — the equality-vs-comparison question in the verdict prompt is untouched by
 this change and stays open for its own diagnosis.
+
+
+---
+
+### Review 11 entries, 2026-09-18 (a mass write over a heterogeneous prior state)
+
+TEMP 4 / NRS_ARK, Erez's tab: *Set Pset_WallCommon.FireRating to EI60 on all interior
+partition walls*, 467 targets, one aggregated diff with four rows on the same property:
+EI 90 → EI60 ×9, (none) → EI60 ×271, EI 30 → EI60 ×53, EI 60 → EI60 ×134 (a string-formatting
+difference, not a no-op: "EI 60" with a space, "EI60" without). The nine EI 90 walls are
+IfcWallStandardCase, all *Basic Wall:LVA-200 - 200mm Leca Blokk med puss*, a masonry type whose
+90-minute rating is a design decision, not missing data. Guardian returned "Docs confirm". No
+row was flagged, because the value half of V-3 tests "EI60" against the request text and the
+property half tests "FireRating" against it, and the request contains both literally — the rule
+was never checking what a row overwrote, only what it wrote and onto what name.
+
+**review 11 — A third flag condition: prior value.** A row now also flags when the property it
+changed was overwritten from more than one distinct before-value across the whole proposal
+(`_mixed_prior_value_keys`, verifier.py); a scalar removal is exempt, same reasoning as the value
+check's own removal exemption. The rule counts distinct before-values, never compares them, so
+it needs no notion that EI 90 outranks EI 60 — that ordering does not generalise past one
+property, and the next one (an acoustic class, a U-value tier) would need its own table.
+Rejected: encoding fire-rating order (or any per-property ranking) to flag only the row that
+actually lowers a rating — the instruction that started this change, and the reason the rule
+counts rather than compares.
+
+**review 11 — The whole property flags, not the minority rows.** All four rows in the 467-target
+case tick, including the 271-wall "(none) → EI60" row, which is in fact an ordinary bulk set.
+Rejected (a wrong first instinct, corrected by the owner): flagging only the numerically smaller
+before-value(s) — here EI 90 ×9 and EI 30 ×53 against EI 60 ×134 and none ×271. "Minority" is a
+headcount, not a judgement of which prior value was the deliberate one, and a property where the
+split runs the other way (271 EI 90 walls, 9 unset) would flag exactly backwards. The diff alone
+cannot say which before-value was intentional; only the human can, so every row carrying that
+property in the proposal gets the same tick.
+
+**review 11 — Beside the existing flag rule, not a separate check.** Diff-only, deterministic,
+no model call, same `DiffRow.flag_reason` / `FLAG_LABELS` / `.flag-ack` mechanism U-2 already
+gates approval on — the card and the approve view needed no change. It differs from the other
+two conditions only in scope: value and property name are read off one row, this one is read off
+every row sharing a (pset, property) key, computed once per `flag_rows` call before the per-row
+reasons are assigned. Label shown on the card: "overwrites different existing values", not the
+internal `heterogeneous` reason key or diff vocabulary like "mixed prior value" — the card is
+read by people who don't know the diff's own words for itself.
+
+**review 11 — Checked against the corpus.** Case 3.2 ("set ThermalTransmittance to 0.18 on every
+wall in the project") newly flags: the fixture's three external walls and two partitions start at
+two different U-values (0.2359 / 0.351) and both get overwritten to 0.18 — the same shape as the
+motivating case, correctly caught, not a regression. Marked with a `note:` line in
+`fixtures/benchmark/pipeline-test-prompts.txt` (an existing, already-parsed, unscored corpus
+field) so the next benchmark run reads the new tick requirement as intended rather than a
+regression; B-2 has no flag column, so nothing about targets-match or diff-match changes. Case
+6.3 ("remove Reference from all walls") would have newly flagged without the removal exemption:
+the fixture's three Wall-Ext and two Wall-Partn walls hold two different Reference strings, both
+removed to nothing; removing is not a specific value overwriting a mix, so it stays unflagged,
+matching the value check's own removal exemption. No other corpus case has more than one distinct
+before-value on a single overwritten property within one proposal.

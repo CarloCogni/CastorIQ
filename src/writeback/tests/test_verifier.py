@@ -190,6 +190,63 @@ def test_flag_rule_is_case_insensitive():
     assert rows[0].flagged is False
 
 
+def test_mass_write_over_a_heterogeneous_prior_state_is_flagged():
+    """TEMP4/NRS_ARK shape: EI90, EI30 and no rating all become EI60 in one proposal.
+
+    EI60 is the literal value typed and FireRating is the property named, so the
+    value/property checks are silent on every row; the EI90->EI60 rows lower an
+    existing rating and would otherwise approve on one click.
+    """
+    diff = _diff(
+        property_changes=(
+            [_prop(f"A{i}", "Pset_WallCommon", "FireRating", "EI 90", "EI60") for i in range(9)]
+            + [_prop(f"B{i}", "Pset_WallCommon", "FireRating", None, "EI60") for i in range(271)]
+            + [_prop(f"C{i}", "Pset_WallCommon", "FireRating", "EI 30", "EI60") for i in range(53)]
+            + [_prop(f"D{i}", "Pset_WallCommon", "FireRating", "EI 60", "EI60") for i in range(134)]
+        )
+    )
+
+    rows = flag_rows(
+        aggregate_rows(diff),
+        "Set Pset_WallCommon.FireRating to EI60 on all interior partition walls",
+    )
+
+    assert len(rows) == 4
+    assert all(r.flagged for r in rows)
+    assert {r.flag_reason for r in rows} == {"heterogeneous"}
+
+
+def test_a_single_target_edit_has_one_before_value_and_is_not_flagged():
+    """One target, one before-value: the ordinary case the rule must not touch."""
+    diff = _diff(property_changes=[_prop("W1", "Pset_WallCommon", "FireRating", "EI30", "EI60")])
+    rows = flag_rows(aggregate_rows(diff), "set FireRating to EI60 on wall W1")
+    assert rows[0].flag_reason == ""
+
+
+def test_a_uniform_mass_edit_has_one_before_value_and_is_not_flagged():
+    """Five targets sharing the same prior value is an ordinary edit, not a mixed one."""
+    rows = flag_rows(
+        aggregate_rows(_diff(property_changes=FIRE_RATING_ROWS)),
+        "Set the fire rating of all walls to EI60",
+    )
+    assert all(r.flag_reason == "" for r in rows)
+
+
+def test_a_removal_is_exempt_from_the_mixed_prior_value_rule():
+    """Corpus case 6.3 shape: two Reference strings, both removed, is not an overwrite."""
+    diff = _diff(
+        property_changes=[
+            _prop("W1", "Pset_WallCommon", "Reference", "Wall-Ext_102Bwk-75Ins-100LBlk-12P", None),
+            _prop("W2", "Pset_WallCommon", "Reference", "Wall-Ext_102Bwk-75Ins-100LBlk-12P", None),
+            _prop("W3", "Pset_WallCommon", "Reference", "Wall-Ext_102Bwk-75Ins-100LBlk-12P", None),
+            _prop("W4", "Pset_WallCommon", "Reference", "Wall-Partn_12P-70MStd-12P", None),
+            _prop("W5", "Pset_WallCommon", "Reference", "Wall-Partn_12P-70MStd-12P", None),
+        ]
+    )
+    rows = flag_rows(aggregate_rows(diff), "remove Reference from all walls")
+    assert all(r.flag_reason == "" for r in rows)
+
+
 def test_flagged_keys_returns_only_the_flagged_rows():
     """The approve check compares this set with the keys the client sent."""
     diff = _diff(property_changes=FIRE_RATING_ROWS, added_global_ids=["NEW1"])

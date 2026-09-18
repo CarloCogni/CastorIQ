@@ -12,7 +12,7 @@ This is the "second opinion" that makes Castor bidirectional:
 V3: the search queries and the LLM prompt are built from the proposal's
 measured diff and its request text (spec A-4), not from an intent structure.
 :func:`build_guardian_query` reads the dominant aggregated row;
-:func:`build_request_query` is the request text, capped, added 2026-09-17
+:func:`build_request_query` is the request text, capped, added 2026-09-18
 after a real case (proposal 9173ae8f) showed the diff-row query alone misses
 a requirement stated in the request's own words — a document citation, a
 term in another language, anything the diff row cannot reconstruct from a

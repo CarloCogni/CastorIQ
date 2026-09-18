@@ -133,11 +133,16 @@ All deterministic, on `diff.as_dict()`:
   refreshed. A pset added or removed with no properties is one row named after the pset.
 - **Zero targets** is one error string through the same repair loop. **Non-empty targets with
   an empty diff** is an "already so" outcome: no proposal, no repair.
-- **One flag rule (V-3):** rows are aggregated by `(pset, property, before → after)` with
+- **The flag rule (V-3):** rows are aggregated by `(pset, property, before → after)` with
   counts. A row is flagged when something about it is not in the request: its new value
-  (not a case-insensitive substring of the request; booleans and None are exempt) or the
+  (not a case-insensitive substring of the request; booleans and None are exempt); the
   **name of the property it changed** (no squashed name, no camel word of ≥ 4 letters and
-  no `PROPERTY_SYNONYMS` entry appears in the request). Every added or removed entity is one
+  no `PROPERTY_SYNONYMS` entry appears in the request); or its **prior value** (*review 11*,
+  2026-09-18) — every row of a property the proposal overwrites from more than one distinct
+  before-value flags, the whole property, not just the minority rows, since the rule counts
+  before-values and never ranks them (no fire-rating ordering baked in). A scalar removal is
+  exempt from that third condition. Card label: "overwrites different existing values"
+  (`heterogeneous` is the internal `flag_reason` key). Every added or removed entity is one
   flagged row. `DiffRow.flag_reason` names which; the card's badge shows it. A flag is never
   a repair. Flagged rows must be ticked in the approve POST.
 - **Blind explanation (V-4):** `explainer.py` shows the model the code and the aggregated

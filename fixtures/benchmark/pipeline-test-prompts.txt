@@ -25,6 +25,7 @@
 #   reject:  ["substring" / "substring"]      must be declined or rejected
 #   no-change:                                already so; nothing to approve
 #   advisory: <why>                           run and report, never scored
+#   note:    <text>                           carried into the report only; scoring unaffected
 #
 #   Several targets: lines are a union; several diff: lines must all hold.
 #
@@ -140,6 +141,10 @@ change FireRating to REI120 on all walls
 # 3.2 — explicit "every" quantifier
 # targets: IfcWall x5
 # diff: Pset_WallCommon.ThermalTransmittance = 0.18 x5
+# note: expected to flag "overwrites different existing values" on ThermalTransmittance
+#   (review 11, 2026-09-18) — the 3 external walls start at 0.2359, the 2 partitions at
+#   0.351; both overwritten to 0.18 is the shape V-3's third flag condition exists to
+#   catch. Not scored (B-2 has no flag column) but read this as intended, not a regression.
 set ThermalTransmittance to 0.18 on every wall in the project
 
 # 3.3 — all windows
