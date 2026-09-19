@@ -1,7 +1,7 @@
 # Next steps to submission — checklist
 
 Owner: Carlo. Due **27 Sep 2026, 15:59**. Tick items here; evidence lives where
-it lives (`docs/evaluation/`, `runs/`, `fixtures/`). Updated 2026-09-16.
+it lives (`docs/evaluation/`, `runs/`, `fixtures/`). Updated 2026-09-19.
 
 ## 1. Things only you can do
 
@@ -27,13 +27,43 @@ it lives (`docs/evaluation/`, `runs/`, `fixtures/`). Updated 2026-09-16.
       clean files (STEP format; OCR figures, reworded to the vendor source;
       security test commit); the other three belonged to removed text.
 - [x] **The Word files are the master copy now** (decided 2026-09-16).
-      Teammates edit `…_v2.docx` directly; submission is PDF. Do not rerun
+      Teammates edit the Word files directly; submission is PDF. Do not rerun
       `tools/rewrite_memory.py` or `rewrite_appendices.py`: they would
       overwrite the team's edits and write `_v3` names. `report-sections/`
       stays as the record of the v2 text.
-- [ ] **Team review of the v2 documents.** Send the two `_REVIEW` files for
-      orientation and edit the `_v2` files. Submit only the files without
-      `_REVIEW` in their names, exported to PDF.
+- [x] **v4 built from the team's v2-to-v3 files** (2026-09-19). The team's
+      `…_v2-to-v3_REVIEW.docx` files (Erez's re-run written into Appendix E.4
+      and E.5, three memory paragraphs) were corrected into
+      `…_MAIN_v4.docx` and `…_APPENDICES_v4.docx`; the REVIEW files are
+      untouched. What changed: the memory was 5,113 counted words and is 4,991
+      (§4 narrative cut, additions tightened); Appendix E.4's "rows 98–106"
+      did not exist in the spreadsheet and are now C1–C9 with the real
+      `maria.csv` / `erez.csv` rows; Table E.3 carries Erez's paired protocol
+      (A1–C4); E.5 gains the Guardian dominant-row verdict, the Ask read-path
+      recall and the non-deterministic decline; §3.2 states the third flag
+      condition and the two Guardian queries; §5.3 / Table 5.5 read 2,695 + 21;
+      Table 5.1 cites both expert records; §5.4, §6.1, §6.3 and §7.2 updated.
+      Record: `docs/evaluation/2026-09-19-expert-retest-v3.md`. The
+      `delivery-docs/` folder is gitignored since 2026-09-19, so the Word and
+      xlsx files live only on disk and in the team's share; the CSV export is
+      the tracked copy of the log.
+- [ ] **Team review of the v4 documents.** Edit the `_v4` files; submit them
+      exported to PDF (18 + 34 pages on 2026-09-19). Word count check before
+      export (must stay ≤ 5,000):
+      ```bash
+      uv run --with python-docx python -c "import sys; sys.path.insert(0,'docs/fmp-delivery/tools'); import docx_markdown as md; from docx import Document; d=Document('docs/fmp-delivery/delivery-docs/CastorIQ_Final_Memory_MAIN_v4.docx'); print(sum(len(t.split()) for _,t in md.body_text(d,('Glossary','References','Appendices'))))"
+      ```
+- [ ] **Maria: tidy the Maria sheet before the last export.** Rows 59–69 are
+      a column-shifted copy of 70–80 (row 69 ends with a pasted chat
+      sentence), row 57 a copy of 58, rows 56–57 dated 2026-09-19/20. Delete
+      the copies, fix the dates, then re-run
+      `uv run --with openpyxl python docs/evaluation/testing-log/export.py <workbook>`.
+      Row numbers will shift, so the record and Appendix E citations must be
+      re-checked after that export, or the copies are left in place and the
+      citations stand.
+- [ ] **Erez: A2 (flagged-proposal approval) is still unmeasured** (row 148);
+      the "set the fire rating to 60 minutes" prompt produces a flagged row and
+      is the one to use. Optional before the tag.
 - [ ] **Maria checks the corrected references.** In the review copy each
       draft reference is struck through beside its replacement (Text2BIM is
       Du et al.; MCP4IFC is Nithyanantham et al.; the rework paper is Love and
@@ -42,7 +72,8 @@ it lives (`docs/evaluation/`, `runs/`, `fixtures/`). Updated 2026-09-16.
       If she has a source for 52 %, cite that source instead. Every §8 line was edited; each
       person confirms their own. Pavla: §1, the ISO references, Appendix D.
       Islam: §4.4 (Schedule). Maria: §5.4 (her Solibri rows, `maria.csv`
-      row 14). Erez: §5.4, §6.3 and Appendix E (his rows 83–97).
+      row 14; her rows 70–82 in Appendix E.4). Erez: §5.4, §6.3 and Appendix E
+      (his rows 83–150, Table E.3).
 - [ ] **Appendices B and C.** The July memory promised B (screenshots) and C
       (Scheduling guide); the appendices file holds only A and D. Add them and
       list them in `report-sections/11-appendices.md`, or leave them out (the
@@ -96,16 +127,20 @@ Without the labelled file the row cannot stay in the memory. To keep it:
 
 ## 3. Erez's V3 testing (Modify, human row)
 
-- [x] Sheet received 2026-09-16 (`delivery-docs/FMP-testing-logs.xlsx`, sheet
-      Erez rows 84–97) and exported with row ids to
-      `docs/evaluation/testing-log/erez.csv`.
+- [x] Sheet received 2026-09-16 (sheet Erez rows 84–97) and exported with row
+      ids to `docs/evaluation/testing-log/erez.csv`.
 - [x] Record written: `docs/evaluation/2026-09-16-expert-testing-v3.md`.
-      It is a narrative log, not the per-prompt sheet of
-      `expert-rerun-protocol.md`, so **no Cohen's κ** against the bake-off is
-      possible; the record says so and the protocol stays open.
-- [ ] If Erez has time before the tag: the per-prompt sheet from the protocol,
-      on the sample house, gives the κ row. Otherwise the memory cites the
-      record as expert testing and lists κ as open.
+      It is a narrative log, so **no Cohen's κ** against the bake-off is
+      possible; the record says so.
+- [x] Re-run received 2026-09-19 (`FMP testing logs-v2.xlsx`: Erez rows
+      98–150, Maria rows 52–82), re-exported, scored in
+      `docs/evaluation/2026-09-19-expert-retest-v3.md`. Erez rows 108–150 are
+      the paired protocol of `expert-rerun-protocol.md` (A1–C4) run once by
+      one rater across `353775b → 872adff`. κ is still open, now for want of a
+      second rater on the same items, not for want of a protocol.
+- [ ] If a second rater scores Erez's B1 set or Maria's Round 1 prompts before
+      the tag, that gives the κ row. Otherwise the memory cites both records
+      and lists κ as open.
 
 ## 4. Still open, not blocking
 
@@ -118,12 +153,13 @@ Without the labelled file the row cannot stay in the memory. To keep it:
 
 ## 5. Before you press submit
 
-- [ ] `uv run --with python-docx python docs/fmp-delivery/tools/rewrite_memory.py`
-      saves without an UNSOURCED or PROBLEM line on the final sources, and
-      the submitted file is the one it wrote.
+- [ ] The word-count command above prints ≤ 5,000 on the final `_MAIN_v4.docx`
+      (the build script is frozen; this check replaces its UNSOURCED /
+      PROBLEM gate). Every new figure must be in a dated
+      `docs/evaluation/` record before it goes into the Word file.
 - [ ] Table 5.5 still matches `pytest --collect-only` at the tagged commit
-      (2,676 in `src/` + 19 in `tests/e2e` on 2026-09-16, after the coverage
-      tests).
+      (2,695 in `src/` + 21 in `tests/e2e` on 2026-09-19; only the write-back
+      and Playwright rows moved since 2026-09-16).
 - [ ] `cd src && uv run pytest -q -p no:warnings` is green and
       `uv run ruff check` is clean at the tagged commit.
 - [ ] The memory's and Appendix F's links open. They 404 until the tag is

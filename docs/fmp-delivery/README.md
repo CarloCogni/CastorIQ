@@ -19,20 +19,24 @@ Rules for this folder:
 
 Layout:
 
-- `delivery-docs/`: what gets submitted. The team's originals
-  (`CastorIQ_Final_Memory_MAIN.docx`, `…_APPENDICES.docx`), the testing
-  spreadsheet, the judging criteria, the generated `…_v3.docx` files (to
-  submit) and the `…_v3_REVIEW.docx` files (for the team only: colours,
-  change table, tracked changes against the originals).
+- `delivery-docs/`: what gets submitted. **Not tracked by git since
+  2026-09-19** (`.gitignore`); the Word files are the team's master copy and
+  live on disk and in the team's share. Current files: the team's
+  `…_v2-to-v3_REVIEW.docx` (their edits on the generated v2), the corrected
+  `…_MAIN_v4.docx` and `…_APPENDICES_v4.docx` (the files to export to PDF),
+  the testing spreadsheet (`FMP testing logs-v2.xlsx`, exported to
+  `docs/evaluation/testing-log/` which is the tracked copy) and the judging
+  criteria.
 - `report-sections/`: the memory's text, one Markdown file per section, plus
   `appendix-e.md`. This is where the words are edited.
-- `tools/`: `rewrite_memory.py` and `rewrite_appendices.py` build the
-  `_v3.docx` files from the sections in the originals' own formatting and
-  check every evaluative number against `docs/evaluation/`; with `--review`
-  they also build the review copies, using `docx_redline.py` for the tracked
-  changes; `code_links.py` turns Appendix F's references into links at the
-  tag. `docs/evaluation/recount.py` recomputes the memory's tables from
-  `runs/`.
+- `tools/`: `rewrite_memory.py` and `rewrite_appendices.py` built the v2
+  files from the sections in the originals' own formatting and checked every
+  evaluative number against `docs/evaluation/`. **Frozen since 2026-09-16**:
+  the Word files are edited directly. Their helpers are still used read-only
+  (`docx_markdown.body_text` for the word count, the `FRACTION` / `DECIMAL`
+  scan for unsourced figures); `code_links.py` turns Appendix F's references
+  into links at the tag. `docs/evaluation/recount.py` recomputes the memory's
+  tables from `runs/`.
 - `figures/`: Figures 1, 3 and A.7 with the commands that regenerate them.
 
 ## Future work (not in the FMP scope)

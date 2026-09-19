@@ -7,19 +7,23 @@ row carries the xlsx row number in its first column so a citation such as
 
 Run from the repository root:
 
-    uv run --with openpyxl python docs/evaluation/testing-log/export.py
+    uv run --with openpyxl python docs/evaluation/testing-log/export.py [path/to/workbook.xlsx]
+
+Without an argument the current workbook name below is used; the team renames
+the workbook per delivery, so pass the path rather than editing this file.
 """
 
 from __future__ import annotations
 
 import csv
+import sys
 from datetime import datetime
 from pathlib import Path
 
 import openpyxl
 
 ROOT = Path(__file__).resolve().parents[3]
-XLSX = ROOT / "docs/fmp-delivery/delivery-docs/FMP-testing-logs.xlsx"
+XLSX = ROOT / "docs/fmp-delivery/delivery-docs/FMP testing logs-v2.xlsx"
 OUT_DIR = Path(__file__).resolve().parent
 SHEETS = ("Erez", "Maria")
 HEADER = ("row", "date", "area", "title", "tested", "result", "notes", "response", "link")
@@ -58,8 +62,9 @@ def export_sheet(ws: openpyxl.worksheet.worksheet.Worksheet, out: Path) -> int:
 
 
 def main() -> None:
-    """Export every sheet in SHEETS."""
-    wb = openpyxl.load_workbook(XLSX, data_only=True, read_only=True)
+    """Export every sheet in SHEETS from the workbook given on the command line, or XLSX."""
+    source = Path(sys.argv[1]) if len(sys.argv) > 1 else XLSX
+    wb = openpyxl.load_workbook(source, data_only=True, read_only=True)
     for name in SHEETS:
         count = export_sheet(wb[name], OUT_DIR / f"{name.lower()}.csv")
         print(f"{name}: {count} rows -> {name.lower()}.csv")

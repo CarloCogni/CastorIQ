@@ -109,3 +109,4 @@ docs-local/
 # NOTE: ifc-lite/ is a real git submodule (.gitmodules) and must NOT be listed here.
 engine_web-ifc/
 schema_diagrams/
+docs/fmp-delivery/delivery-docs/

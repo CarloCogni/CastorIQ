@@ -1,6 +1,6 @@
 # Rubric map — evidence and gaps per criterion
 
-Status: ✅ done · 🔶 in progress · ⬜ open. Updated 2026-09-16 (writeback V3; the
+Status: ✅ done · 🔶 in progress · ⬜ open. Updated 2026-09-19 (writeback V3; the
 2026-08-30 version cited the V2 tier system and is in git history).
 Mentor steer (Pablo, 2026-08-30): validation depth is the gap between 8.5 and
 9.5 — criterion 5 is where the remaining effort pays most.
@@ -42,7 +42,7 @@ harness-computed diff (`ifc_processor/services/code_sandbox.py`, `ifc_diff.py`;
 honest threat model: a speed bump, the diff and the human are the gates); scope
 gate and flag rule (`writeback/services/verifier.py`); locked, fingerprint-checked
 approval with a guarded claim (`execution_service.py`, `proposal_service.py`);
-2,676 collected tests + 19 Playwright e2e (2026-09-16); benchmarks index
+2,695 collected tests + 21 Playwright e2e (2026-09-19); benchmarks index
 `docs/benchmarks.md`.
 
 - ✅ Concurrency on one file: file row and proposal row locked from the
@@ -98,13 +98,19 @@ RAV corpus (`fixtures/benchmark/rav/`); facilities/maintenance surfaces.
 - 🔶 **Expert validation** — Erez's V3 testing through the UI (14 findings,
   2026-09-16) is recorded and scored in
   `docs/evaluation/2026-09-16-expert-testing-v3.md`: blind explanation,
-  file-computed diff and round-trip integrity confirmed by hand; four open
+  file-computed diff and round-trip integrity confirmed by hand; four
   defects (subtype resolution, materials not grounded, Guardian verdict is an
-  equality check, scan throughput). It is a narrative log, so no Cohen's κ;
-  the per-prompt protocol (`expert-rerun-protocol.md`) that would give one is
-  still open. Maria's Solibri-referenced planted-conflict set (5/5 at class
-  level, `testing-log/maria.csv` row 14) is the third independent
-  measurement.
+  equality check, scan throughput). The re-test after reviews 8–11
+  (`docs/evaluation/2026-09-19-expert-retest-v3.md`, Erez rows 98–150, Maria
+  rows 52–82) closes subtype resolution (3/3), runs the paired protocol of
+  `expert-rerun-protocol.md` once (A5 12/12 on both builds, B1 2/4 on both,
+  C4 approved write and rollback byte-exact), and adds three open items:
+  the Guardian judges the dominant diff row rather than the target population,
+  the 467-target downgrade is now gated per row by the third flag condition,
+  and Ask's aggregate answers are wrong by an order of magnitude on the
+  Duplex. Still one rater per item, so no Cohen's κ. Maria's Solibri-referenced
+  planted-conflict set (5/5 at class level, `testing-log/maria.csv` row 14) is
+  the third independent measurement.
 - ⬜ **The 55-item hand-labelled Guardian set** behind the July memory's
   §4.2.2 (68.6 % three-class accuracy, 43 % conflicting recall) is not in the
   repo. Commit it under `fixtures/benchmark/rav/independent-set/` with a

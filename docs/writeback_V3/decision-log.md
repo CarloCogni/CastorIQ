@@ -905,3 +905,20 @@ the fixture's three Wall-Ext and two Wall-Partn walls hold two different Referen
 removed to nothing; removing is not a specific value overwriting a mix, so it stays unflagged,
 matching the value check's own removal exemption. No other corpus case has more than one distinct
 before-value on a single overwritten property within one proposal.
+
+---
+
+### Evidence entries, 2026-09-19 (expert re-test of reviews 8–11)
+
+The hand testing that motivated reviews 8, 10 and 11, and the re-tests after them, are scored
+in `docs/evaluation/2026-09-19-expert-retest-v3.md` (Erez rows 98–150, Maria rows 52–82 of
+`docs/evaluation/testing-log/`). *Review 8*: the over-refusal fix verified 3 of 3 (Maria 72);
+the baseline half of the paired protocol did not reproduce the declines either (Erez 110).
+*Review 10*: retrieval fix re-verified (Maria 77); the verdict on the retrieved Norwegian clause
+is still "unknown" (Maria 78), and the five-value split's retrieval attribution was withdrawn by
+the tester pending the probe (Erez 143). *Review 11*: the 467-target case verified against the
+file, four diff rows and nine EI 90 walls (Erez 121–127); after the third flag condition the same
+request shows four flagged rows and a gated Approve (Maria 81). Open and recorded there, not
+changed: Guardian judges the dominant diff row rather than the target population (Erez 103, 119),
+never evaluates the value a target already holds (144), and the summary sentence's target count
+is generated prose (124, Maria 82).
