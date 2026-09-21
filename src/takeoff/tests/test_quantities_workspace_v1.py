@@ -1,5 +1,5 @@
 # takeoff/tests/test_quantities_workspace_v1.py
-"""Quantities Workspace Polish V1 — layout, honesty, and interaction markers."""
+"""Quantities Workspace — Slice 2a layout, honesty, and inventory markers."""
 
 from __future__ import annotations
 
@@ -26,12 +26,21 @@ _FORBIDDEN_PRIMARY = (
     "ERP cost",
     "Optional unit-cost estimate",
     "Estimated total by level",
+    "Generated 5D Table",
+    "Generated Preparation Table",
+    "Prepare Enrichment Proposal",
+    "Column Configuration",
+    "With IFC Qto",
+    "Missing IFC Qto",
+    "Quantity Coverage",
+    "Model Quantity Readiness",
+    "Model Quantity Reference",
 )
 
 
 @pytest.mark.django_db
 def test_quantities_workspace_v1_layout_markers(client):
-    """Quantities page uses command bar, stats strip, rail, grid, and inspector."""
+    """TABLE-04 one-table Quantities shell + honesty markers (Slice 2a layout retired)."""
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed", name="pilot-qty.ifc")
     IFCEntityFactory(
@@ -49,45 +58,48 @@ def test_quantities_workspace_v1_layout_markers(client):
     assert 'data-testid="quantities-page"' in html
     assert 'data-testid="quantities-workspace-toolbar"' in html
     assert 'data-testid="quantities-workspace-title"' in html
-    assert "Quantities" in html
-    assert 'data-testid="quantities-workspace-subtitle"' in html
-    assert "IFC Model Quantities" in html
+    assert "IFC Quantity Preparation" in html or "Quantities" in html
     assert 'data-testid="quantities-not-boq-badge"' in html
     assert "Not BOQ" in html
+    assert "Model quantities only" in html
     assert 'data-testid="quantities-open-model"' in html
     assert 'data-testid="quantities-open-ifc-elements"' in html
+    assert "Open Link Analysis" in html
     assert "Open IFC Elements" in html
-    assert 'data-testid="quantities-stats-strip"' in html
-    assert "mi-stats" in html
-    assert 'data-testid="qty-stat-with-qto"' in html
-    assert 'data-testid="qty-stat-missing"' in html
-    assert "Missing IFC Qto" in html
-    assert "Quantity Coverage" in html
-    assert 'data-testid="quantity-breakdown-rail"' in html
-    assert 'data-testid="quantity-main-grid"' in html
-    assert 'data-testid="quantity-readiness-inspector"' in html
-    assert 'data-testid="quantity-by-ifc-class"' in html
-    assert 'data-testid="quantity-by-level"' in html
-    assert 'data-testid="missing-quantities"' in html
-    assert 'data-testid="quantity-readiness"' in html
-    assert 'data-testid="qty-classification-unavailable"' in html
-    assert "Unavailable" in html
-    assert "Length (model units)" in html
-    assert "model units" in html.lower()
-    assert 'class="mi-grid"' in html
-    assert "prefers-reduced-motion" in html
+
+    # Primary surface is the prep table (REVIEW-08 / TABLE-04).
+    assert 'data-testid="quantities-prep-table"' in html
+    assert 'data-testid="qty-c5d-workspace"' in html
+
+    # Modify handoff CTA removed from main page; help still explains disabled path.
+    assert 'data-testid="quantities-modify-handoff"' not in html
+    assert 'data-testid="qty-send-unresolved-to-modify"' not in html
+    assert "Send unresolved rows to Castor Modify is disabled" in html
+
+    # Advanced & reference: demoted legacy export + boundary copy.
     assert 'data-testid="quantities-optional-estimate"' in html
-    # Advanced tools stay demoted (details), not primary chrome.
+    assert 'data-testid="quantities-boundary-copy"' in html
     assert html.index('data-testid="quantities-workspace-toolbar"') < html.index(
         'data-testid="quantities-optional-estimate"'
     )
-    assert "qty-advanced-recompute" in html
-    assert "Recompute optional cache" in html
+    assert "Export legacy QTO cache" in html
+    assert "Export preparation data model" not in html
+    assert "Export indexed quantities" not in html
+    assert "Export Excel" not in html
+    assert "legacy qto cache export is separate from export table" in html.lower()
+    assert 'data-testid="qty-advanced-legacy-export-copy"' in html
+
+    for phrase in _FORBIDDEN_PRIMARY:
+        assert phrase not in html, phrase
+    assert "proposal readiness" not in html.lower()
+    # DYNAMIC-07: no invented SI labels on default shell without project_units.
+    assert "m³" not in html
+    assert "m²" not in html
 
 
 @pytest.mark.django_db
 def test_quantities_workspace_interaction_markers(client):
-    """Selection / collapse / filter / sort markers are present for workspace JS."""
+    """Selection / collapse / filter / sort markers remain on raw inventory."""
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed")
     storey_ent = IFCEntityFactory(
@@ -133,6 +145,8 @@ def test_quantities_workspace_interaction_markers(client):
     assert 'data-testid="qty-sort-class-name"' in html
     assert "mi-sortable" in html
     assert 'data-testid="qty-type-row"' in html or 'data-testid="quantity-by-type"' in html
+    assert 'data-testid="qty-prep-row"' in html
+    assert 'data-qty-basis-unresolved="1"' in html
 
 
 @pytest.mark.django_db
@@ -149,7 +163,6 @@ def test_quantities_workspace_avoids_forbidden_primary_chrome(client):
     client.force_login(project.owner)
 
     html = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk})).content.decode()
-    # Primary workspace ends before demoted advanced tools / help modal claims.
     primary = html.split('data-testid="quantities-optional-estimate"', 1)[0]
     for phrase in _FORBIDDEN_PRIMARY:
         assert phrase not in primary, phrase
@@ -160,11 +173,13 @@ def test_quantities_workspace_avoids_forbidden_primary_chrome(client):
     assert "Qto_BeamBaseQuantities" not in html
     assert "total_cost_estimate" not in html
     assert "unit_cost" not in primary
+    assert "EVM" not in primary
+    assert "rates" not in primary.lower() or "not commercial" in primary.lower()
 
 
 @pytest.mark.django_db
 def test_quantities_workspace_missing_inspect_link(client):
-    """Missing IFC Qto still links to IFC Elements with has_qto=no."""
+    """Elements without indexed quantities still link to IFC Elements with has_qto=no."""
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed")
     IFCEntityFactory(ifc_file=ifc, ifc_type="IfcColumn", global_id="GID-QC-1", properties={})

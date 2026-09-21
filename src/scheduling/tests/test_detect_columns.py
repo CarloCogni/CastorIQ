@@ -117,7 +117,8 @@ def test_detect_columns_llm_unavailable_falls_back_to_synonyms():
         result = detect_columns(headers, [], "plan.csv", user=None)
 
     assert result["confidence"] == 0.0
-    assert "AI unavailable" in result["notes"]
+    assert "model unavailable" in result["notes"]
+    assert result.get("detection_source") == "synonym"
     # Synonym detection should still match these standard headers
     assert result["mapping"].get("name") == "Task Name"
     assert result["mapping"].get("start_date") == "Start Date"

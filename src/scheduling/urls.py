@@ -214,6 +214,11 @@ urlpatterns = [
         name="schedule_mapping_submit",
     ),
     path(
+        "projects/<uuid:pk>/mapping/preflight/",
+        views.MappingPreflightView.as_view(),
+        name="schedule_mapping_preflight",
+    ),
+    path(
         "projects/<uuid:pk>/detect-columns/",
         views.DetectColumnsView.as_view(),
         name="schedule_detect_columns",

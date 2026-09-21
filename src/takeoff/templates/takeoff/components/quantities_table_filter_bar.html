@@ -1,0 +1,449 @@
+<!-- takeoff/components/quantities_table_filter_bar.html — REVIEW-08B Class → Field → Op → Value -->
+{% with sem=qty_prep.semantic_filters %}
+<div class="qty-table-filter-bar mb-2" data-testid="qty-table-filter-bar" id="qty-table-filter-bar"
+     data-field-values-url="{% url 'takeoff:qty_field_values' pk=project.pk %}">
+  <form method="get"
+        class="d-flex flex-wrap align-items-end gap-2"
+        data-testid="qty-semantic-filters-form"
+        id="qty-table-filter-form"
+        action="">
+    {% for key, values in request.GET.lists %}
+      {% if key != "semantic_field" and key != "semantic_value" and key != "semantic_op" and key != "semantic_value_type" and key != "semantic_sort" and key != "semantic_sort_dir" and key != "sem_cols_add" and key != "sem_cols" and key != "col_order" and key != "col_order_add" and key != "col_order_remove" and key != "col_order_move" and key != "table_layout" and key != "semantic_classes" and key != "col_calc" and key != "col_calc_add" and key != "hierarchy_sort" and key != "hierarchy_sort_dir" %}
+        {% for value in values %}
+        <input type="hidden" name="{{ key }}" value="{{ value }}">
+        {% endfor %}
+      {% endif %}
+    {% endfor %}
+    {% if qty_prep.table_layout.col_order_param %}
+    <input type="hidden" name="table_layout" value="v2">
+    <input type="hidden" name="col_order" value="{{ qty_prep.table_layout.col_order_param }}">
+    {% endif %}
+    {% if qty_prep.col_calc_param %}
+    <input type="hidden" name="col_calc" value="{{ qty_prep.col_calc_param }}">
+    {% endif %}
+    {% if qty_prep.hierarchy_sort.key %}
+    <input type="hidden" name="hierarchy_sort" value="{{ qty_prep.hierarchy_sort.key }}">
+    <input type="hidden" name="hierarchy_sort_dir" value="{{ qty_prep.hierarchy_sort.dir|default:'asc' }}">
+    {% endif %}
+    {% if sem.sem_cols_param %}
+    <input type="hidden" name="sem_cols" value="{{ sem.sem_cols_param }}">
+    {% endif %}
+    <input type="hidden" name="semantic_value_type" id="qty-semantic-value-type"
+           value="{{ sem.active_value_type|default:'text' }}">
+    <input type="hidden" name="semantic_field" id="qty-semantic-field"
+           value="{{ sem.active_field|default:'' }}"
+           data-testid="qty-semantic-field">
+
+    <div class="dropdown" data-testid="qty-semantic-class-scope">
+      <label class="form-label small mb-0 d-block">IFC Class</label>
+      <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
+              type="button"
+              data-bs-toggle="dropdown"
+              data-bs-auto-close="outside"
+              aria-expanded="false"
+              id="qty-semantic-class-toggle"
+              data-testid="qty-semantic-class-toggle"
+              style="min-width:10rem;max-width:18rem;"
+              title="{% if sem.selected_classes_label %}{{ sem.selected_classes_label }}{% elif sem.selected_classes %}{{ sem.selected_classes|join:', ' }}{% else %}All classes{% endif %}">
+        {% if sem.selected_classes_display %}
+        <span class="text-truncate d-inline-block" style="max-width:14rem;vertical-align:bottom;">{{ sem.selected_classes_display }}</span>
+        {% elif sem.selected_classes %}
+        <span class="text-truncate d-inline-block" style="max-width:14rem;vertical-align:bottom;">{{ sem.selected_classes|join:", " }}</span>
+        {% else %}
+        All classes
+        {% endif %}
+      </button>
+      <div class="dropdown-menu p-2" style="max-height:16rem;overflow:auto;min-width:14rem;">
+        <div class="form-check mb-1">
+          <input class="form-check-input" type="checkbox" id="qty-class-all"
+                 data-testid="qty-semantic-class-all"
+                 {% if not sem.selected_classes %}checked{% endif %}>
+          <label class="form-check-label small" for="qty-class-all">All classes</label>
+        </div>
+        <hr class="my-1">
+        {% for cls in sem.available_classes %}
+        <div class="form-check">
+          <input class="form-check-input qty-class-check" type="checkbox"
+                 name="semantic_classes"
+                 value="{{ cls }}"
+                 id="qty-class-{{ forloop.counter }}"
+                 data-testid="qty-semantic-class-option"
+                 {% if cls in sem.selected_classes %}checked{% endif %}>
+          <label class="form-check-label small" for="qty-class-{{ forloop.counter }}">{{ cls }}</label>
+        </div>
+        {% empty %}
+        <span class="small text-secondary">No classes indexed</span>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="dropdown qty-filter-field-dropdown"
+         style="min-width:12rem;max-width:18rem;flex:0 1 16rem;"
+         data-testid="qty-filter-field-dropdown">
+      <label class="form-label small mb-0 d-block">Field</label>
+      <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start text-truncate"
+              type="button"
+              id="qty-filter-field-toggle"
+              data-bs-toggle="dropdown"
+              data-bs-auto-close="outside"
+              aria-expanded="false"
+              data-testid="qty-filter-field-toggle"
+              title="Choose filter field">
+        <span id="qty-filter-field-label" data-testid="qty-filter-field-label">
+          {% if sem.active_field_label %}{{ sem.active_field_label }}{% elif sem.active_field %}{{ sem.active_field }}{% else %}Select field…{% endif %}
+        </span>
+      </button>
+      <div class="dropdown-menu p-2 qty-filter-field-menu shadow"
+           style="min-width:22rem;max-width:min(28rem,90vw);max-height:20rem;overflow:auto;"
+           data-testid="qty-filter-field-menu">
+        {% if sem.selected_classes %}
+          {% with scope_label=sem.selected_classes|join:", " %}
+          {% include "takeoff/components/quantities_field_picker_shell.html" with picker_id="qty-filter-field" mode="filter" selected_key=sem.active_field scope_label=scope_label option_testid="qty-filter-field-option" catalogue_url="" %}
+          {% endwith %}
+        {% else %}
+          {% include "takeoff/components/quantities_field_picker_shell.html" with picker_id="qty-filter-field" mode="filter" selected_key=sem.active_field scope_label="All classes" option_testid="qty-filter-field-option" catalogue_url="" %}
+        {% endif %}
+      </div>
+    </div>
+
+    <div>
+      <label class="form-label small mb-0" for="qty-semantic-op">Operator</label>
+      <select class="form-select form-select-sm"
+              id="qty-semantic-op"
+              name="semantic_op"
+              style="min-width:10rem;"
+              data-testid="qty-semantic-op"
+              {% if not sem.active_field %}disabled{% endif %}>
+        <option value="eq" data-op="eq" {% if sem.active_op == "eq" or not sem.active_op %}selected{% endif %}>equals</option>
+        <option value="ne" data-op="ne" {% if sem.active_op == "ne" %}selected{% endif %}>does not equal</option>
+        <option value="contains" data-op="contains" {% if sem.active_op == "contains" %}selected{% endif %}>contains</option>
+        <option value="gt" data-op="gt" {% if sem.active_op == "gt" %}selected{% endif %}>greater than</option>
+        <option value="lt" data-op="lt" {% if sem.active_op == "lt" %}selected{% endif %}>less than</option>
+        <option value="gte" data-op="gte" {% if sem.active_op == "gte" %}selected{% endif %}>greater than or equal</option>
+        <option value="lte" data-op="lte" {% if sem.active_op == "lte" %}selected{% endif %}>less than or equal</option>
+        <option value="is_missing" data-op="is_missing" {% if sem.active_op == "is_missing" %}selected{% endif %}>is missing</option>
+        <option value="is_present" data-op="is_present" {% if sem.active_op == "is_present" %}selected{% endif %}>is present</option>
+      </select>
+    </div>
+
+    <div class="d-flex align-items-end gap-1 position-relative">
+      <div>
+        <label class="form-label small mb-0" for="qty-semantic-value">Value</label>
+        <input class="form-control form-control-sm"
+               id="qty-semantic-value"
+               name="semantic_value"
+               style="min-width:10rem;"
+               value="{{ sem.active_value|default:'' }}"
+               data-testid="qty-semantic-value"
+               {% if not sem.active_field %}disabled{% endif %}
+               autocomplete="off"
+               autocorrect="off"
+               spellcheck="false"
+               data-1p-ignore="true"
+               data-lpignore="true"
+               role="combobox"
+               aria-autocomplete="list"
+               aria-controls="qty-semantic-value-panel">
+        <div id="qty-semantic-value-panel"
+             class="dropdown-menu show d-none qty-value-suggest-panel"
+             style="max-height:12rem;overflow:auto;min-width:12rem;"
+             data-testid="qty-semantic-value-suggestions"></div>
+      </div>
+      <span class="small text-secondary mb-1 {% if not sem.active_unit_label %}d-none{% endif %}"
+            id="qty-semantic-unit-label"
+            data-testid="qty-semantic-unit-label">{{ sem.active_unit_label }}</span>
+    </div>
+
+    <button type="submit"
+            class="btn btn-sm btn-outline-secondary"
+            data-testid="qty-semantic-apply-filter"
+            id="qty-semantic-apply-filter"
+            {% if not sem.active_field and not sem.selected_classes %}disabled{% endif %}>
+      Apply
+    </button>
+  </form>
+
+  <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
+    <span class="c5d-helper mb-0" data-testid="qty-prep-row-count-footnote">
+      {% if qty_prep.hierarchy.enabled %}
+        {{ qty_prep.hierarchy_footnote }}
+        {% if sem.filter_active %}
+        <span class="text-secondary"> · filtered from {{ qty_prep.hierarchy_baseline_elements|default:"?" }} unrestricted elements</span>
+        {% endif %}
+        · Class → Type → Instance
+      {% else %}
+        {% if sem.filter_active %}
+        {{ sem.showing_count }} of {{ sem.baseline_row_count|default:sem.total_count }} rows
+        {% else %}
+        {{ sem.baseline_row_count|default:sem.total_count }} rows
+        {% endif %}
+        {% if qty_prep.prep_row_grain == "type" %}· By Type{% else %}· By IFC Class{% endif %}
+      {% endif %}
+    </span>
+    {% if sem.filter_active %}
+    <span class="badge text-bg-secondary" data-testid="qty-discover-active-filter">
+      {{ sem.active_chip }}
+    </span>
+    <a class="btn btn-sm btn-outline-secondary py-0"
+       data-testid="qty-semantic-clear-filter"
+       href="?{% for key, values in request.GET.lists %}{% if key != 'semantic_field' and key != 'semantic_value' and key != 'semantic_op' and key != 'semantic_value_type' and key != 'semantic_sort' and key != 'semantic_sort_dir' and key != 'sem_cols_add' and key != 'sem_cols' and key != 'semantic_classes' and key != 'col_order' and key != 'col_order_add' and key != 'col_order_remove' and key != 'col_order_move' and key != 'table_layout' %}{% for value in values %}{{ key }}={{ value|urlencode }}&amp;{% endfor %}{% endif %}{% endfor %}{% if qty_prep.table_layout.col_order_param %}table_layout=v2&amp;col_order={{ qty_prep.table_layout.col_order_param|urlencode }}&amp;{% endif %}{% if sem.sem_cols_param %}sem_cols={{ sem.sem_cols_param|urlencode }}{% endif %}">
+      Clear
+    </a>
+    {% endif %}
+    <span class="c5d-helper mb-0 ms-auto" data-testid="qty-batch-toolbar-count">0 selected</span>
+    <span class="c5d-helper mb-0 text-secondary" data-testid="qty-selection-scope-note">{% if qty_prep.hierarchy.enabled %}Parent checkbox selects all matching descendant elements on Apply (including unloaded types). Instance checkbox selects that element only.{% else %}Current page only{% endif %}</span>
+  </div>
+  {% with active_field=sem.active_field|default:'' %}
+  {% if sem.unavailable.zone %}
+  <p class="c5d-helper mb-0 mt-1 text-secondary{% if 'zone' not in active_field|lower %} d-none{% endif %}"
+     data-testid="qty-zone-unavailable-contextual"
+     id="qty-zone-unavailable-contextual"
+     data-zone-msg="{{ sem.unavailable.zone.message|escape }}">
+    {{ sem.unavailable.zone.message }}
+  </p>
+  {% endif %}
+  {% if sem.unavailable.ifc_classification_ref %}
+  <p class="c5d-helper mb-0 mt-1 text-secondary{% if 'classification' not in active_field|lower and 'classref' not in active_field|lower %} d-none{% endif %}"
+     data-testid="qty-classref-unavailable-contextual"
+     id="qty-classref-unavailable-contextual">
+    {{ sem.unavailable.ifc_classification_ref.message }}
+  </p>
+  {% endif %}
+  {% endwith %}
+</div>
+
+<script type="application/json" id="qty-field-meta-json">{{ sem.field_meta_json|default:"{}"|safe }}</script>
+{% include "takeoff/components/quantities_field_picker_js.html" %}
+<script>
+(function () {
+  var bar = document.getElementById("qty-table-filter-bar");
+  if (!bar || bar.dataset.filterReady === "1") return;
+  bar.dataset.filterReady = "1";
+
+  var fieldEl = document.getElementById("qty-semantic-field");
+  var opEl = document.getElementById("qty-semantic-op");
+  var valueEl = document.getElementById("qty-semantic-value");
+  var valueTypeEl = document.getElementById("qty-semantic-value-type");
+  var unitEl = document.getElementById("qty-semantic-unit-label");
+  var applyBtn = document.getElementById("qty-semantic-apply-filter");
+  var formEl = document.getElementById("qty-table-filter-form");
+  var allBox = document.getElementById("qty-class-all");
+  var classChecks = document.querySelectorAll(".qty-class-check");
+  var picker = document.getElementById("qty-filter-field");
+  var fieldLabel = document.getElementById("qty-filter-field-label");
+  var fieldToggle = document.getElementById("qty-filter-field-toggle");
+  var activeOp = "{{ sem.active_op|default:'eq'|escapejs }}";
+  var valuesUrl = bar.getAttribute("data-field-values-url") || "";
+  if (!fieldEl || !opEl || !valueEl || !window.CastorQtyFieldPicker) return;
+
+  var metaByKey = {};
+  try { metaByKey = JSON.parse(document.getElementById("qty-field-meta-json").textContent || "{}"); } catch (e) {}
+  window.CastorQtyFieldMeta = window.CastorQtyFieldMeta || metaByKey;
+  Object.keys(metaByKey).forEach(function (k) { window.CastorQtyFieldMeta[k] = metaByKey[k]; });
+
+  function selectedClasses() {
+    return Array.prototype.slice.call(classChecks)
+      .filter(function (c) { return c.checked; })
+      .map(function (c) { return c.value; });
+  }
+
+  var valueBox = window.CastorQtyFieldPicker.initValueCombobox({
+    input: valueEl,
+    panel: document.getElementById("qty-semantic-value-panel"),
+    metaByKey: window.CastorQtyFieldMeta,
+    valuesUrl: valuesUrl,
+    getFieldKey: function () { return fieldEl.value || ""; },
+    getClasses: selectedClasses
+  });
+
+  function metaFor(key) {
+    var fromJson = (window.CastorQtyFieldMeta && window.CastorQtyFieldMeta[key]) || metaByKey[key] || {};
+    var btn = picker ? picker.querySelector('.qty-field-picker-option[data-field-key="' + key.replace(/"/g, '') + '"]') : null;
+    if (btn) {
+      var vt = btn.getAttribute("data-value-type") || fromJson.value_type || "text";
+      return {
+        label: btn.getAttribute("data-field-label") || fromJson.label || key,
+        value_type: vt,
+        unit_label: btn.getAttribute("data-unit-label") || fromJson.unit_label || "",
+        operators: fromJson.operators || window.CastorQtyFieldPicker.defaultOpsFor(vt)
+      };
+    }
+    if (!fromJson.operators && fromJson.value_type) {
+      fromJson.operators = window.CastorQtyFieldPicker.defaultOpsFor(fromJson.value_type);
+    }
+    return fromJson;
+  }
+
+  function setFieldLabel(key, btn) {
+    if (!fieldLabel) return;
+    if (!key) {
+      fieldLabel.textContent = "Select field…";
+      return;
+    }
+    if (btn && btn.querySelector) {
+      var title = btn.querySelector(".fw-semibold");
+      fieldLabel.textContent = title ? title.textContent.trim() : key;
+      return;
+    }
+    var meta = metaFor(key);
+    fieldLabel.textContent = meta.label || key;
+  }
+
+  function closeFieldMenu() {
+    if (!fieldToggle || typeof bootstrap === "undefined") return;
+    var dd = bootstrap.Dropdown.getOrCreateInstance(fieldToggle);
+    dd.hide();
+  }
+
+  function refreshOperators() {
+    var meta = metaFor(fieldEl.value);
+    var allowed = meta.operators || ["eq", "ne", "contains", "is_missing", "is_present"];
+    Array.prototype.forEach.call(opEl.options, function (o) {
+      var key = o.getAttribute("data-op") || o.value;
+      var ok = !fieldEl.value || allowed.indexOf(key) !== -1;
+      o.hidden = !ok;
+      o.disabled = !ok;
+    });
+    if (fieldEl.value && allowed.indexOf(opEl.value) === -1) {
+      opEl.value = allowed[0] || "eq";
+    } else if (activeOp && allowed.indexOf(activeOp) !== -1) {
+      opEl.value = activeOp;
+    }
+  }
+
+  function refreshUnit() {
+    var meta = metaFor(fieldEl.value);
+    var unit = meta.unit_label || "";
+    if (unitEl) {
+      unitEl.textContent = unit;
+      unitEl.classList.toggle("d-none", !unit);
+    }
+  }
+
+  function refreshApply() {
+    var field = fieldEl.value || "";
+    var op = opEl.value || "";
+    var needsValue = field && op !== "is_missing" && op !== "is_present";
+    var value = (valueEl.value || "").trim();
+    var vt = (valueTypeEl && valueTypeEl.value) || "text";
+    var anyClass = Array.prototype.some.call(classChecks, function (c) { return c.checked; });
+    var classOnly = !field && anyClass;
+    var valid = classOnly || !!field;
+    if (field && needsValue) {
+      valid = !!value;
+      if (vt === "numeric" && value) {
+        valid = !isNaN(Number(String(value).replace(",", "")));
+        if (!valid) valueEl.setCustomValidity("Enter a number for this comparison.");
+        else valueEl.setCustomValidity("");
+      } else {
+        valueEl.setCustomValidity("");
+      }
+    } else {
+      valueEl.setCustomValidity("");
+    }
+    valueEl.disabled = !field || !needsValue;
+    opEl.disabled = !field;
+    if (applyBtn && !bar.dataset.submitting) applyBtn.disabled = !valid;
+  }
+
+  function refreshStructureNotices(key) {
+    var k = String(key || "").toLowerCase();
+    var zoneEl = document.getElementById("qty-zone-unavailable-contextual");
+    var classEl = document.getElementById("qty-classref-unavailable-contextual");
+    if (zoneEl) zoneEl.classList.toggle("d-none", k.indexOf("zone") === -1);
+    if (classEl) {
+      var showClass = k.indexOf("classification") !== -1 || k.indexOf("classref") !== -1;
+      classEl.classList.toggle("d-none", !showClass);
+    }
+  }
+
+  function onFieldChange(key, btn, clearStale) {
+    fieldEl.value = key || "";
+    var meta = metaFor(key);
+    if (valueTypeEl) valueTypeEl.value = meta.value_type || "text";
+    setFieldLabel(key, btn);
+    if (clearStale) {
+      valueEl.value = "";
+      activeOp = "";
+      if (valueBox) valueBox.setField(key, true);
+    } else if (valueBox) {
+      valueBox.setField(key, false);
+    }
+    refreshOperators();
+    refreshUnit();
+    refreshApply();
+    refreshStructureNotices(key);
+    if (clearStale) closeFieldMenu();
+  }
+
+  if (allBox) {
+    allBox.addEventListener("change", function () {
+      if (allBox.checked) {
+        Array.prototype.forEach.call(classChecks, function (c) { c.checked = false; });
+      }
+      refreshApply();
+      if (valueBox) valueBox.refresh();
+    });
+  }
+  Array.prototype.forEach.call(classChecks, function (c) {
+    c.addEventListener("change", function () {
+      if (c.checked && allBox) allBox.checked = false;
+      var any = Array.prototype.some.call(classChecks, function (x) { return x.checked; });
+      if (!any && allBox) allBox.checked = true;
+      refreshApply();
+      if (valueBox) valueBox.refresh();
+    });
+  });
+
+  if (picker) {
+    picker._onSelect = function (key, meta) {
+      var btn = meta && meta.el ? meta.el : null;
+      onFieldChange(key, btn, true);
+    };
+    if (fieldToggle) {
+      fieldToggle.addEventListener("show.bs.dropdown", function () {
+        window.CastorQtyFieldPicker.ensureCatalogue(picker, {
+          onSelect: picker._onSelect,
+          onReady: function () {
+            if (picker._qtyPicker) picker._qtyPicker.resetSearch();
+            var search = document.getElementById("qty-filter-field-search");
+            if (search) search.focus();
+          }
+        });
+      });
+    }
+  }
+
+  opEl.addEventListener("change", function () {
+    activeOp = opEl.value;
+    refreshApply();
+  });
+  valueEl.addEventListener("input", refreshApply);
+  valueEl.addEventListener("change", refreshApply);
+
+  if (formEl) {
+    formEl.addEventListener("submit", function (e) {
+      if (bar.dataset.submitting === "1") {
+        e.preventDefault();
+        return;
+      }
+      refreshApply();
+      if (applyBtn && applyBtn.disabled) {
+        e.preventDefault();
+        return;
+      }
+      bar.dataset.submitting = "1";
+      if (applyBtn) {
+        applyBtn.disabled = true;
+        applyBtn.setAttribute("aria-busy", "true");
+        applyBtn.textContent = "Applying…";
+      }
+    });
+  }
+
+  onFieldChange(fieldEl.value || "", null, false);
+  if (activeOp) opEl.value = activeOp;
+  refreshApply();
+})();
+</script>
+{% endwith %}

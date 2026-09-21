@@ -123,7 +123,12 @@ def detect_columns(
         notes = str(data.get("notes", ""))
 
         if valid_mapping:
-            return {"mapping": valid_mapping, "confidence": confidence, "notes": notes}
+            return {
+                "mapping": valid_mapping,
+                "confidence": confidence,
+                "notes": notes,
+                "detection_source": "llm",
+            }
 
         logger.warning("detect_columns: LLM returned empty or invalid mapping")
 
@@ -134,7 +139,8 @@ def detect_columns(
     return {
         "mapping": fallback,
         "confidence": 0.0,
-        "notes": "Used keyword matching (AI unavailable)",
+        "notes": "Used keyword matching (model unavailable)",
+        "detection_source": "synonym",
     }
 
 

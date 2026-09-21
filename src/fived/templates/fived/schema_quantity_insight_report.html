@@ -1,0 +1,470 @@
+{% extends "core/base.html" %}
+<!-- fived/schema_quantity_insight_report.html — 5D Quantity Review dashboard (S3g / Figma v4) -->
+
+{% block title %}5D Quantity Review — {{ project.name }} — Castor{% endblock %}
+
+{% block extra_css %}
+<style>
+  [data-testid="s3-schema-insight-scroll-root"] {
+    min-height: 0;
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  [data-testid="s3-schema-insight-report"] {
+    max-width: 100%;
+    overflow-x: clip;
+    padding-bottom: 3rem;
+  }
+  .s3g-snapshot-bar {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.65rem;
+    padding: 0.75rem 1rem;
+    background: var(--bs-tertiary-bg);
+  }
+  .s3g-summary-card {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.65rem;
+    padding: 0.75rem 0.9rem;
+    height: 100%;
+    background: var(--bs-body-bg);
+  }
+  .s3g-summary-card .s3g-value {
+    font-size: 1.15rem;
+    font-weight: 650;
+    line-height: 1.25;
+  }
+  .s3g-coverage-track {
+    height: 0.55rem;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.28);
+    overflow: hidden;
+  }
+  .s3g-coverage-fill {
+    height: 100%;
+    background: var(--bs-primary);
+  }
+  .s3g-group-card {
+    background: var(--bs-body-bg);
+  }
+  .s3g-needs-mapping {
+    background: rgba(148, 163, 184, 0.08);
+  }
+  .s3g-attention-panel,
+  .s3g-later-panel {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem;
+    background: var(--bs-body-bg);
+  }
+  .s3g-attention-item + .s3g-attention-item {
+    border-top: 1px solid var(--bs-border-color);
+  }
+  .s3g-tab-pane {
+    min-width: 0;
+  }
+  .s3g-nav-tabs .nav-link {
+    color: var(--bs-secondary-color);
+  }
+  .s3g-nav-tabs .nav-link.active {
+    font-weight: 600;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex-grow-1 overflow-auto w-100"
+     data-testid="s3-schema-insight-scroll-root"
+     style="min-height:0; min-width:0;">
+<div class="container-fluid py-3 px-3 px-lg-4 pb-5"
+     data-testid="s3-schema-insight-report"
+     style="min-width:0; max-width:100%;">
+
+  <nav aria-label="breadcrumb" class="mb-2">
+    <ol class="breadcrumb small mb-0">
+      <li class="breadcrumb-item"><a href="{{ project_url }}">{{ project.name }}</a></li>
+      <li class="breadcrumb-item"><a href="{{ quantities_url }}">Quantities</a></li>
+      <li class="breadcrumb-item active" aria-current="page">5D Quantity Review</li>
+    </ol>
+  </nav>
+
+  <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap mb-3">
+    <div style="min-width:0; max-width:48rem;">
+      <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+        <h1 class="h4 mb-0" data-testid="s3-report-title">5D Quantity Review</h1>
+        <button type="button"
+                class="help-pill"
+                data-bs-toggle="modal"
+                data-bs-target="#schemaQuantityInsightHelpModal"
+                title="How 5D Quantity Review works"
+                aria-label="How 5D Quantity Review works"
+                data-testid="s3-help-pill">
+          <i class="bi bi-question-circle"></i>
+        </button>
+      </div>
+      <p class="text-secondary small mb-0" data-testid="s3-report-subtitle">
+        Review IFC quantities grouped by project schema. Understand coverage first, then act on
+        missing setup.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{{ quantities_url }}"
+         class="btn btn-sm btn-outline-secondary"
+         data-testid="s3-back-quantities">
+        Back to Quantities
+      </a>
+      <a href="#s3g-advanced-details"
+         class="btn btn-sm btn-outline-secondary"
+         data-testid="s3-snapshot-details-btn">
+        Snapshot details
+      </a>
+    </div>
+  </div>
+
+  <section class="s3g-snapshot-bar mb-3" data-testid="s3-snapshot-bar">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2" data-testid="s3-product-badges">
+      <span class="badge text-bg-secondary">Snapshot-based</span>
+      <span class="badge text-bg-secondary">Read-only</span>
+    </div>
+    <div class="small" data-testid="s3-snapshot-bar-text">
+      <span class="fw-semibold" data-testid="s3-selected-version-label">{{ version.version_label }}</span>
+      · {{ insight.row_count }} IFC quantity rows
+      · created from quantity preparation
+    </div>
+    {% if data_model.name %}
+    <div class="small text-secondary mt-1" data-testid="s3-snapshot-context">
+      Context: {{ data_model.name }}
+    </div>
+    {% endif %}
+  </section>
+
+  {% include "fived/components/semantic_source_readiness_review.html" %}
+
+  <section class="mb-3" data-testid="s3-insight-summary">
+    <h2 class="h6 mb-3">Schema insight summary</h2>
+    <div class="row g-2 g-lg-3 mb-3">
+      <div class="col-6 col-xl">
+        <div class="s3g-summary-card" data-testid="s3-summary-schema-coverage">
+          <div class="text-secondary small mb-1">Schema coverage</div>
+          <div class="s3g-value">{{ insight_summary.coverage_value }}</div>
+          <div class="small text-secondary">{{ insight_summary.coverage_subtext }}</div>
+          <div class="small mt-1">{{ insight_summary.coverage_percent }}%</div>
+        </div>
+      </div>
+      <div class="col-6 col-xl">
+        <div class="s3g-summary-card" data-testid="s3-summary-quantity-readiness">
+          <div class="text-secondary small mb-1">Quantity row readiness</div>
+          <div class="s3g-value">{{ insight_summary.readiness_value }}</div>
+          <div class="small text-secondary">{{ insight_summary.readiness_subtext }}</div>
+          <div class="small text-secondary mt-1">Usable-row coverage — not semantic source fields</div>
+        </div>
+      </div>
+      <div class="col-6 col-xl">
+        <div class="s3g-summary-card" data-testid="s3-summary-mapped-netvolume">
+          <div class="text-secondary small mb-1">Mapped NetVolume</div>
+          <div class="s3g-value">{{ insight_summary.mapped_netvolume_display }}</div>
+          <div class="small text-secondary" data-testid="s3-mapped-quantity-unit">
+            {{ insight_summary.mapped_netvolume_unit_caption }}
+            · Measurement Basis: NetVolume
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-xl">
+        <div class="s3g-summary-card" data-testid="s3-summary-rollup-groups">
+          <div class="text-secondary small mb-1">Rollup groups</div>
+          <div class="s3g-value">{{ insight_summary.rollup_groups_value }}</div>
+          <div class="small text-secondary">{{ insight_summary.rollup_groups_subtext }}</div>
+        </div>
+      </div>
+      <div class="col-12 col-xl">
+        <div class="s3g-summary-card" data-testid="s3-summary-recommended-action">
+          <div class="text-secondary small mb-1">Recommended action</div>
+          <div class="s3g-value">{{ insight_summary.recommended_action_value }}</div>
+          <div class="small text-secondary">{{ insight_summary.recommended_action_subtext }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div data-testid="s3-coverage-bar">
+      <div class="d-flex flex-wrap justify-content-between gap-2 small mb-1">
+        <span>{{ insight_summary.coverage_percent }}% mapped now</span>
+        <span class="text-secondary">{{ insight_summary.needs_mapping_percent }}% needs mapping</span>
+      </div>
+      <div class="s3g-coverage-track" role="img"
+           aria-label="{{ insight_summary.coverage_percent }} percent mapped">
+        <div class="s3g-coverage-fill"
+             style="width: {{ insight_summary.coverage_percent }}%;"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="row g-3 mb-4 align-items-start">
+    <div class="col-lg-8 s3g-tab-pane">
+      <ul class="nav nav-tabs s3g-nav-tabs mb-3" role="tablist" data-testid="s3g-rollup-tabs">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active"
+                  id="s3g-tab-classification"
+                  data-bs-toggle="tab"
+                  data-bs-target="#s3g-pane-classification"
+                  type="button"
+                  role="tab"
+                  aria-controls="s3g-pane-classification"
+                  aria-selected="true"
+                  data-testid="s3g-tab-classification">Classification</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link"
+                  id="s3g-tab-package"
+                  data-bs-toggle="tab"
+                  data-bs-target="#s3g-pane-package"
+                  type="button"
+                  role="tab"
+                  aria-controls="s3g-pane-package"
+                  aria-selected="false"
+                  data-testid="s3g-tab-package">Package</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link"
+                  id="s3g-tab-work-package"
+                  data-bs-toggle="tab"
+                  data-bs-target="#s3g-pane-work-package"
+                  type="button"
+                  role="tab"
+                  aria-controls="s3g-pane-work-package"
+                  aria-selected="false"
+                  data-testid="s3g-tab-work-package">Work Package</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link"
+                  id="s3g-tab-needs-attention"
+                  data-bs-toggle="tab"
+                  data-bs-target="#s3g-pane-needs-attention"
+                  type="button"
+                  role="tab"
+                  aria-controls="s3g-pane-needs-attention"
+                  aria-selected="false"
+                  data-testid="s3g-tab-needs-attention">Needs Attention</button>
+        </li>
+      </ul>
+
+      <div class="tab-content">
+        <div class="tab-pane fade show active"
+             id="s3g-pane-classification"
+             role="tabpanel"
+             aria-labelledby="s3g-tab-classification">
+          {% include "fived/components/schema_quantity_insight_rollup_table.html" with rollup_title="Classification rollup" rollup_testid="s3-classification-rollup" groups=screen.classification_groups needs_mapping=screen.classification_needs_mapping %}
+        </div>
+        <div class="tab-pane fade"
+             id="s3g-pane-package"
+             role="tabpanel"
+             aria-labelledby="s3g-tab-package">
+          {% include "fived/components/schema_quantity_insight_rollup_table.html" with rollup_title="Package rollup" rollup_testid="s3-package-rollup" groups=screen.package_groups needs_mapping=screen.package_needs_mapping %}
+        </div>
+        <div class="tab-pane fade"
+             id="s3g-pane-work-package"
+             role="tabpanel"
+             aria-labelledby="s3g-tab-work-package">
+          {% include "fived/components/schema_quantity_insight_rollup_table.html" with rollup_title="Work package rollup" rollup_testid="s3-work-package-rollup" groups=screen.work_package_groups needs_mapping=screen.work_package_needs_mapping %}
+        </div>
+        <div class="tab-pane fade"
+             id="s3g-pane-needs-attention"
+             role="tabpanel"
+             aria-labelledby="s3g-tab-needs-attention"
+             data-testid="s3g-needs-attention-tab">
+          <div class="border rounded p-3">
+            <h2 class="h6 mb-2">Needs attention</h2>
+            <p class="small text-secondary mb-3">
+              Use this queue to prioritize mapping and basis review for the current snapshot.
+            </p>
+            <ul class="list-unstyled mb-0">
+              {% for item in screen.attention.items %}
+              <li class="mb-3">
+                <div class="d-flex justify-content-between gap-2">
+                  <strong>{{ item.title }}</strong>
+                  <span class="badge text-bg-light border">{{ item.badge }}</span>
+                </div>
+                <div class="small text-secondary">{{ item.body }}</div>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <aside class="s3g-attention-panel p-3 mb-3" data-testid="s3g-attention-panel">
+        <h2 class="h6 mb-1">{{ screen.attention.title }}</h2>
+        <p class="small text-secondary mb-3">{{ screen.attention.intro }}</p>
+        {% for item in screen.attention.items %}
+        <div class="s3g-attention-item py-3" data-testid="{{ item.testid }}">
+          <div class="d-flex justify-content-between gap-2 mb-1">
+            <div class="fw-semibold">{{ item.title }}</div>
+            <span class="badge text-bg-light border text-nowrap">{{ item.badge }}</span>
+          </div>
+          <p class="small text-secondary mb-0">{{ item.body }}</p>
+        </div>
+        {% endfor %}
+      </aside>
+
+      <section class="s3g-later-panel p-3" data-testid="s3g-later-inputs">
+        <h2 class="h6 mb-1">Later inputs</h2>
+        <p class="small text-secondary mb-2">
+          External data can guide setup later; it does not auto-update this snapshot today.
+        </p>
+        <div class="d-flex flex-wrap gap-1">
+          <span class="badge text-bg-light border">Classification Excel</span>
+          <span class="badge text-bg-light border">Rates later</span>
+          <span class="badge text-bg-light border">Ask suggestions later</span>
+          <span class="badge text-bg-light border">Manual review required</span>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <section class="mb-4" id="s3g-advanced-details" data-testid="s3g-advanced-details">
+    <details>
+      <summary class="fw-semibold" style="cursor:pointer;" data-testid="s3g-advanced-summary">
+        Advanced details
+      </summary>
+      <p class="small text-secondary mt-2 mb-3">
+        Open only when you need technical traceability.
+      </p>
+
+      <details class="mb-2 border rounded p-2" data-testid="s3g-adv-snapshot">
+        <summary style="cursor:pointer;">Snapshot metadata</summary>
+        <div class="small mt-2">
+          <div>Project: {{ insight.project.name }}</div>
+          <div>Data model: {{ insight.data_model.name }}</div>
+          <div>Version: {{ insight.version.version_label }}</div>
+          <div>Status / source: {{ insight.version.status }} / {{ insight.version.source }}</div>
+          <div>Row count: {{ insight.row_count }}</div>
+          <div>Generated at: {{ insight.generated_at }}</div>
+          <div data-testid="s3-contract-version">Contract: {{ insight.contract_version }}</div>
+          {% if insight.version.content_hash %}
+          <div>Content hash: <code class="small">{{ insight.version.content_hash }}</code></div>
+          {% endif %}
+        </div>
+      </details>
+
+      <details class="mb-2 border rounded p-2" data-testid="s3g-adv-provenance">
+        <summary style="cursor:pointer;">Provenance</summary>
+        <ul class="small mb-0 mt-2" data-testid="s3-provenance-counts">
+          {% for item in screen.provenance_items %}
+          <li>{{ item.label }}: {{ item.count }}</li>
+          {% empty %}
+          <li class="text-secondary">—</li>
+          {% endfor %}
+        </ul>
+      </details>
+
+      <details class="mb-2 border rounded p-2" data-testid="s3g-adv-basis">
+        <summary style="cursor:pointer;">Basis/source buckets</summary>
+        <div class="table-responsive mt-2" data-testid="s3-basis-unit-buckets">
+          <table class="table table-sm mb-0 small">
+            <thead>
+              <tr>
+                <th>Basis</th>
+                <th>Unit</th>
+                <th>Source</th>
+                <th class="text-end">Rows</th>
+                <th class="text-end">Total</th>
+                <th class="text-end">Non-numeric</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for b in insight.basis_unit_buckets %}
+              <tr>
+                <td>{{ b.quantity_basis|default:"—" }}</td>
+                <td>{{ b.unit_basis|default:"—" }}</td>
+                <td>{{ b.quantity_source|default:"—" }}</td>
+                <td class="text-end">{{ b.row_count }}</td>
+                <td class="text-end">{{ b.total_sum }}</td>
+                <td class="text-end">{{ b.non_numeric_count }}</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="6" class="text-secondary">No buckets.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+
+      <details class="mb-2 border rounded p-2" data-testid="s3g-adv-issues">
+        <summary style="cursor:pointer;">Issue sample</summary>
+        <div class="mt-2" data-testid="s3-issue-sample">
+          {% if insight.issue_sample %}
+          <div class="table-responsive">
+            <table class="table table-sm mb-0 small">
+              <thead>
+                <tr>
+                  <th>Row key</th>
+                  <th>IFC class</th>
+                  <th>Type</th>
+                  <th>Issues</th>
+                  <th>Mapping</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in insight.issue_sample %}
+                <tr>
+                  <td class="font-monospace" style="max-width:12rem; word-break:break-all;">{{ row.source_row_key }}</td>
+                  <td>{{ row.ifc_class }}</td>
+                  <td>{{ row.type_name }}</td>
+                  <td>
+                    {% for issue in row.issues %}
+                    <span class="badge text-bg-light border me-1">{{ issue }}</span>
+                    {% endfor %}
+                  </td>
+                  <td class="text-secondary">
+                    C={{ row.classification_code|default:"—" }} ·
+                    P={{ row.package_mapping|default:"—" }} ·
+                    W={{ row.work_package|default:"—" }}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <p class="small text-secondary mb-0">No issues in this sample.</p>
+          {% endif %}
+        </div>
+      </details>
+
+      <details class="mb-0 border rounded p-2" data-testid="s3g-adv-gaps">
+        <summary style="cursor:pointer;">Gap counts</summary>
+        <div class="row g-2 small mt-2" data-testid="s3-gaps-summary">
+          <div class="col-md-4">
+            <div class="text-secondary">Unmapped</div>
+            <ul class="mb-0" data-testid="s3-unmapped-counts">
+              {% for item in screen.unmapped_items %}
+              <li>{{ item.label }}: {{ item.count }}</li>
+              {% empty %}<li>—</li>{% endfor %}
+            </ul>
+          </div>
+          <div class="col-md-4">
+            <div class="text-secondary">Missing mapping</div>
+            <ul class="mb-0" data-testid="s3-missing-mapping-counts">
+              {% for item in screen.missing_mapping_items %}
+              <li>{{ item.label }}: {{ item.count }}</li>
+              {% empty %}<li>—</li>{% endfor %}
+            </ul>
+          </div>
+          <div class="col-md-4">
+            <div class="text-secondary">Basis gaps</div>
+            <ul class="mb-0" data-testid="s3-basis-gap-counts">
+              {% for item in screen.basis_gap_items %}
+              <li>{{ item.label }}: {{ item.count }}</li>
+              {% empty %}<li>—</li>{% endfor %}
+            </ul>
+          </div>
+        </div>
+      </details>
+    </details>
+  </section>
+
+  {% include "fived/components/schema_quantity_insight_help_modal.html" %}
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,59 @@
+<!-- takeoff/components/quantities_schema_insight_entry.html — 5D Quantity Review entry -->
+<section class="c5d-card mb-0"
+         data-testid="qty-schema-insight-entry">
+  <div class="c5d-card-header mb-1">
+    <h2 class="c5d-section-title" data-testid="qty-schema-insight-title">5D Quantity Review</h2>
+  </div>
+  <p class="c5d-helper mb-2" data-testid="qty-schema-insight-description">
+    Review IFC quantities grouped by the latest frozen 5D snapshot.
+  </p>
+  <div class="d-flex flex-wrap gap-1 mb-2" data-testid="qty-schema-insight-badges">
+    <span class="badge text-bg-secondary">Read-only</span>
+    <span class="badge text-bg-secondary">Snapshot-based</span>
+  </div>
+  {% if fived_schema_insight_url and fived_latest_version %}
+  <a href="{{ fived_schema_insight_url }}"
+     class="btn btn-sm btn-primary c5d-action-primary w-100 mb-2"
+     data-testid="qty-schema-insight-open"
+     title="Open 5D Quantity Review for the latest frozen snapshot">
+    <i class="bi bi-bar-chart-steps me-1"></i>Open latest 5D Review
+  </a>
+  <div class="c5d-helper" data-testid="qty-schema-insight-version-meta">
+    Latest snapshot: {{ fived_latest_version.data_model.name }}
+    · {{ fived_latest_version.version_label }}
+    {% if fived_latest_version.created_at %}
+    · {{ fived_latest_version.created_at|date:"Y-m-d H:i" }}
+    {% endif %}
+  </div>
+  <p class="c5d-helper mb-0 mt-1" data-testid="qty-schema-insight-demo-note">
+    Review uses the saved version. Save version again after Assign values or Units changes.
+  </p>
+  {% else %}
+  <button type="button"
+          class="btn btn-sm btn-outline-secondary c5d-action-secondary w-100"
+          disabled
+          data-testid="qty-schema-insight-disabled"
+          aria-disabled="true">
+    Open latest 5D Review
+  </button>
+  <div class="c5d-helper mt-2" data-testid="qty-schema-insight-empty">
+    <p class="mb-0" data-testid="qty-schema-insight-empty-lead">
+      No saved version is available yet. Prepare the table and use Save version to open
+      5D Quantity Review.
+    </p>
+    <p class="mb-0 mt-1" data-testid="qty-schema-insight-empty-semantic">
+      Complete preparation and Save version to review semantic readiness.
+    </p>
+  </div>
+  {% endif %}
+  <details class="mt-2" data-testid="qty-schema-insight-why-snapshot">
+    <summary class="c5d-helper" style="cursor:pointer;">Why a saved version is needed</summary>
+    <ul class="c5d-helper mb-0 mt-1 ps-3">
+      <li>Live prep is session-based.</li>
+      <li>A saved version freezes rows and mapping provenance for Review.</li>
+    </ul>
+  </details>
+  <p class="visually-hidden" data-testid="qty-schema-insight-freeze-reminder">
+    Use Save version when session changes are active.
+  </p>
+</section>

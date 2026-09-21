@@ -45,9 +45,9 @@ from .services.autolink import run_autolink
 from .services.column_mapper import (
     CANONICAL_FIELDS,
     CANONICAL_LABELS,
-    apply_mapping,
     default_visible_columns,
     extract_columns,
+    map_schedule_rows,
     suggest_mapping,
 )
 from .services.critical_path import compute_critical_path
@@ -380,6 +380,13 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
             return JsonResponse({"error": f"Preview failed: {exc}"}, status=500)
 
     def _preview_tabular(self, request, project, file_obj) -> JsonResponse:
+        # Capture artifact bytes before extract_columns consumes the stream.
+        if hasattr(file_obj, "seek"):
+            file_obj.seek(0)
+        artifact_bytes = file_obj.read() if hasattr(file_obj, "read") else b""
+        if hasattr(file_obj, "seek"):
+            file_obj.seek(0)
+
         col_data = extract_columns(file_obj, file_obj.name)
         headers: list[str] = col_data["headers"]
         raw_rows: list[list] = col_data["raw_rows"]
@@ -392,10 +399,8 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
             request,
             project.pk,
             filename=file_obj.name,
-            content=file_obj.read() if hasattr(file_obj, "read") else None,
+            content=artifact_bytes,
         )
-        if hasattr(file_obj, "seek"):
-            file_obj.seek(0)
 
         mapping = suggest_mapping(headers)
         visible = default_visible_columns(headers, mapping)
@@ -693,6 +698,13 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
         except json.JSONDecodeError:
             return toast_response("Session data corrupt — re-upload the file.", "error", status=400)
 
+        if not tasks_data:
+            return toast_response(
+                "No mapped tasks to import — complete column mapping first.",
+                "error",
+                status=400,
+            )
+
         replace_mode = request.POST.get("replace") == "true" or bool(
             request.session.pop(f"schedule_replace_{project.pk}", False)
         )
@@ -784,10 +796,31 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
             logger.warning("CPM recompute after import failed: %s", exc)
 
         tasks = Task.objects.filter(project=project).order_by("start_date", "name")
+        verified_count = tasks.count()
+        current_source = persist_result.current_source
+        if verified_count <= 0 or current_source is None:
+            return toast_response(
+                "Import did not commit any tasks — mapping retained; try again.",
+                "error",
+                status=500,
+            )
+
         response = render(
             request,
             "scheduling/components/task_list.html",
             _task_list_render_context(project, tasks, dep_count=dep_count),
+        )
+        response["X-Castor-Import-Result"] = json.dumps(
+            {
+                "ok": True,
+                "created": created,
+                "updated": updated,
+                "unchanged": unchanged,
+                "skipped": skipped_count,
+                "task_count": verified_count,
+                "source_id": str(current_source.pk),
+                "filename": current_source.filename or filename,
+            }
         )
         parts = []
         if created:
@@ -796,7 +829,10 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
             parts.append(f"{updated} updated")
         if unchanged:
             parts.append(f"{unchanged} unchanged")
-        msg = (", ".join(parts) or "No new tasks") + "."
+        # Prefer verified committed count so UI matches DB (not raw spreadsheet rows).
+        msg = f"{verified_count} task{'s' if verified_count != 1 else ''} imported."
+        if parts:
+            msg = f"{verified_count} tasks committed ({', '.join(parts)})."
         if dep_count:
             msg += f" {dep_count} dependenc{'y' if dep_count == 1 else 'ies'} imported."
             if cpm_attempted and cpm_ok:
@@ -3035,7 +3071,7 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
         column_mapping = {
             field: request.POST.get(f"col_{field}", "").strip() for field in CANONICAL_FIELDS
         }
-        # Remove unmapped optional fields so apply_mapping only sees real mappings
+        # Remove unmapped optional fields so map_schedule_rows only sees real mappings
         column_mapping = {k: v for k, v in column_mapping.items() if v}
 
         ifc_param_name = request.POST.get("ifc_param_name", "Activity ID").strip() or "Activity ID"
@@ -3046,7 +3082,8 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
             request.session[f"schedule_replace_{project.pk}"] = True
 
         try:
-            tasks = apply_mapping(headers, rows, column_mapping, source)
+            mapped = map_schedule_rows(headers, rows, column_mapping, source)
+            tasks = mapped.tasks
         except ValueError as exc:
             return toast_response(str(exc), "error", status=400)
 
@@ -3054,6 +3091,8 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
             return toast_response(
                 "No valid task rows found with this mapping.", "error", status=400
             )
+
+        request.session[f"mapping_preflight_{project.pk}"] = json.dumps(mapped.to_dict())
 
         # Optionally save profile
         profile_name = request.POST.get("profile_name", "").strip()
@@ -3101,7 +3140,7 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
         ):
             request.session.pop(key, None)
 
-        return render(
+        response = render(
             request,
             "scheduling/components/task_list.html",
             {
@@ -3112,6 +3151,49 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
                 "preview_mode": True,
             },
         )
+        response["X-Castor-Mapping-Preflight"] = json.dumps(mapped.to_dict())
+        return response
+
+
+class MappingPreflightView(ProjectModifyAccessMixin, View):
+    """JSON POST — classify mapped rows without committing (same rules as Confirm Import)."""
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        raw_headers = request.session.get(f"raw_headers_{project.pk}")
+        raw_rows = request.session.get(f"raw_rows_{project.pk}")
+        source = request.session.get(f"raw_source_{project.pk}", "excel")
+        if not raw_headers or not raw_rows:
+            return JsonResponse(
+                {"error": "Session expired — please re-upload the file."}, status=400
+            )
+
+        try:
+            body = json.loads(request.body.decode("utf-8") or "{}")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            body = {}
+
+        # Prefer JSON body {mapping: {field: header}}; fall back to form col_* fields.
+        column_mapping = body.get("mapping") if isinstance(body.get("mapping"), dict) else {}
+        if not column_mapping:
+            column_mapping = {
+                field: request.POST.get(f"col_{field}", "").strip() for field in CANONICAL_FIELDS
+            }
+        column_mapping = {k: v for k, v in column_mapping.items() if v}
+
+        try:
+            report = map_schedule_rows(
+                json.loads(raw_headers),
+                json.loads(raw_rows),
+                column_mapping,
+                source,
+            )
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+
+        payload = report.to_dict()
+        request.session[f"mapping_preflight_{project.pk}"] = json.dumps(payload)
+        return JsonResponse(payload)
 
 
 class DetectColumnsView(ProjectModifyAccessMixin, View):
@@ -3157,8 +3239,10 @@ class DetectColumnsView(ProjectModifyAccessMixin, View):
                 {
                     "mapping": lookup.mapping,
                     "confidence": 1.0,
-                    "notes": f"Using saved mapping · {lookup.hit_count} previous uses",
+                    "notes": f"Saved mapping · used {lookup.hit_count} times",
                     "from_lookup": True,
+                    "detection_source": "lookup",
+                    "hit_count": lookup.hit_count,
                     "fingerprint": fp,
                 }
             )
@@ -3168,6 +3252,7 @@ class DetectColumnsView(ProjectModifyAccessMixin, View):
         result = detect_columns(headers, sample_rows, filename, user=request.user)
         result["from_lookup"] = False
         result["fingerprint"] = fp
+        result.setdefault("detection_source", "llm")
         result.setdefault("filename_pattern", filename_to_pattern(filename))
         return JsonResponse(result)
 

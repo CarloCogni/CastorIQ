@@ -1,0 +1,314 @@
+<!-- takeoff/components/quantities_row_review_drawer.html — Slice 5a/5b/C3b session review + mapping -->
+<div class="offcanvas offcanvas-end"
+     tabindex="-1"
+     id="qtyRowReviewDrawer"
+     data-testid="qty-row-review-drawer"
+     aria-labelledby="qtyRowReviewDrawerLabel">
+  <div class="offcanvas-header border-bottom">
+    <h6 class="offcanvas-title mb-0" id="qtyRowReviewDrawerLabel">Review preparation row</h6>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body">
+    <p class="qty-builder-note mb-3" data-testid="qty-row-review-boundary">
+      Session review only — not saved to preparation configuration drafts.
+      This does not approve, certify, write back, or generate BOQ quantities.
+      Configuration drafts save settings only; row reviews are session-only in this slice.
+    </p>
+    <div class="mb-3" data-testid="qty-row-review-identity">
+      <div class="text-secondary small">Row</div>
+      <div class="fw-semibold" id="qty-row-review-identity-text">—</div>
+      <div class="text-secondary small mt-1" id="qty-row-review-identity-meta" data-testid="qty-row-review-identity-meta"></div>
+      <div class="text-secondary small mt-1">
+        Computed gap status:
+        <span id="qty-row-review-computed-status">—</span>
+      </div>
+    </div>
+
+    <h6 class="fs-7 fw-semibold mb-2">Session review</h6>
+    <form method="post"
+          action="{{ qty_prep_row_review_url }}"
+          id="qty-row-review-apply-form"
+          data-testid="qty-row-review-apply-form"
+          hx-post="{{ qty_prep_row_review_url }}"
+          hx-swap="none">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="apply">
+      <input type="hidden" name="row_key" id="qty-row-review-key" value="">
+      <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
+
+      <div class="mb-3">
+        <label class="form-label" for="qty-row-review-status">Preparation review status</label>
+        <select class="form-select form-select-sm"
+                name="review_status"
+                id="qty-row-review-status"
+                required
+                data-testid="qty-row-review-status">
+          {% for opt in qty_prep.review_status_options %}
+          <option value="{{ opt.value }}">{{ opt.label }}</option>
+          {% empty %}
+          <option value="needs_review">Needs review</option>
+          <option value="reviewing">Reviewing</option>
+          <option value="reviewed_for_preparation">Reviewed for preparation</option>
+          <option value="not_applicable_for_preparation">Not applicable for preparation</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="qty-row-review-note">Note (optional, max 500)</label>
+        <textarea class="form-control form-control-sm"
+                  name="note"
+                  id="qty-row-review-note"
+                  rows="3"
+                  maxlength="500"
+                  data-testid="qty-row-review-note"
+                  placeholder="Preparation review note — not a quantity value"></textarea>
+      </div>
+      <button type="submit"
+              class="btn btn-sm btn-primary w-100 mb-2"
+              data-testid="qty-row-review-apply">
+        Apply session review
+      </button>
+    </form>
+
+    <form method="post"
+          action="{{ qty_prep_row_review_url }}"
+          id="qty-row-review-clear-form"
+          data-testid="qty-row-review-clear-form"
+          hx-post="{{ qty_prep_row_review_url }}"
+          hx-swap="none"
+          class="mb-4">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="clear">
+      <input type="hidden" name="row_key" id="qty-row-review-clear-key" value="">
+      <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
+      <button type="submit"
+              class="btn btn-sm btn-outline-secondary w-100"
+              data-testid="qty-row-review-clear">
+        Clear review for this row
+      </button>
+    </form>
+
+    <hr class="my-3">
+    <h6 class="fs-7 fw-semibold mb-2">Manual mapping values</h6>
+    <p class="qty-builder-note mb-2" data-testid="qty-row-mapping-boundary">
+      Manual preparation values are session-only — not saved to configuration drafts.
+      Available only for fields configured as Manual field.
+      Schema-backed selections are session annotations — not approved classifications,
+      not ClassificationAssignment records, and not IFC writeback.
+    </p>
+
+    {% if qty_prep.manual_mapping_eligible_fields %}
+    <form method="post"
+          action="{{ qty_prep_row_mapping_url }}"
+          id="qty-row-mapping-apply-form"
+          data-testid="qty-row-mapping-apply-form"
+          hx-post="{{ qty_prep_row_mapping_url }}"
+          hx-swap="none">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="apply">
+      <input type="hidden" name="row_key" id="qty-row-mapping-key" value="">
+      <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
+
+      {% for field in qty_prep.manual_mapping_eligible_fields %}
+      <div class="mb-3" data-testid="qty-row-mapping-field-{{ field.key }}">
+        <label class="form-label" for="{% if field.has_schema_nodes %}qty-map-node-{{ field.key }}{% else %}qty-map-{{ field.key }}{% endif %}">
+          {{ field.label }}
+        </label>
+
+        {% if field.has_schema_nodes %}
+        <select class="form-select form-select-sm"
+                name="{{ field.key }}__node_id"
+                id="qty-map-node-{{ field.key }}"
+                data-testid="qty-row-mapping-select-{{ field.key }}">
+          <option value="">— Select schema node —</option>
+          {% for node in field.selector.nodes %}
+          <option value="{{ node.node_id }}"
+                  data-code="{{ node.code }}"
+                  data-label="{{ node.label }}">
+            {{ node.code }} — {{ node.label }}
+          </option>
+          {% endfor %}
+        </select>
+        <p class="qty-mapping-hint mt-1 mb-2" data-testid="qty-row-mapping-schema-note-{{ field.key }}">
+          Schema node is stored as a session preparation mapping.
+          It is not an approved classification or writeback.
+        </p>
+        <details class="mb-1" data-testid="qty-row-mapping-fallback-{{ field.key }}">
+          <summary class="small text-secondary">Free-text fallback</summary>
+          <input type="text"
+                 class="form-control form-control-sm mt-2"
+                 name="{{ field.key }}__free_text"
+                 id="qty-map-{{ field.key }}"
+                 maxlength="120"
+                 autocomplete="off"
+                 data-testid="qty-row-mapping-input-{{ field.key }}"
+                 placeholder="Free-text session value (manual_session)">
+        </details>
+        {% else %}
+        <input type="text"
+               class="form-control form-control-sm"
+               name="{{ field.key }}"
+               id="qty-map-{{ field.key }}"
+               maxlength="120"
+               autocomplete="off"
+               data-testid="qty-row-mapping-input-{{ field.key }}"
+               placeholder="Manual preparation value — session only">
+        <p class="qty-mapping-hint mt-1 mb-0" data-testid="qty-row-mapping-no-schema-{{ field.key }}">
+          No project schema adopted for this mapping role. Free text remains session-only.
+        </p>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% if qty_prep.manual_mapping_eligible_fields %}
+      <div class="border rounded p-2 mb-3" data-testid="qty-map-similar-panel">
+        <p class="small fw-semibold mb-1">Apply to similar rows</p>
+        <p class="qty-mapping-hint mb-2">Select matching axes, then open batch mapping with those rows selected.</p>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="qty-similar-ifc" checked
+                 data-testid="qty-similar-ifc">
+          <label class="form-check-label small" for="qty-similar-ifc">Same IFC class</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="qty-similar-type"
+                 data-testid="qty-similar-type">
+          <label class="form-check-label small" for="qty-similar-type">Same type name</label>
+        </div>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="qty-similar-basis"
+                 data-testid="qty-similar-basis">
+          <label class="form-check-label small" for="qty-similar-basis">Same quantity basis</label>
+        </div>
+        <button type="button"
+                class="btn btn-sm btn-outline-primary w-100"
+                id="qty-map-similar-rows"
+                data-testid="qty-map-similar-rows">
+          Select similar rows for batch mapping
+        </button>
+      </div>
+      {% endif %}
+      <button type="submit"
+              class="btn btn-sm btn-primary w-100 mb-2"
+              data-testid="qty-row-mapping-apply">
+        Apply session mapping values
+      </button>
+    </form>
+    <form method="post"
+          action="{{ qty_prep_row_mapping_url }}"
+          id="qty-row-mapping-clear-form"
+          data-testid="qty-row-mapping-clear-form"
+          hx-post="{{ qty_prep_row_mapping_url }}"
+          hx-swap="none">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="clear">
+      <input type="hidden" name="row_key" id="qty-row-mapping-clear-key" value="">
+      <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
+      <button type="submit"
+              class="btn btn-sm btn-outline-secondary w-100"
+              data-testid="qty-row-mapping-clear">
+        Clear mapping values for this row
+      </button>
+    </form>
+    {% else %}
+    <p class="text-secondary small mb-0" data-testid="qty-row-mapping-unavailable">
+      Manual mapping values are available only for fields configured as Manual field.
+    </p>
+    {% endif %}
+  </div>
+</div>
+<script>
+(function () {
+  var drawer = document.getElementById("qtyRowReviewDrawer");
+  if (!drawer) return;
+
+  function setMappingControls(fieldKey, code, nodeId, isBacked) {
+    var selectEl = document.getElementById("qty-map-node-" + fieldKey);
+    var freeEl = document.getElementById("qty-map-" + fieldKey);
+    if (selectEl) {
+      if (isBacked && nodeId) {
+        selectEl.value = nodeId;
+        if (freeEl) freeEl.value = "";
+        return;
+      }
+      selectEl.value = "";
+      if (freeEl) freeEl.value = code || "";
+      return;
+    }
+    if (freeEl) freeEl.value = code || "";
+  }
+
+  drawer.addEventListener("show.bs.offcanvas", function (event) {
+    var btn = event.relatedTarget;
+    if (!btn) return;
+    var key = btn.getAttribute("data-qty-row-key") || "";
+    var group = btn.getAttribute("data-qty-model-group") || "—";
+    var typeName = btn.getAttribute("data-qty-type-name") || "";
+    var displayName = btn.getAttribute("data-qty-display-name") || "";
+    var level = btn.getAttribute("data-qty-hierarchy-level") || "";
+    var gid = btn.getAttribute("data-qty-global-id") || "";
+    var tgid = btn.getAttribute("data-qty-type-global-id") || "";
+    var techCount = btn.getAttribute("data-qty-technical-type-count") || "";
+    var techGids = btn.getAttribute("data-qty-technical-type-gids") || "";
+    var basis = btn.getAttribute("data-qty-basis") || "Unresolved";
+    var computed = btn.getAttribute("data-qty-computed-status") || "—";
+    var status = btn.getAttribute("data-qty-session-status") || "needs_review";
+    var note = btn.getAttribute("data-qty-session-note") || "";
+    var identity = displayName || typeName || group;
+    if (level === "type") {
+      identity = "Engineering type · " + identity;
+    } else if (level) {
+      identity = (level.charAt(0).toUpperCase() + level.slice(1)) + " · " + identity;
+    }
+    if (!displayName && typeName) identity = group + " · " + typeName;
+    identity += " · basis " + (basis || "Unresolved");
+    var metaParts = [];
+    if (group) metaParts.push("IFC class: " + group);
+    if (techCount && Number(techCount) > 1) {
+      metaParts.push("Technical IFC types: " + techCount);
+      if (techGids) metaParts.push("Type GlobalIds: " + techGids);
+    } else if (tgid) {
+      metaParts.push("Type GlobalId: " + tgid);
+    }
+    if (gid) metaParts.push("Instance GlobalId: " + gid);
+    if (key) metaParts.push("Row key: " + key);
+    var identityEl = document.getElementById("qty-row-review-identity-text");
+    var metaEl = document.getElementById("qty-row-review-identity-meta");
+    var computedEl = document.getElementById("qty-row-review-computed-status");
+    var keyEl = document.getElementById("qty-row-review-key");
+    var clearKeyEl = document.getElementById("qty-row-review-clear-key");
+    var mapKeyEl = document.getElementById("qty-row-mapping-key");
+    var mapClearKeyEl = document.getElementById("qty-row-mapping-clear-key");
+    var statusEl = document.getElementById("qty-row-review-status");
+    var noteEl = document.getElementById("qty-row-review-note");
+    if (identityEl) identityEl.textContent = identity;
+    if (metaEl) metaEl.textContent = metaParts.join(" · ");
+    if (computedEl) computedEl.textContent = computed;
+    if (keyEl) keyEl.value = key;
+    if (clearKeyEl) clearKeyEl.value = key;
+    if (mapKeyEl) mapKeyEl.value = key;
+    if (mapClearKeyEl) mapClearKeyEl.value = key;
+    if (statusEl) {
+      statusEl.value = status || "needs_review";
+      if (!statusEl.value) statusEl.value = "needs_review";
+    }
+    if (noteEl) noteEl.value = note;
+    setMappingControls(
+      "classification_code",
+      btn.getAttribute("data-qty-map-classification") || "",
+      btn.getAttribute("data-qty-map-classification-node") || "",
+      btn.getAttribute("data-qty-map-classification-backed") === "1"
+    );
+    setMappingControls(
+      "package_boq_mapping",
+      btn.getAttribute("data-qty-map-package") || "",
+      btn.getAttribute("data-qty-map-package-node") || "",
+      btn.getAttribute("data-qty-map-package-backed") === "1"
+    );
+    setMappingControls(
+      "work_package",
+      btn.getAttribute("data-qty-map-work") || "",
+      btn.getAttribute("data-qty-map-work-node") || "",
+      btn.getAttribute("data-qty-map-work-backed") === "1"
+    );
+  });
+})();
+</script>

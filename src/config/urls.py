@@ -41,6 +41,7 @@ urlpatterns = [
     # 4D/5D BIM integration — atomic apps split from the former castor/ module.
     path("scheduling/", include("scheduling.urls")),
     path("takeoff/", include("takeoff.urls")),
+    path("fived/", include("fived.urls")),
     path("model-quality/", include("model_quality.urls")),
     path("viewer/", include("ifc_viewer.urls")),
     # Staff-only BI/health dashboard. Gated by is_staff inside each view.

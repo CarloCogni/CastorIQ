@@ -1,0 +1,398 @@
+<!-- takeoff/components/quantities_measurement_settings_modal.html — REVIEW-08B -->
+<div class="modal fade" id="qtyMeasurementSettingsModal" tabindex="-1"
+     aria-labelledby="qtyMeasurementSettingsModalLabel" aria-hidden="true"
+     data-testid="qty-measurement-settings-modal">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title" id="qtyMeasurementSettingsModalLabel">Measurement settings</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        {% with ms=qty_prep.measurement_settings ou=qty_prep.output_units %}
+        <p class="c5d-helper mb-2" data-testid="qty-measurement-settings-helper">
+          Settings are per IFC class: measurement, IFC source, source unit, and output unit.
+        </p>
+
+        <details class="mb-3" data-testid="qty-measurement-how-units-work">
+          <summary class="small fw-semibold">How units work</summary>
+          <p class="small text-secondary mt-2 mb-1" data-testid="qty-measurement-settings-gap">
+            {{ ms.gap_note }}
+          </p>
+          <p class="small text-secondary mb-2" data-testid="qty-measurement-settings-precedence">
+            Session family units are defaults. A class Apply that sets an output unit
+            overrides that family <strong>for that IFC class only</strong>; other classes
+            keep their own units or inherit the session default. Source unit is read-only
+            project-unit fallback — not a verified per-property unit.
+          </p>
+          <details class="mb-0" data-testid="qty-measurement-settings-inherited-units">
+            <summary class="small">Session output units (inherited)</summary>
+            <p class="small text-secondary mt-1 mb-2">
+              Read-only view of current session family units. Prefer changing output unit
+              on the class card below when applying measurement for that class.
+            </p>
+            <div class="table-responsive">
+              <table class="table table-sm mb-0">
+                <thead><tr class="small text-secondary"><th>Family</th><th>Source</th><th>Output</th></tr></thead>
+                <tbody>
+                  {% for row in ou.rows %}
+                  <tr>
+                    <td class="small">{{ row.label }}</td>
+                    <td class="small">{{ row.model_unit_label }}</td>
+                    <td class="small">{{ row.output_unit_label }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </details>
+
+        <div class="fw-semibold small mb-2">By IFC class</div>
+        {% for crow in ms.class_rows %}
+        <div class="border rounded p-2 mb-2"
+             data-testid="qty-measurement-class-card"
+             data-ifc-class="{{ crow.ifc_class }}">
+          <div class="d-flex flex-wrap align-items-baseline justify-content-between gap-1 mb-2">
+            <div>
+              <span class="fw-semibold" data-testid="qty-measurement-class-name">{{ crow.ifc_class }}</span>
+              <span class="small text-secondary ms-1"
+                    data-testid="qty-measurement-class-counts"
+                    title="Apply scope: indexed elements in the current filter (not visible table rows only)">
+                {{ crow.count_label|default:crow.row_count }}
+              </span>
+            </div>
+            {% if crow.mixed_measurement or crow.mixed_source %}
+            <span class="badge text-bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+                  data-testid="qty-measurement-class-mixed">
+              Mixed saved choices
+            </span>
+            {% endif %}
+          </div>
+          {% if crow.mixed_measurement or crow.mixed_source %}
+          <p class="small text-secondary mb-2" data-testid="qty-measurement-class-mixed-note">
+            Apply replaces measurement/source for all
+            <strong>{{ crow.element_count|default:crow.row_count }}</strong>
+            {{ crow.ifc_class }} element(s) in scope — other classes are unchanged.
+          </p>
+          {% endif %}
+
+          <form method="post"
+                action="{{ qty_measurement_settings_url }}"
+                data-testid="qty-measurement-class-form"
+                data-source-coverage="{{ crow.source_coverage_json|default:'{}'|escape }}"
+                data-source-units-by-mt="{{ crow.source_units_by_mt_json|default:'{}'|escape }}"
+                data-output-by-mt="{{ crow.output_choices_by_mt_json|default:'{}'|escape }}"
+                data-output-prefs-by-mt="{{ crow.preferred_output_by_mt_json|default:'{}'|escape }}">
+            {% csrf_token %}
+            <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
+            <input type="hidden" name="ifc_class" value="{{ crow.ifc_class }}">
+            <input type="hidden" name="apply_scope_token" value="{{ crow.apply_scope_token|default:'' }}">
+
+            <div class="row g-2 align-items-end">
+              <div class="col-md-3">
+                <label class="form-label small mb-0">Measurement</label>
+                <select name="measurement_type"
+                        class="form-select form-select-sm qty-ms-measurement"
+                        data-testid="qty-measurement-class-type"
+                        required>
+                  <option value="">Choose…</option>
+                  {% for mt in ms.measurement_types %}
+                  <option value="{{ mt }}"
+                          {% if crow.primary_measurement_type == mt %}selected{% endif %}>
+                    {% if mt == "count" %}Count
+                    {% elif mt == "length" %}Length
+                    {% elif mt == "area" %}Area
+                    {% elif mt == "volume" %}Volume
+                    {% else %}{{ mt }}{% endif %}
+                  </option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small mb-0">IFC source</label>
+                <select name="selected_source"
+                        class="form-select form-select-sm qty-ms-source"
+                        data-testid="qty-measurement-class-source">
+                  <option value="">Choose…</option>
+                  {% for mt, sources in crow.compatible_sources.items %}
+                    {% for src in sources %}
+                    <option value="{{ src }}"
+                            data-mt="{{ mt }}"
+                            {% if crow.primary_selected_source == src and crow.primary_measurement_type == mt %}selected{% endif %}>
+                      {% if src == "element_count" %}Element count{% else %}{{ src }}{% endif %}
+                      ({{ mt }})
+                    </option>
+                    {% endfor %}
+                  {% endfor %}
+                </select>
+                <div class="form-text text-warning d-none qty-ms-empty-sources"
+                     data-testid="qty-measurement-class-no-source"
+                     style="font-size:0.7rem;">
+                  No compatible source found for this measurement in the current filter scope.
+                </div>
+                <div class="form-text text-secondary qty-ms-partial d-none"
+                     data-testid="qty-measurement-class-partial"
+                     style="font-size:0.7rem;"></div>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small mb-0">Source unit</label>
+                <div class="form-control form-control-sm bg-body-secondary qty-ms-source-unit"
+                     style="min-height:31px;"
+                     data-testid="qty-measurement-class-source-unit"
+                     data-idle-label="{{ crow.source_unit_idle_label|default:'Select a source' }}"
+                     data-known-label="{{ crow.source_unit_label }}"
+                     title="{{ crow.source_unit_note }}">
+                  {% if crow.primary_selected_source %}{{ crow.source_unit_label }}{% else %}{{ crow.source_unit_idle_label|default:"Select a source" }}{% endif %}
+                </div>
+                <div class="form-text qty-ms-source-unit-note" style="font-size:0.7rem;">{{ crow.source_unit_note }}</div>
+              </div>
+              <div class="col-md-2">
+                <label class="form-label small mb-0">Output unit</label>
+                <div class="qty-ms-output-host" data-testid="qty-measurement-class-output-host">
+                  <div class="form-control form-control-sm bg-body-secondary qty-ms-output-locked{% if not crow.output_locked %} d-none{% endif %}"
+                       style="min-height:31px;"
+                       data-testid="qty-measurement-class-output-unit-locked">
+                    {% if crow.primary_measurement_type == "count" %}Count{% else %}{{ crow.output_unit_label }}{% endif %}
+                  </div>
+                  <input type="hidden"
+                         class="qty-ms-output-hidden"
+                         value="count"
+                         {% if crow.output_locked %}name="output_unit"{% endif %}>
+                  <select class="form-select form-select-sm qty-ms-output{% if crow.output_locked %} d-none{% endif %}"
+                          data-testid="qty-measurement-class-output-unit"
+                          {% if not crow.output_locked %}name="output_unit"{% endif %}>
+                    {% for choice in crow.output_choices %}
+                    <option value="{{ choice.token }}"
+                            {% if choice.token == crow.output_unit %}selected{% endif %}>
+                      {{ choice.label }}
+                    </option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+              <div class="col-md-1">
+                <button type="submit"
+                        class="btn btn-sm btn-primary w-100 qty-ms-apply"
+                        data-testid="qty-measurement-class-apply"
+                        title="Apply to {{ crow.ifc_class }} only">
+                  Apply
+                </button>
+              </div>
+            </div>
+          </form>
+          {% if crow.class_output_override %}
+          <form method="post"
+                action="{{ qty_measurement_settings_url }}"
+                class="mt-1"
+                data-testid="qty-measurement-class-reset-form">
+            {% csrf_token %}
+            <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
+            <input type="hidden" name="ifc_class" value="{{ crow.ifc_class }}">
+            <input type="hidden" name="action" value="reset_class_unit">
+            <button type="submit"
+                    class="btn btn-sm btn-link px-0"
+                    data-testid="qty-measurement-class-reset-unit"
+                    title="Clear output-unit override for {{ crow.ifc_class }} only">
+              Reset {{ crow.ifc_class }} output unit (this class only)
+            </button>
+          </form>
+          {% elif crow.inherited_output %}
+          <p class="small text-secondary mb-0 mt-1" data-testid="qty-measurement-class-inherited">
+            Output unit inherited from session family default.
+          </p>
+          {% endif %}
+        </div>
+        {% empty %}
+        <p class="small text-secondary" data-testid="qty-measurement-settings-empty">
+          No IFC classes in the current table result.
+        </p>
+        {% endfor %}
+        {% endwith %}
+      </div>
+      <div class="modal-footer py-2 sticky-bottom bg-body border-top">
+        <span class="small text-secondary me-auto">Each Apply is scoped to one IFC class.</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  function visibleSourceCount(srcSel, mt) {
+    var n = 0;
+    Array.prototype.forEach.call(srcSel.options, function (opt) {
+      if (!opt.value) return;
+      if (!mt || (opt.getAttribute("data-mt") || "") === mt) n += 1;
+    });
+    return n;
+  }
+  function parseJsonAttr(form, name) {
+    try {
+      return JSON.parse(form.getAttribute(name) || "{}") || {};
+    } catch (e) {
+      return {};
+    }
+  }
+  function refreshOutputUnit(form, mt) {
+    var lockedEl = form.querySelector(".qty-ms-output-locked");
+    var sel = form.querySelector(".qty-ms-output");
+    var hidden = form.querySelector(".qty-ms-output-hidden");
+    var byMt = parseJsonAttr(form, "data-output-by-mt");
+    var prefs = parseJsonAttr(form, "data-output-prefs-by-mt");
+    if (!mt) {
+      if (lockedEl) lockedEl.classList.add("d-none");
+      if (sel) {
+        sel.classList.add("d-none");
+        sel.removeAttribute("name");
+        sel.disabled = true;
+      }
+      if (hidden) hidden.removeAttribute("name");
+      return;
+    }
+    if (mt === "count") {
+      if (sel) {
+        sel.classList.add("d-none");
+        sel.removeAttribute("name");
+        sel.disabled = true;
+        sel.value = "";
+      }
+      if (lockedEl) {
+        lockedEl.classList.remove("d-none");
+        lockedEl.textContent = "Count";
+      }
+      if (hidden) {
+        hidden.name = "output_unit";
+        hidden.value = "count";
+      }
+      return;
+    }
+    if (hidden) hidden.removeAttribute("name");
+    if (lockedEl) lockedEl.classList.add("d-none");
+    if (!sel) return;
+    var choices = byMt[mt] || [];
+    var pref = String(prefs[mt] || "");
+    var prev = sel.value || "";
+    sel.innerHTML = "";
+    choices.forEach(function (choice) {
+      var opt = document.createElement("option");
+      opt.value = choice.token || "";
+      opt.textContent = choice.label || choice.token || "";
+      sel.appendChild(opt);
+    });
+    var tokens = choices.map(function (c) { return c.token; });
+    var next = "";
+    if (prev && tokens.indexOf(prev) >= 0) next = prev;
+    else if (pref && tokens.indexOf(pref) >= 0) next = pref;
+    else if (tokens.length) next = tokens[0];
+    sel.value = next;
+    sel.disabled = choices.length === 0;
+    if (choices.length === 0) {
+      sel.classList.add("d-none");
+      sel.removeAttribute("name");
+      if (lockedEl) {
+        lockedEl.classList.remove("d-none");
+        lockedEl.textContent = "—";
+      }
+    } else {
+      sel.classList.remove("d-none");
+      sel.name = "output_unit";
+    }
+  }
+  function refreshForm(form) {
+    var mtSel = form.querySelector(".qty-ms-measurement");
+    var srcSel = form.querySelector(".qty-ms-source");
+    var applyBtn = form.querySelector(".qty-ms-apply");
+    var emptyEl = form.querySelector(".qty-ms-empty-sources");
+    var partialEl = form.querySelector(".qty-ms-partial");
+    var unitEl = form.querySelector(".qty-ms-source-unit");
+    if (!mtSel || !srcSel) return;
+    var mt = mtSel.value || "";
+    var seq = String((parseInt(form.getAttribute("data-ms-seq") || "0", 10) || 0) + 1);
+    form.setAttribute("data-ms-seq", seq);
+    Array.prototype.forEach.call(srcSel.options, function (opt) {
+      if (!opt.value) { opt.hidden = false; return; }
+      var optMt = opt.getAttribute("data-mt") || "";
+      opt.hidden = mt ? optMt !== mt : false;
+    });
+    var selected = srcSel.options[srcSel.selectedIndex];
+    if (selected && selected.hidden) srcSel.value = "";
+    // Auto-pick element_count for Count when available.
+    if (mt === "count" && !srcSel.value) {
+      Array.prototype.forEach.call(srcSel.options, function (opt) {
+        if (opt.value === "element_count" && (opt.getAttribute("data-mt") || "") === "count") {
+          srcSel.value = "element_count";
+        }
+      });
+    }
+    var visible = visibleSourceCount(srcSel, mt);
+    var needsSource = mt && mt !== "count";
+    if (emptyEl) {
+      emptyEl.classList.toggle("d-none", !(needsSource && visible === 0));
+      if (needsSource && visible === 0) {
+        emptyEl.textContent = "No compatible " + mt + " source found in the current filter scope.";
+      }
+    }
+    if (applyBtn) {
+      applyBtn.disabled = !mt || (needsSource && (!srcSel.value || visible === 0));
+    }
+    if (unitEl) {
+      var idle = unitEl.getAttribute("data-idle-label") || "Select a source";
+      var byMt = parseJsonAttr(form, "data-source-units-by-mt");
+      var mtUnit = byMt[mt] || {};
+      var known = (mtUnit.label) || unitEl.getAttribute("data-known-label") || "Unknown source unit";
+      var noteEl = form.querySelector(".qty-ms-source-unit-note");
+      if (!srcSel.value && needsSource) {
+        unitEl.textContent = idle;
+        if (noteEl) noteEl.textContent = mtUnit.note || "";
+      } else if (srcSel.value || mt === "count") {
+        unitEl.textContent = known || idle;
+        if (noteEl) noteEl.textContent = mtUnit.note || unitEl.getAttribute("title") || "";
+      } else {
+        unitEl.textContent = idle;
+      }
+    }
+    if (partialEl) {
+      partialEl.classList.add("d-none");
+      partialEl.textContent = "";
+      try {
+        var cov = JSON.parse(form.getAttribute("data-source-coverage") || "{}");
+        var src = srcSel.value;
+        var stats = ((cov[mt] || {})[src]) || null;
+        if (stats && stats.partial) {
+          partialEl.textContent =
+            "Partial coverage: " + stats.present + " of " + stats.total + " instances have this source.";
+          partialEl.classList.remove("d-none");
+        }
+      } catch (e) { /* ignore malformed coverage */ }
+    }
+    refreshOutputUnit(form, mt);
+    // Stale-selection guard: ignore late handlers if another change advanced seq.
+    return seq;
+  }
+  document.querySelectorAll("#qtyMeasurementSettingsModal form[data-testid='qty-measurement-class-form']").forEach(function (form) {
+    var mtSel = form.querySelector(".qty-ms-measurement");
+    var srcSel = form.querySelector(".qty-ms-source");
+    var outSel = form.querySelector(".qty-ms-output");
+    if (mtSel) {
+      mtSel.addEventListener("change", function () { refreshForm(form); });
+    }
+    if (srcSel) {
+      srcSel.addEventListener("change", function () { refreshForm(form); });
+    }
+    if (outSel && !outSel._qtyMsPrefBound) {
+      outSel._qtyMsPrefBound = true;
+      outSel.addEventListener("change", function () {
+        var mtNow = (form.querySelector(".qty-ms-measurement") || {}).value || "";
+        if (!mtNow || mtNow === "count") return;
+        var prefs = parseJsonAttr(form, "data-output-prefs-by-mt");
+        prefs[mtNow] = outSel.value || "";
+        form.setAttribute("data-output-prefs-by-mt", JSON.stringify(prefs));
+      });
+    }
+    refreshForm(form);
+  });
+})();
+</script>

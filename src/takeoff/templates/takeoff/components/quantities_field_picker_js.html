@@ -1,0 +1,530 @@
+<!-- takeoff/components/quantities_field_picker_js.html — REVIEW-08B/08C picker + value combobox -->
+<script>
+(function () {
+  if (window.CastorQtyFieldPicker) return;
+
+  function qs(root, sel) { return root.querySelector(sel); }
+  function qsa(root, sel) { return Array.prototype.slice.call(root.querySelectorAll(sel)); }
+
+  function initPicker(root, opts) {
+    if (!root || root.dataset.pickerReady === "1") return;
+    root.dataset.pickerReady = "1";
+    var search = qs(root, ".qty-field-picker-search");
+    var tree = qs(root, ".qty-field-picker-tree");
+    var noMatch = qs(root, ".qty-field-picker-no-matches");
+    var status = qs(root, ".qty-field-picker-status");
+    var onSelect = (opts && opts.onSelect) || function () {};
+
+    function options() {
+      return qsa(root, ".qty-field-picker-option");
+    }
+
+    function setStatus(msg, kind) {
+      if (!status) return;
+      if (!msg) {
+        status.classList.add("d-none");
+        status.textContent = "";
+        return;
+      }
+      status.textContent = msg;
+      status.classList.remove("d-none");
+      status.dataset.kind = kind || "info";
+    }
+
+    function filterList() {
+      var q = ((search && search.value) || "").trim().toLowerCase();
+      var visibleOpts = 0;
+      options().forEach(function (btn) {
+        var hay = (btn.getAttribute("data-search") || "").toLowerCase();
+        var show = !q || hay.indexOf(q) !== -1;
+        btn.classList.toggle("d-none", !show);
+        if (show) visibleOpts += 1;
+      });
+      qsa(root, ".qty-field-picker-group").forEach(function (g) {
+        var any = qsa(g, ".qty-field-picker-option").some(function (b) {
+          return !b.classList.contains("d-none");
+        });
+        g.classList.toggle("d-none", !any);
+        if (q && any) g.open = true;
+      });
+      qsa(root, ".qty-field-picker-family").forEach(function (f) {
+        var any = qsa(f, ".qty-field-picker-group").some(function (g) {
+          return !g.classList.contains("d-none");
+        });
+        f.classList.toggle("d-none", !any);
+        if (q && any) f.open = true;
+      });
+      var catalogueEmpty = !options().length;
+      if (noMatch) {
+        if (catalogueEmpty) {
+          noMatch.classList.add("d-none");
+        } else {
+          noMatch.classList.toggle("d-none", !q || visibleOpts > 0);
+        }
+      }
+      if (catalogueEmpty) {
+        setStatus("No indexed fields available for this scope.", "empty");
+      } else if (q && visibleOpts === 0) {
+        setStatus("", "nomatch");
+      } else {
+        setStatus("", "ok");
+      }
+    }
+
+    function selectKey(key, opts) {
+      opts = opts || {};
+      options().forEach(function (btn) {
+        var on = btn.getAttribute("data-field-key") === key;
+        btn.classList.toggle("active", on);
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+      root.dataset.selectedKey = key || "";
+      var btn = options().find(function (b) { return b.getAttribute("data-field-key") === key; });
+      if (opts.notify !== false) {
+        var meta = null;
+        if (btn) {
+          meta = {
+            label: btn.getAttribute("data-field-label") || key,
+            valueType: btn.getAttribute("data-value-type") || "text",
+            alreadyAdded: btn.getAttribute("data-already-added") === "1",
+            el: btn
+          };
+        }
+        onSelect(key, meta);
+      }
+    }
+
+    options().forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        if (btn.getAttribute("data-already-added") === "1" || btn.classList.contains("disabled")) {
+          return;
+        }
+        selectKey(btn.getAttribute("data-field-key") || "");
+      });
+    });
+    if (search) {
+      search.addEventListener("input", filterList);
+      search.addEventListener("search", filterList);
+    }
+    filterList();
+    var initial = root.getAttribute("data-selected-key") || "";
+    if (initial) selectKey(initial, { notify: false });
+
+    root._qtyPicker = {
+      resetSearch: function () {
+        if (search) search.value = "";
+        filterList();
+      },
+      selectKey: selectKey,
+      filterList: filterList,
+      getSelectedKey: function () { return root.dataset.selectedKey || ""; }
+    };
+  }
+
+  function initValueCombobox(cfg) {
+    var input = cfg.input;
+    var panel = cfg.panel;
+    var metaByKey = cfg.metaByKey || {};
+    var valuesUrl = cfg.valuesUrl || "";
+    var getFieldKey = cfg.getFieldKey || function () { return ""; };
+    var getClasses = cfg.getClasses || function () { return []; };
+    var requestSeq = 0;
+    var debounceTimer = null;
+    if (!input || !panel) return;
+    // Idempotent: HTMX / re-init must not stack focus/input listeners.
+    if (input.dataset.valueComboboxReady === "1" && input._qtyValueCombobox) {
+      return input._qtyValueCombobox;
+    }
+    input.dataset.valueComboboxReady = "1";
+
+    input.setAttribute("autocomplete", "off");
+    input.setAttribute("autocorrect", "off");
+    input.setAttribute("spellcheck", "false");
+    input.setAttribute("data-1p-ignore", "true");
+    input.setAttribute("data-lpignore", "true");
+    input.removeAttribute("list");
+
+    function clearPanel() {
+      panel.innerHTML = "";
+      panel.classList.add("d-none");
+    }
+
+    function appendSuggestion(val) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "dropdown-item small py-1 qty-value-suggestion";
+      b.textContent = val;
+      b.setAttribute("data-value", val);
+      b.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        input.value = val;
+        clearPanel();
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      panel.appendChild(b);
+    }
+
+    function renderPayload(payload, append) {
+      if (!append) panel.innerHTML = "";
+      var values = (payload && payload.values) || [];
+      if (!values.length && !append) {
+        panel.innerHTML = '<div class="small text-secondary px-2 py-1">No stored values for this property</div>';
+        panel.classList.remove("d-none");
+        return;
+      }
+      values.forEach(appendSuggestion);
+      var note = document.createElement("div");
+      note.className = "small text-secondary px-2 py-1 border-top qty-value-suggest-note";
+      var total = (payload && payload.total) || values.length;
+      var shown = panel.querySelectorAll(".qty-value-suggestion").length;
+      if (payload && payload.has_more) {
+        note.textContent = "Showing " + shown + " of " + total + " — type to search, or load more.";
+        var more = document.createElement("button");
+        more.type = "button";
+        more.className = "dropdown-item small py-1 text-primary qty-value-load-more";
+        more.textContent = "Load more…";
+        more.addEventListener("mousedown", function (e) {
+          e.preventDefault();
+          fetchValues(getFieldKey(), input.value || "", shown, true);
+        });
+        panel.appendChild(note);
+        panel.appendChild(more);
+      } else {
+        var complete = !(payload && payload.capped);
+        note.textContent = complete
+          ? ("Distinct stored values for this field (" + total + ").")
+          : ("Showing first " + total + " distinct values (capped) — type to search.");
+        panel.appendChild(note);
+      }
+      panel.classList.remove("d-none");
+    }
+
+    function fetchValues(fieldKey, q, offset, append) {
+      if (!fieldKey || !valuesUrl) {
+        clearPanel();
+        return;
+      }
+      var seq = ++requestSeq;
+      if (!append) {
+        panel.innerHTML = '<div class="small text-secondary px-2 py-1">Loading values…</div>';
+        panel.classList.remove("d-none");
+      }
+      var params = new URLSearchParams();
+      params.set("field", fieldKey);
+      if (q) params.set("q", q);
+      params.set("offset", String(offset || 0));
+      params.set("limit", "40");
+      (getClasses() || []).forEach(function (c) {
+        if (c) params.append("semantic_classes", c);
+      });
+      fetch(valuesUrl + "?" + params.toString(), {
+        headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin"
+      }).then(function (r) {
+        if (!r.ok) throw new Error("values " + r.status);
+        return r.json();
+      }).then(function (payload) {
+        if (seq !== requestSeq) return;
+        if (payload.error && !payload.values) {
+          panel.innerHTML = '<div class="small text-danger px-2 py-1">' +
+            (payload.error || "Could not load values") + "</div>";
+          panel.classList.remove("d-none");
+          return;
+        }
+        renderPayload(payload, !!append);
+      }).catch(function () {
+        if (seq !== requestSeq) return;
+        panel.innerHTML = '<div class="small text-danger px-2 py-1">Could not load values. Retry.</div>';
+        var retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "dropdown-item small text-primary";
+        retry.textContent = "Retry";
+        retry.addEventListener("mousedown", function (e) {
+          e.preventDefault();
+          fetchValues(fieldKey, q, 0, false);
+        });
+        panel.appendChild(retry);
+        panel.classList.remove("d-none");
+      });
+    }
+
+    function scheduleFetch() {
+      var key = getFieldKey();
+      if (!key) { clearPanel(); return; }
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(function () {
+        fetchValues(key, input.value || "", 0, false);
+      }, 180);
+    }
+
+    input.addEventListener("focus", function () {
+      var key = getFieldKey();
+      if (key) fetchValues(key, input.value || "", 0, false);
+    });
+    input.addEventListener("input", scheduleFetch);
+    input.addEventListener("blur", function () {
+      setTimeout(clearPanel, 180);
+    });
+
+    var api = {
+      setField: function (fieldKey, clearValue) {
+        requestSeq += 1;
+        clearPanel();
+        if (clearValue) input.value = "";
+        if (fieldKey && document.activeElement === input) {
+          fetchValues(fieldKey, input.value || "", 0, false);
+        }
+      },
+      clear: function () {
+        requestSeq += 1;
+        clearPanel();
+      },
+      refresh: function () {
+        var key = getFieldKey();
+        if (key) fetchValues(key, input.value || "", 0, false);
+      }
+    };
+    input._qtyValueCombobox = api;
+    return api;
+  }
+
+  var _catalogueInflight = {};
+  var _catalogueCache = {};
+
+  /** Mutually exclusive shell chrome: idle | loading | error | ready. */
+  function setCatalogueChrome(shell, state, errorHtml) {
+    if (!shell) return;
+    var loading = shell.querySelector(".qty-field-picker-loading");
+    var errBox = shell.querySelector(".qty-field-picker-error");
+    var host = shell.querySelector(".qty-field-picker-host");
+    var idle = shell.querySelector(".qty-field-picker-idle");
+    shell.dataset.catalogueState = state;
+    if (loading) {
+      loading.hidden = state !== "loading";
+    }
+    if (errBox) {
+      if (state === "error") {
+        errBox.hidden = false;
+        errBox.innerHTML = errorHtml || "Could not load field catalogue.";
+      } else {
+        errBox.hidden = true;
+        errBox.innerHTML = "";
+      }
+    }
+    if (host) {
+      // Hide idle host while loading/error so messages never stack.
+      if (state === "loading" || state === "error") {
+        host.hidden = true;
+        if (state === "loading") host.setAttribute("aria-busy", "true");
+        else host.removeAttribute("aria-busy");
+      } else if (state === "idle") {
+        host.hidden = false;
+        host.removeAttribute("aria-busy");
+        if (idle) idle.hidden = false;
+      } else {
+        host.hidden = false;
+        host.removeAttribute("aria-busy");
+      }
+    }
+  }
+
+  function clearPickerSelection(shell) {
+    if (!shell) return;
+    shell.dataset.selectedKey = "";
+    shell.setAttribute("data-selected-key", "");
+    qsa(shell, ".qty-field-picker-option").forEach(function (btn) {
+      btn.classList.remove("active");
+      btn.setAttribute("aria-pressed", "false");
+    });
+    if (shell._qtyPicker && typeof shell._qtyPicker.selectKey === "function") {
+      shell._qtyPicker.selectKey("", { notify: false });
+    }
+  }
+
+  function defaultOpsFor(vt) {
+    if (vt === "numeric") return ["eq", "ne", "gt", "gte", "lt", "lte", "is_missing", "is_present"];
+    if (vt === "boolean") return ["eq", "ne", "is_missing", "is_present"];
+    return ["eq", "ne", "contains", "is_missing", "is_present"];
+  }
+
+  function mergeFieldMeta(jsonText) {
+    try {
+      var payload = JSON.parse(jsonText || "{}");
+      window.CastorQtyFieldMeta = window.CastorQtyFieldMeta || {};
+      Object.keys(payload).forEach(function (k) {
+        window.CastorQtyFieldMeta[k] = payload[k];
+      });
+      var el = document.getElementById("qty-field-meta-json");
+      if (el) {
+        var current = {};
+        try { current = JSON.parse(el.textContent || "{}"); } catch (e) {}
+        Object.keys(payload).forEach(function (k) { current[k] = payload[k]; });
+        el.textContent = JSON.stringify(current);
+      }
+    } catch (e) {}
+  }
+
+  function collectClassParams() {
+    var params = new URLSearchParams();
+    document.querySelectorAll(".qty-class-check:checked").forEach(function (c) {
+      if (c.value) params.append("semantic_classes", c.value);
+    });
+    return params;
+  }
+
+  function ensureCatalogue(shell, opts) {
+    opts = opts || {};
+    if (!shell) return Promise.resolve(null);
+    if (shell.dataset.catalogueState === "ready" && shell.querySelector(".qty-field-picker-option")) {
+      if (opts.clearSelection) clearPickerSelection(shell);
+      if (opts.onReady) opts.onReady(shell);
+      return Promise.resolve(shell);
+    }
+    if (shell.dataset.catalogueState === "loading" && shell._cataloguePromise) {
+      return shell._cataloguePromise;
+    }
+    var baseUrl = shell.getAttribute("data-catalogue-url") || "";
+    if (!baseUrl) {
+      setCatalogueChrome(shell, "error",
+        '<span data-testid="qty-field-catalogue-error">Could not load field catalogue (missing URL).</span>');
+      return Promise.reject(new Error("missing catalogue url"));
+    }
+    var mode = shell.getAttribute("data-catalogue-mode") || "filter";
+    var pickerId = shell.id || "";
+    var markAdded = shell.getAttribute("data-mark-added") || "";
+    // Column mode never inherits Filter's selected key. Filter may restore its own.
+    var selectedKey = "";
+    if (mode === "filter" && !opts.clearSelection) {
+      selectedKey = shell.getAttribute("data-selected-key") || "";
+    } else if (opts.clearSelection) {
+      selectedKey = "";
+      shell.setAttribute("data-selected-key", "");
+      shell.dataset.selectedKey = "";
+    }
+    var classParams = collectClassParams();
+    var cacheKey = baseUrl + "|mode=" + mode + "|" + classParams.toString() + "|mark=" + markAdded;
+    if (_catalogueCache[cacheKey]) {
+      setCatalogueChrome(shell, "loading");
+      return applyCatalogueHtml(shell, _catalogueCache[cacheKey], opts);
+    }
+    if (_catalogueInflight[cacheKey]) {
+      setCatalogueChrome(shell, "loading");
+      shell._cataloguePromise = _catalogueInflight[cacheKey].then(function (html) {
+        return applyCatalogueHtml(shell, html, opts);
+      });
+      return shell._cataloguePromise;
+    }
+
+    setCatalogueChrome(shell, "loading");
+
+    var url = baseUrl + (baseUrl.indexOf("?") >= 0 ? "&" : "?");
+    var params = new URLSearchParams();
+    params.set("mode", mode);
+    params.set("picker_id", pickerId);
+    if (selectedKey) params.set("selected_key", selectedKey);
+    if (markAdded) params.set("mark_added", markAdded);
+    classParams.forEach(function (v, k) { params.append(k, v); });
+    url += params.toString();
+
+    var promise = fetch(url, {
+      credentials: "same-origin",
+      headers: { "X-Requested-With": "XMLHttpRequest", "Accept": "text/html" }
+    }).then(function (resp) {
+      return resp.text().then(function (html) {
+        if (!resp.ok) throw new Error("catalogue " + resp.status);
+        _catalogueCache[cacheKey] = html;
+        delete _catalogueInflight[cacheKey];
+        return html;
+      });
+    }).catch(function (err) {
+      delete _catalogueInflight[cacheKey];
+      var errHtml =
+        '<div class="qty-field-catalogue-error" data-testid="qty-field-catalogue-error">' +
+        "Could not load field catalogue. " +
+        '<button type="button" class="btn btn-link btn-sm p-0 align-baseline qty-field-catalogue-retry" ' +
+        'data-testid="qty-field-catalogue-retry">Retry</button></div>';
+      setCatalogueChrome(shell, "error", errHtml);
+      var retry = shell.querySelector(".qty-field-catalogue-retry");
+      if (retry) {
+        retry.addEventListener("click", function () {
+          setCatalogueChrome(shell, "idle");
+          ensureCatalogue(shell, opts);
+        });
+      }
+      throw err;
+    });
+
+    _catalogueInflight[cacheKey] = promise;
+    shell._cataloguePromise = promise.then(function (html) {
+      return applyCatalogueHtml(shell, html, opts);
+    });
+    return shell._cataloguePromise;
+  }
+
+  function applyCatalogueHtml(shell, html, opts) {
+    opts = opts || {};
+    var wrap = document.createElement("div");
+    wrap.innerHTML = html;
+    var metaEl = wrap.querySelector("[data-qty-field-meta-lazy]");
+    if (metaEl) mergeFieldMeta(metaEl.textContent || "");
+    var loaded = wrap.querySelector(".qty-field-picker");
+    if (!loaded) {
+      var errHtml =
+        '<div class="qty-field-catalogue-error" data-testid="qty-field-catalogue-error">' +
+        "Could not load field catalogue. " +
+        '<button type="button" class="btn btn-link btn-sm p-0 align-baseline qty-field-catalogue-retry" ' +
+        'data-testid="qty-field-catalogue-retry">Retry</button></div>';
+      setCatalogueChrome(shell, "error", errHtml);
+      var retry = shell.querySelector(".qty-field-catalogue-retry");
+      if (retry) {
+        retry.addEventListener("click", function () {
+          setCatalogueChrome(shell, "idle");
+          ensureCatalogue(shell, opts);
+        });
+      }
+      return shell;
+    }
+    // Keep shell element + data-* contract; swap body for the authoritative picker.
+    var preserved = {
+      catalogueUrl: shell.getAttribute("data-catalogue-url"),
+      catalogueMode: shell.getAttribute("data-catalogue-mode"),
+      markAdded: shell.getAttribute("data-mark-added"),
+      onSelect: shell._onSelect
+    };
+    // Drop loading / idle / error chrome entirely on success.
+    while (shell.firstChild) shell.removeChild(shell.firstChild);
+    while (loaded.firstChild) shell.appendChild(loaded.firstChild);
+    if (preserved.catalogueUrl) shell.setAttribute("data-catalogue-url", preserved.catalogueUrl);
+    if (preserved.catalogueMode) shell.setAttribute("data-catalogue-mode", preserved.catalogueMode);
+    if (preserved.markAdded != null) shell.setAttribute("data-mark-added", preserved.markAdded);
+    shell.classList.add("qty-field-picker");
+    shell.classList.remove("qty-field-picker-shell");
+    shell.dataset.catalogueState = "ready";
+    shell.dataset.pickerReady = "";
+    delete shell._qtyPicker;
+    shell._onSelect = opts.onSelect || preserved.onSelect || function () {};
+    // Column (and clearSelection) must not restore a pressed option from fragment/filter.
+    if (opts.clearSelection || preserved.catalogueMode === "column") {
+      shell.setAttribute("data-selected-key", "");
+      shell.dataset.selectedKey = "";
+    }
+    initPicker(shell, { onSelect: shell._onSelect });
+    if (opts.clearSelection || preserved.catalogueMode === "column") {
+      clearPickerSelection(shell);
+    }
+    if (opts.onReady) opts.onReady(shell);
+    return shell;
+  }
+
+  window.CastorQtyFieldPicker = {
+    init: initPicker,
+    initValueCombobox: initValueCombobox,
+    ensureCatalogue: ensureCatalogue,
+    clearPickerSelection: clearPickerSelection,
+    setCatalogueChrome: setCatalogueChrome,
+    defaultOpsFor: defaultOpsFor,
+    mergeFieldMeta: mergeFieldMeta
+  };
+})();
+</script>

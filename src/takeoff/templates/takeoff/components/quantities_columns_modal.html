@@ -1,0 +1,250 @@
+<!-- takeoff/components/quantities_columns_modal.html — COLUMNS-10 simple Add column -->
+{% with sem=qty_prep.semantic_filters layout=qty_prep.table_layout cols=qty_prep.table_columns %}
+<div class="modal fade" id="qtyColumnsModal" tabindex="-1"
+     aria-labelledby="qtyColumnsModalLabel" aria-hidden="true"
+     data-testid="qty-columns-modal">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title" id="qtyColumnsModalLabel">Add column</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-secondary mb-2" data-testid="qty-columns-helper">
+          Search and select one field. IFC Class, Name, Status and Actions stay visible and can be reordered under Manage columns.
+        </p>
+
+        <form method="get" action="" id="qty-add-column-form" data-testid="qty-property-columns-add-form">
+          {% for key, values in request.GET.lists %}
+            {% if key != "col_order" and key != "col_order_add" and key != "col_order_remove" and key != "col_order_move" and key != "sem_cols" and key != "sem_cols_add" and key != "table_layout" and key != "col_calc" and key != "col_calc_add" %}
+              {% for value in values %}
+              <input type="hidden" name="{{ key }}" value="{{ value }}">
+              {% endfor %}
+            {% endif %}
+          {% endfor %}
+          <input type="hidden" name="table_layout" value="v2">
+          <input type="hidden" name="col_order" value="{{ layout.col_order_param }}">
+          <input type="hidden" name="col_order_add" id="qty-col-order-add-hidden" value="">
+          {% if qty_prep.col_calc_param %}
+          <input type="hidden" name="col_calc" value="{{ qty_prep.col_calc_param }}">
+          {% endif %}
+          <input type="hidden" name="col_calc_add" id="qty-col-calc-add-hidden" value="">
+        </form>
+
+        {% if sem.selected_classes %}
+          {% with scope_label=sem.selected_classes|join:", " %}
+          {% include "takeoff/components/quantities_field_picker_shell.html" with picker_id="qty-column-field" mode="column" selected_key="" exclude_keys=None scope_label=scope_label option_testid="qty-column-field-option" tree_testid="qty-column-field-list" no_matches_testid="qty-column-field-empty" mark_added=layout.col_order_param %}
+          {% endwith %}
+        {% else %}
+          {% include "takeoff/components/quantities_field_picker_shell.html" with picker_id="qty-column-field" mode="column" selected_key="" exclude_keys=None scope_label="All classes in this model" option_testid="qty-column-field-option" tree_testid="qty-column-field-list" no_matches_testid="qty-column-field-empty" mark_added=layout.col_order_param %}
+        {% endif %}
+
+        <div class="mt-2 d-none" id="qty-column-calc-wrap" data-testid="qty-column-calc-wrap">
+          <label class="form-label small mb-1" for="qty-column-calc-select">Calculation</label>
+          <select class="form-select form-select-sm" id="qty-column-calc-select"
+                  data-testid="qty-column-calc-select">
+            <option value="none">No calculation</option>
+            <option value="sum">Sum</option>
+            <option value="avg">Average</option>
+            <option value="min">Minimum</option>
+            <option value="max">Maximum</option>
+          </select>
+          <p class="c5d-helper mb-0 mt-1" data-testid="qty-column-calc-hint">
+            Parent results use matching instance values (including unloaded types), not only visible rows.
+          </p>
+        </div>
+
+        <details class="mt-3" data-testid="qty-manage-columns">
+          <summary class="small fw-semibold">Manage columns</summary>
+          <ul class="list-group list-group-flush border rounded mt-2" data-testid="qty-visible-columns">
+            {% for col in cols %}
+            <li class="list-group-item d-flex align-items-center gap-2 py-2"
+                data-testid="qty-visible-column"
+                data-col-key="{{ col.key }}">
+              <span class="flex-grow-1">
+                <span class="small fw-semibold">{{ col.label }}</span>
+                {% if col.group %}
+                <span class="text-secondary" style="font-size:0.75rem;"> · {{ col.group }}</span>
+                {% endif %}
+                {% if not col.removable and col.kind == "core" %}
+                <span class="badge text-bg-light border ms-1">Required</span>
+                {% endif %}
+              </span>
+              <a class="btn btn-sm btn-outline-secondary py-0 {% if not col.can_move_up %}disabled{% endif %}"
+                 data-testid="qty-col-move-up"
+                 href="{{ col.move_up_href }}"
+                 title="Move up">↑</a>
+              <a class="btn btn-sm btn-outline-secondary py-0 {% if not col.can_move_down %}disabled{% endif %}"
+                 data-testid="qty-col-move-down"
+                 href="{{ col.move_down_href }}"
+                 title="Move down">↓</a>
+              {% if col.removable and col.remove_href %}
+              <a class="btn btn-sm btn-outline-danger py-0"
+                 data-testid="qty-col-remove"
+                 href="{{ col.remove_href }}"
+                 title="Remove column">Remove</a>
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+        </details>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal"
+                data-testid="qty-columns-cancel">Cancel</button>
+        <button type="submit"
+                form="qty-add-column-form"
+                class="btn btn-sm btn-primary"
+                id="qty-property-add-submit"
+                data-testid="qty-property-add-submit"
+                disabled>
+          Add
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% include "takeoff/components/quantities_field_picker_js.html" %}
+<script>
+(function () {
+  var modal = document.getElementById("qtyColumnsModal");
+  var addHidden = document.getElementById("qty-col-order-add-hidden");
+  var calcHidden = document.getElementById("qty-col-calc-add-hidden");
+  var submitBtn = document.getElementById("qty-property-add-submit");
+  var calcWrap = document.getElementById("qty-column-calc-wrap");
+  var calcSelect = document.getElementById("qty-column-calc-select");
+  var picker = document.getElementById("qty-column-field");
+  if (!addHidden || !window.CastorQtyFieldPicker || !picker) return;
+
+  var selectedLabel = "";
+
+  function resetAddForm() {
+    addHidden.value = "";
+    selectedLabel = "";
+    if (calcHidden) calcHidden.value = "";
+    if (calcSelect) {
+      calcSelect.dataset.userTouched = "";
+      calcSelect.value = "none";
+    }
+    if (window.CastorQtyFieldPicker.clearPickerSelection) {
+      window.CastorQtyFieldPicker.clearPickerSelection(picker);
+    }
+    setSubmitLabel();
+    syncCalc();
+  }
+
+  function setSubmitLabel() {
+    if (!submitBtn) return;
+    if (!addHidden.value) {
+      submitBtn.textContent = "Add";
+      submitBtn.disabled = true;
+      return;
+    }
+    submitBtn.textContent = "Add " + (selectedLabel || "column");
+    submitBtn.disabled = false;
+  }
+
+  function syncCalc() {
+    if (!calcSelect || !calcWrap) return;
+    var opt = picker.querySelector('.qty-field-picker-option[aria-pressed="true"]');
+    var vt = opt ? (opt.getAttribute("data-value-type") || "text") : "text";
+    var key = addHidden.value || "";
+    var isNumeric = vt === "numeric" || /^prop:Qto_/.test(key);
+    var already = opt && opt.getAttribute("data-already-added") === "1";
+    if (!key || already || key === "quantity") {
+      calcWrap.classList.add("d-none");
+      if (calcHidden) calcHidden.value = "";
+      return;
+    }
+    if (!isNumeric) {
+      calcWrap.classList.add("d-none");
+      if (calcHidden) calcHidden.value = "";
+      return;
+    }
+    calcWrap.classList.remove("d-none");
+    var def = /^prop:Qto_/.test(key) ? "sum" : "none";
+    if (!calcSelect.dataset.userTouched) calcSelect.value = def;
+    if (calcHidden) calcHidden.value = key + ":" + calcSelect.value;
+  }
+
+  function wire() {
+    if (!picker) return;
+    // Never inherit Filter Field selection into Add Column.
+    picker.setAttribute("data-selected-key", "");
+    picker.dataset.selectedKey = "";
+    picker._onSelect = function (key, meta) {
+      if (meta && meta.alreadyAdded) {
+        addHidden.value = "";
+        selectedLabel = "";
+        setSubmitLabel();
+        syncCalc();
+        return;
+      }
+      addHidden.value = key || "";
+      selectedLabel = (meta && meta.label) || key || "";
+      if (calcSelect) calcSelect.dataset.userTouched = "";
+      setSubmitLabel();
+      syncCalc();
+    };
+    window.CastorQtyFieldPicker.ensureCatalogue(picker, {
+      clearSelection: true,
+      onSelect: picker._onSelect,
+      onReady: function () {
+        window.CastorQtyFieldPicker.clearPickerSelection(picker);
+        addHidden.value = "";
+        selectedLabel = "";
+        setSubmitLabel();
+        syncCalc();
+        if (picker._qtyPicker) picker._qtyPicker.resetSearch();
+        var search = document.getElementById("qty-column-field-search");
+        if (search) search.focus();
+      }
+    });
+  }
+
+  if (calcSelect) {
+    calcSelect.addEventListener("change", function () {
+      calcSelect.dataset.userTouched = "1";
+      syncCalc();
+    });
+  }
+
+  if (modal) {
+    modal.addEventListener("show.bs.modal", function () {
+      // Clear before paint so Add starts disabled with no inherited selection.
+      resetAddForm();
+    });
+    modal.addEventListener("shown.bs.modal", function () {
+      resetAddForm();
+      wire();
+    });
+    modal.addEventListener("hidden.bs.modal", function () {
+      // Cancel / close must not keep a stale column selection for next open.
+      resetAddForm();
+    });
+  }
+
+  var form = document.getElementById("qty-add-column-form");
+  if (form) {
+    form.addEventListener("submit", function (ev) {
+      if (!addHidden.value) {
+        ev.preventDefault();
+        return;
+      }
+      var opt = picker.querySelector('.qty-field-picker-option[data-field-key="' + addHidden.value + '"]');
+      if (opt && opt.getAttribute("data-already-added") === "1") {
+        ev.preventDefault();
+        resetAddForm();
+        return;
+      }
+      syncCalc();
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Adding…";
+      }
+    });
+  }
+  setSubmitLabel();
+})();
+</script>
+{% endwith %}

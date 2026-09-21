@@ -1,0 +1,3 @@
+<!-- takeoff/components/quantities_field_catalogue_fragment.html — PERF-15C1 lazy catalogue -->
+{% include "takeoff/components/quantities_field_picker.html" with picker_id=picker_id hierarchy=hierarchy mode=mode selected_key=selected_key scope_label=scope_label option_testid=option_testid tree_testid=tree_testid no_matches_testid=no_matches_testid mark_added_keys=mark_added_keys %}
+<script type="application/json" data-qty-field-meta-lazy="1">{{ field_meta_json|default:"{}"|safe }}</script>

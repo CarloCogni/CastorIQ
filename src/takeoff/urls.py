@@ -14,11 +14,86 @@ urlpatterns = [
         name="model_inventory",
     ),
     path(
+        "projects/<uuid:pk>/inventory/refresh/",
+        views.LinkAnalysisRefreshView.as_view(),
+        name="link_analysis_refresh",
+    ),
+    path(
         "projects/<uuid:pk>/inventory/entities/",
         views.ModelInventoryEntitiesView.as_view(),
         name="model_inventory_entities",
     ),
     path("projects/<uuid:pk>/", views.QTOView.as_view(), name="qto"),
+    path(
+        "projects/<uuid:pk>/unit-confirm/",
+        views.QuantityUnitConfirmView.as_view(),
+        name="qty_unit_confirm",
+    ),
+    path(
+        "projects/<uuid:pk>/prep-configs/save/",
+        views.QuantityPrepConfigSaveView.as_view(),
+        name="qty_prep_config_save",
+    ),
+    path(
+        "projects/<uuid:pk>/prep-row-reviews/",
+        views.QuantityPrepRowReviewView.as_view(),
+        name="qty_prep_row_review",
+    ),
+    path(
+        "projects/<uuid:pk>/prep-row-mapping-values/",
+        views.QuantityPrepRowMappingView.as_view(),
+        name="qty_prep_row_mapping",
+    ),
+    path(
+        "projects/<uuid:pk>/prep-row-mapping-batch/",
+        views.QuantityPrepRowMappingBatchView.as_view(),
+        name="qty_prep_row_mapping_batch",
+    ),
+    path(
+        "projects/<uuid:pk>/prep-row-measurement/",
+        views.QuantityPrepRowMeasurementView.as_view(),
+        name="qty_prep_row_measurement",
+    ),
+    path(
+        "projects/<uuid:pk>/prep-row-measurement-batch/",
+        views.QuantityPrepRowMeasurementBatchView.as_view(),
+        name="qty_prep_row_measurement_batch",
+    ),
+    path(
+        "projects/<uuid:pk>/measurement-settings/",
+        views.QuantityMeasurementSettingsView.as_view(),
+        name="qty_measurement_settings",
+    ),
+    path(
+        "projects/<uuid:pk>/field-values/",
+        views.QuantityFieldValuesView.as_view(),
+        name="qty_field_values",
+    ),
+    path(
+        "projects/<uuid:pk>/field-catalogue/",
+        views.QuantityFieldCatalogueView.as_view(),
+        name="qty_field_catalogue",
+    ),
+    path(
+        "projects/<uuid:pk>/prep-freeze/",
+        views.QuantityPrepFreezeView.as_view(),
+        name="qty_prep_freeze",
+    ),
+    path(
+        "projects/<uuid:pk>/editable-tables/save/",
+        views.QuantityEditableTableSaveView.as_view(),
+        name="qty_editable_table_save",
+    ),
+    path(
+        "projects/<uuid:pk>/editable-tables/open/",
+        views.QuantityEditableTableOpenView.as_view(),
+        name="qty_editable_table_open",
+    ),
+    path(
+        "projects/<uuid:pk>/prep-export/",
+        views.QuantityPrepExportView.as_view(),
+        name="qty_prep_export",
+    ),
     path("projects/<uuid:pk>/data/", views.QTODataView.as_view(), name="qto_data"),
     path(
         "projects/<uuid:pk>/recompute/",

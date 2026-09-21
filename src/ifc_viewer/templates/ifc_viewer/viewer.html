@@ -108,6 +108,19 @@
         <div class="flex-grow-1 position-relative overflow-hidden bg-dark">
             <div id="ifc-container" style="width:100%; height:100%; position:relative;"></div>
 
+            <!-- Zero-result Vis filter banner (shown when every type checkbox is off) -->
+            <div id="vis-zero-banner"
+                 class="position-absolute top-50 start-50 translate-middle text-center text-light d-none"
+                 style="z-index:8; max-width:320px; pointer-events:none;"
+                 role="status"
+                 aria-live="polite">
+                <i class="bi bi-eye-slash fs-3 text-secondary mb-2 d-block"></i>
+                <div class="fw-semibold mb-1" style="font-size:0.9rem;">No elements visible</div>
+                <div class="text-secondary" style="font-size:0.78rem;">
+                    All visibility filters are off. Use Vis → Show All, or Reset, to restore the model.
+                </div>
+            </div>
+
             <!-- Measurement distance labels (HTML overlay, updated by rAF loop) -->
             <div id="measure-labels"
                  style="position:absolute;top:0;left:0;width:100%;height:100%;
@@ -405,11 +418,13 @@
     import * as THREE from "three";
 
     const IFC_URL           = "{{ ifc_file_url }}";
-    const FRAG_URL          = "{% url 'ifc_viewer:viewer_fragments'      project.pk %}";
-    const COLORMAP_URL      = "{% url 'ifc_viewer:viewer_colormap'       project.pk %}";
+    /* Pin data endpoints to the same IFC file the page loaded (multi-IFC safe). */
+    const IFC_QUERY         = "{% if viewer_ifc_file %}?ifc={{ viewer_ifc_file.pk }}{% endif %}";
+    const FRAG_URL          = "{% url 'ifc_viewer:viewer_fragments'      project.pk %}" + IFC_QUERY;
+    const COLORMAP_URL      = "{% url 'ifc_viewer:viewer_colormap'       project.pk %}" + IFC_QUERY;
     const TIMELINE_URL      = "{% url 'ifc_viewer:viewer_timeline'       project.pk %}";
-    const ENTITY_TYPES_URL  = "{% url 'ifc_viewer:viewer_entity_types'   project.pk %}";
-    const SPATIAL_TREE_URL  = "{% url 'ifc_viewer:viewer_spatial_tree'   project.pk %}";
+    const ENTITY_TYPES_URL  = "{% url 'ifc_viewer:viewer_entity_types'   project.pk %}" + IFC_QUERY;
+    const SPATIAL_TREE_URL  = "{% url 'ifc_viewer:viewer_spatial_tree'   project.pk %}" + IFC_QUERY;
     const CSRF_TOKEN        = "{{ csrf_token }}";
 
     const container  = document.getElementById("ifc-container");
@@ -571,6 +586,23 @@
         }
         /* Re-apply user-hidden elements so they survive color/timeline resets */
         if (_hiddenGlobalIds.size) hideGlobalIds([..._hiddenGlobalIds]);
+        /* Vis panel hides live in _visibilityState, not _hiddenGlobalIds — re-apply
+           so a selection click does not wipe active type/level filters. */
+        if (typeof _visCache !== "undefined") _reapplyVisibilityFilters();
+        /* Analytical Color-by must survive selection / visibility resets. */
+        if (typeof _reapplyActiveColormap === "function") _reapplyActiveColormap();
+    }
+
+    function _reapplyVisibilityFilters() {
+        const hidden = window._visibilityState && window._visibilityState.hidden;
+        if (!hidden || typeof _visCache === "undefined") return;
+        const sliderVal = parseInt(document.getElementById("vis-opacity")?.value ?? "0", 10);
+        for (const kind of ["level", "type"]) {
+            for (const name of Object.keys(hidden[kind] || {})) {
+                const gids = (_visCache[kind] && _visCache[kind][name]) || null;
+                if (gids && gids.length) _applyHideCategory(gids, sliderVal);
+            }
+        }
     }
 
     function hideGlobalIds(globalIds) {
@@ -622,41 +654,112 @@
 
     // ── 5. Color By ──────────────────────────────────────────────────────
 
+    let _colorBySeq = 0;
+    let _activeColorBy = "none";
+    let _activeColormap = null;  // {global_id: hex} for re-apply after selection
+
+    function _qsAppend(url, params) {
+        /* COLORMAP_URL may already include ?ifc= — never append a second '?'. */
+        const bits = [];
+        for (const [k, v] of Object.entries(params)) {
+            bits.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+        }
+        if (!bits.length) return url;
+        return url + (url.includes("?") ? "&" : "?") + bits.join("&");
+    }
+
+    function _clearColorByUi() {
+        _activeColorBy = "none";
+        _activeColormap = null;
+        const legendEl = document.getElementById("colorby-legend");
+        legendEl?.classList.add("d-none");
+        const body = document.getElementById("colorby-legend-body");
+        if (body) body.innerHTML = "";
+    }
+
+    function _paintColormap(colormap) {
+        if (!model || !colormap) return;
+        const byHex = {};
+        for (const [gid, hex] of Object.entries(colormap)) {
+            (byHex[hex] = byHex[hex] || []).push(gid);
+        }
+        for (const [hex, ids] of Object.entries(byHex)) {
+            colorByGlobalIds(ids, makeColor(hex));
+        }
+    }
+
+    function _renderColorByLegend(legend) {
+        const legendEl   = document.getElementById("colorby-legend");
+        const legendBody = document.getElementById("colorby-legend-body");
+        if (!legendEl || !legendBody) return;
+        legendBody.innerHTML = (legend || []).map(({ label, color }) =>
+            `<div class="d-flex align-items-center gap-2">` +
+            `<span style="width:10px;height:10px;border-radius:2px;background:${color};display:inline-block;flex-shrink:0;"></span>` +
+            `<span style="font-size:0.72rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px;" title="${_esc(label)}">${_esc(label)}</span>` +
+            `</div>`
+        ).join("");
+        legendEl.classList.toggle("d-none", !(legend && legend.length));
+    }
+
+    function _reapplyActiveColormap() {
+        if (_activeColorBy && _activeColorBy !== "none" && _activeColormap) {
+            _paintColormap(_activeColormap);
+        }
+    }
+
     async function applyColormap(by) {
+        const selectEl = document.getElementById("colorby-select");
         if (by === "none") {
+            _colorBySeq += 1;
+            _clearColorByUi();
+            if (selectEl) selectEl.value = "none";
             resetAllColors();
-            document.getElementById("colorby-legend").classList.add("d-none");
+            if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
             return;
         }
         if (!model) return;
+        const seq = ++_colorBySeq;
+        /* Clear previous scheme legend immediately so a stale Type legend cannot linger. */
+        const legendBody = document.getElementById("colorby-legend-body");
+        if (legendBody) legendBody.innerHTML = "";
+        document.getElementById("colorby-legend")?.classList.add("d-none");
         try {
-            const resp = await fetch(`${COLORMAP_URL}?by=${by}`);
-            if (!resp.ok) return;
+            const url = _qsAppend(COLORMAP_URL, { by });
+            const resp = await fetch(url);
+            if (seq !== _colorBySeq) return;
+            if (!resp.ok) {
+                console.warn("[simulator] Colormap HTTP", resp.status);
+                if (selectEl) selectEl.value = _activeColorBy || "none";
+                return;
+            }
             const data = await resp.json();
+            if (seq !== _colorBySeq) return;
+            /* Server must echo the requested scheme — reject semantic mismatches. */
+            if (data.by && data.by !== by) {
+                console.warn("[simulator] Colormap scheme mismatch:", data.by, "!=", by);
+                if (selectEl) selectEl.value = _activeColorBy || "none";
+                return;
+            }
             const colormap = data.colormap || {};
             const legend   = data.legend   || [];
-
-            /* group global_ids by colour hex for efficiency */
-            const byHex = {};
-            for (const [gid, hex] of Object.entries(colormap)) {
-                (byHex[hex] = byHex[hex] || []).push(gid);
+            if (!legend.length && !Object.keys(colormap).length) {
+                _activeColorBy = by;
+                _activeColormap = {};
+                _renderColorByLegend([]);
+                resetAllColors();
+                if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
+                return;
             }
+            _activeColorBy = by;
+            _activeColormap = colormap;
+            /* Legend first so scheme switch is honest even while paint is still running. */
+            _renderColorByLegend(legend);
             resetAllColors();
-            for (const [hex, ids] of Object.entries(byHex)) {
-                colorByGlobalIds(ids, makeColor(hex));
-            }
-
-            const legendEl   = document.getElementById("colorby-legend");
-            const legendBody = document.getElementById("colorby-legend-body");
-            legendBody.innerHTML = legend.map(({ label, color }) =>
-                `<div class="d-flex align-items-center gap-2">` +
-                `<span style="width:10px;height:10px;border-radius:2px;background:${color};display:inline-block;flex-shrink:0;"></span>` +
-                `<span style="font-size:0.72rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px;" title="${label}">${label}</span>` +
-                `</div>`
-            ).join("");
-            legendEl.classList.remove("d-none");
+            if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
         } catch (e) {
+            if (seq !== _colorBySeq) return;
             console.warn("[simulator] Colormap fetch failed:", e);
+            if (selectEl) selectEl.value = _activeColorBy || "none";
         }
     }
 
@@ -839,12 +942,14 @@
         _timelinePause();
         simLegend.innerHTML = _simLegendOrig;
         simLegend.classList.add("d-none");
-        document.getElementById("colorby-legend").classList.add("d-none");
         document.getElementById("colorby-select").value = "none";
+        _colorBySeq += 1;
+        _clearColorByUi();
         _selectedGlobalIds.clear();
         _hiddenGlobalIds.clear();   // clear BEFORE resetAllColors so nothing gets re-hidden
         _updateSelCounter();
         resetAllColors();
+        document.getElementById("vis-zero-banner")?.classList.add("d-none");
         if (_sectionEnabled) {
             _disableSectionBox();
             _sectionEnabled = false;
@@ -879,6 +984,7 @@
         _selectedGlobalIds.clear();
         resetAllColors();
         _updateSelCounter();
+        if (typeof _syncPropsToSelection === "function") _syncPropsToSelection();
     }
 
     function _findGlobalIdFromHit(intersection) {
@@ -919,6 +1025,7 @@
                     resetAllColors();
                     _selectedGlobalIds.clear();
                     _updateSelCounter();
+                    _syncPropsToSelection();
                 }
                 return;
             }
@@ -945,6 +1052,7 @@
             resetAllColors();
             if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
             _updateSelCounter();
+            _syncPropsToSelection();
         });
 
         canvas.addEventListener('contextmenu', (e) => {
@@ -979,14 +1087,31 @@
 
     // ── 11. Context menu & Properties panel ─────────────────────────────
 
-    const ELEM_PROPS_URL_TMPL = "{% url 'ifc_viewer:viewer_element_props' project.pk 'ELEM_PH' %}";
+    const ELEM_PROPS_URL_TMPL = "{% url 'ifc_viewer:viewer_element_props' project.pk 'ELEM_PH' %}" + IFC_QUERY;
 
     const _ctxMenuEl    = document.getElementById("sel-ctx-menu");
     const _propsPanelEl = document.getElementById("sel-props-panel");
     const _propsBodyEl  = document.getElementById("sel-props-body");
+    let _propsRequestSeq = 0;  /* ignore stale property responses after rapid reselection */
 
     function _esc(s) {
         return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function _formatPropValue(v) {
+        if (v == null) return "—";
+        if (typeof v === "boolean") return v ? "✓" : "✗";
+        if (typeof v === "number") {
+            return Number.isFinite(v)
+                ? v.toLocaleString(undefined, { maximumFractionDigits: 4 })
+                : "—";
+        }
+        if (typeof v === "object") {
+            try { return JSON.stringify(v); } catch (_) { return String(v); }
+        }
+        const s = String(v);
+        if (s === "" || s === "undefined" || s === "null" || s === "[object Object]") return "—";
+        return s;
     }
 
     function _renderProps(data) {
@@ -1025,10 +1150,7 @@
                                   color:#94a3b8;font-size:0.73rem;font-weight:600;">${_esc(group)}</div>
                      <table style="width:100%;border-collapse:collapse;font-size:0.75rem;margin-top:2px;">`;
             for (const [k, v] of entries) {
-                const display = v == null      ? "—"
-                              : typeof v === "boolean" ? (v ? "✓" : "✗")
-                              : typeof v === "number"  ? v.toLocaleString(undefined, {maximumFractionDigits: 4})
-                              : String(v);
+                const display = _formatPropValue(v);
                 html += `<tr>
                     <td style="color:#94a3b8;padding:1px 8px 1px 0;white-space:nowrap;">${_esc(k)}</td>
                     <td style="padding:1px 0;word-break:break-word;">${_esc(display)}</td></tr>`;
@@ -1077,13 +1199,32 @@
     }
 
     function _openPropsPanel(globalId) {
-        if (!_propsPanelEl) return;
+        if (!_propsPanelEl || !globalId) return;
         _propsPanelEl.style.display = "block";
         _propsBodyEl.innerHTML = '<div class="py-3 text-center"><div class="spinner-border spinner-border-sm text-secondary" role="status"></div></div>';
-        fetch(ELEM_PROPS_URL_TMPL.replace("ELEM_PH", encodeURIComponent(globalId)))
+        const seq = ++_propsRequestSeq;
+        const url = ELEM_PROPS_URL_TMPL.replace("ELEM_PH", encodeURIComponent(globalId));
+        fetch(url)
             .then(r => r.json())
-            .then(data => { _propsBodyEl.innerHTML = _renderProps(data); })
-            .catch(() => { _propsBodyEl.innerHTML = '<span class="text-danger small">Failed to load properties.</span>'; });
+            .then(data => {
+                if (seq !== _propsRequestSeq) return;  /* stale — newer selection won */
+                _propsBodyEl.innerHTML = _renderProps(data);
+            })
+            .catch(() => {
+                if (seq !== _propsRequestSeq) return;
+                _propsBodyEl.innerHTML = '<span class="text-danger small">Failed to load properties.</span>';
+            });
+    }
+
+    /** Open/refresh Properties for the current primary selection (single-select). */
+    function _syncPropsToSelection() {
+        if (_selectedGlobalIds.size === 1) {
+            const gid = [..._selectedGlobalIds][0];
+            _openPropsPanel(gid);
+        } else if (_selectedGlobalIds.size === 0) {
+            if (_propsPanelEl) _propsPanelEl.style.display = "none";
+        }
+        /* Multi-select: leave panel as-is (last single open) — no ambiguous overwrite. */
     }
 
     document.getElementById("sel-ctx-props")?.addEventListener("click", () => {
@@ -1101,7 +1242,13 @@
         if (expressId !== undefined) {
             fragmentIndex.get(expressId)?.setVisibility(true, [expressId]);
         }
-        colorByGlobalIds([gid], _SEL_COLOR);
+        /* Prefer active Color-by over selection cyan when isolating. */
+        const cmapHex = _activeColormap && _activeColormap[gid];
+        if (cmapHex) {
+            colorByGlobalIds([gid], new THREE.Color(cmapHex));
+        } else {
+            colorByGlobalIds([gid], _SEL_COLOR);
+        }
     });
 
     document.getElementById("sel-ctx-hide")?.addEventListener("click", () => {
@@ -1618,8 +1765,9 @@
     async function _fetchVisCache(kind, name) {
         if (_visCache[kind][name]) return _visCache[kind][name];
         const param = kind === "level" ? "level" : "type";
+        const sep = ENTITY_TYPES_URL.includes("?") ? "&" : "?";
         try {
-            const resp = await fetch(`${ENTITY_TYPES_URL}?${param}=${encodeURIComponent(name)}`);
+            const resp = await fetch(`${ENTITY_TYPES_URL}${sep}${param}=${encodeURIComponent(name)}`);
             const data = await resp.json();
             _visCache[kind][name] = data.global_ids || [];
         } catch (_) {
@@ -1683,9 +1831,34 @@
                     const selHit = gids.filter(g => _selectedGlobalIds.has(g));
                     if (selHit.length) colorByGlobalIds(selHit, _SEL_COLOR);
                 }
+                _updateVisZeroBanner();
             });
             return row;
         }
+
+        function _updateVisZeroBanner() {
+            const banner = document.getElementById("vis-zero-banner");
+            if (!banner || !typesDiv) return;
+            const typeBoxes = typesDiv.querySelectorAll("input[type=checkbox]");
+            if (!typeBoxes.length) {
+                banner.classList.add("d-none");
+                return;
+            }
+            const anyVisible = [...typeBoxes].some(cb => cb.checked);
+            banner.classList.toggle("d-none", anyVisible);
+            /* When every type filter is off, hide the entire fragment set — not only
+               GIDs returned by entity-types (orphans / index gaps would otherwise
+               leave residual visible geometry while the banner claims empty). */
+            if (!anyVisible && model) {
+                for (const fragment of model.items) {
+                    try { fragment.setVisibility(false); } catch (_) { /* OBC v1 */ }
+                }
+                _selectedGlobalIds.clear();
+                _updateSelCounter();
+                if (_propsPanelEl) _propsPanelEl.style.display = "none";
+            }
+        }
+        window._updateVisZeroBanner = _updateVisZeroBanner;
 
         /* Populate from backend */
         try {
@@ -1716,6 +1889,7 @@
             if (opacitySlider) opacitySlider.value = "0";
             resetAllColors();
             if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
+            _updateVisZeroBanner();
         });
 
         /* Hide All */
@@ -1723,6 +1897,8 @@
             panel.querySelectorAll("input[type=checkbox]").forEach(cb => {
                 if (cb.checked) { cb.checked = false; cb.dispatchEvent(new Event("change")); }
             });
+            /* change handlers update banner; ensure after async hide settles */
+            setTimeout(() => _updateVisZeroBanner(), 50);
         });
     }
 
@@ -1791,7 +1967,7 @@
             const type = document.getElementById("sel-by-type")?.value;
             if (!type) return;
             try {
-                const resp = await fetch(`${ENTITY_TYPES_URL}?type=${encodeURIComponent(type)}`);
+                const resp = await fetch(_qsAppend(ENTITY_TYPES_URL, { type }));
                 const data = await resp.json();
                 _selectedGlobalIds.clear();
                 (data.global_ids || []).forEach(g => _selectedGlobalIds.add(g));
@@ -1806,7 +1982,7 @@
             const level = document.getElementById("sel-by-level")?.value;
             if (!level) return;
             try {
-                const resp = await fetch(`${ENTITY_TYPES_URL}?level=${encodeURIComponent(level)}`);
+                const resp = await fetch(_qsAppend(ENTITY_TYPES_URL, { level }));
                 const data = await resp.json();
                 _selectedGlobalIds.clear();
                 (data.global_ids || []).forEach(g => _selectedGlobalIds.add(g));
@@ -2057,6 +2233,7 @@
                 resetAllColors();
                 colorByGlobalIds([child.globalId], _SEL_COLOR);
                 _updateSelCounter();
+                _syncPropsToSelection();
             });
             return row;
         }

@@ -54,6 +54,12 @@ INSTALLED_APPS = [
     "model_quality",
     "scheduling",
     "ifc_viewer",
+    # Classification Layer — C1 registry/nodes/project adoption only.
+    # No Quantities UI, FM migration, Ask/Modify/writeback, or assignments.
+    "classification",
+    # 5D Preparation — Stage 1 versioned prep snapshots (F2).
+    # No public UI, rates/cost/BOQ/EVM, or writeback.
+    "fived",
     # Login lockout for /admin/ and /accounts/login. Must come after
     # django.contrib.auth so its signals are loaded first.
     "axes",

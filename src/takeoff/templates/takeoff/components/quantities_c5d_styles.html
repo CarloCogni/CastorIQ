@@ -1,0 +1,653 @@
+<!-- takeoff/components/quantities_c5d_styles.html — 5D Quantity Prep visual system (c5d-*) -->
+<style>
+  /* 5D Quantity Preparation — compact first viewport (5D-UX-1B) */
+  .qty-ws.c5d-page {
+    --c5d-radius: 0.4rem;
+    --c5d-gap: 0.4rem;
+    --c5d-support-width: 20rem;
+  }
+
+  .qty-ws .c5d-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.75rem;
+    padding: 0.4rem 0.7rem 0.35rem;
+    border-bottom: 1px solid var(--qty-border);
+    background: var(--qty-surface);
+  }
+  .qty-ws .c5d-header-main {
+    min-width: 0;
+    flex: 1 1 14rem;
+  }
+  .qty-ws .c5d-header-eyebrow {
+    display: none;
+  }
+  .qty-ws .c5d-header-title {
+    font-size: 0.98rem;
+    font-weight: 650;
+    margin: 0;
+    line-height: 1.2;
+    color: var(--qty-text);
+  }
+  .qty-ws .c5d-header-subtitle {
+    font-size: 0.72rem;
+    color: var(--qty-muted);
+    margin: 0.1rem 0 0;
+    max-width: 36rem;
+    line-height: 1.25;
+  }
+  .qty-ws .c5d-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: auto;
+  }
+  .qty-ws .c5d-header-actions .btn {
+    padding: 0.15rem 0.45rem;
+    font-size: 0.72rem;
+  }
+
+  .qty-ws .c5d-status-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    width: 100%;
+    padding: 0 0.7rem 0.35rem;
+    background: var(--qty-surface);
+    border-bottom: 1px solid var(--qty-border);
+  }
+  .qty-ws .c5d-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.65rem;
+    font-weight: 600;
+    line-height: 1.15;
+    padding: 0.12rem 0.4rem;
+    border-radius: 999px;
+    border: 1px solid var(--qty-border);
+    background: var(--qty-overlay);
+    color: var(--qty-text);
+  }
+  .qty-ws .c5d-status-label {
+    color: var(--qty-muted);
+    font-weight: 550;
+  }
+  .qty-ws .c5d-status.is-ok {
+    border-color: var(--qty-pill-ok-bd);
+    background: var(--qty-pill-ok-bg);
+    color: var(--qty-pill-ok-fg);
+  }
+  .qty-ws .c5d-status.is-warn {
+    border-color: var(--qty-pill-unresolved-bd);
+    background: var(--qty-pill-unresolved-bg);
+    color: var(--qty-pill-unresolved-fg);
+  }
+  .qty-ws .c5d-status.is-muted {
+    color: var(--qty-muted);
+  }
+
+  /*
+    Flex column + overflow-x:auto on the rail collapses its automatic min-height
+    to ~0, so siblings (workspace) steal vertical space and the step labels clip
+    to a thin strip. Keep chrome bands from shrinking; let the workspace scroll.
+  */
+  .qty-ws.c5d-page > .c5d-header,
+  .qty-ws.c5d-page > .c5d-status-chips,
+  .qty-ws.c5d-page > .c5d-workflow-rail {
+    flex-shrink: 0;
+  }
+
+  .qty-ws .c5d-workflow-rail {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.7rem;
+    border-bottom: 1px solid var(--qty-border);
+    background: var(--qty-surface-2);
+    overflow-x: auto;
+  }
+  .qty-ws .c5d-workflow-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--qty-muted);
+    padding: 0.28rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .qty-ws .c5d-workflow-step:hover {
+    color: var(--qty-text);
+    background: var(--qty-overlay);
+  }
+  .qty-ws .c5d-workflow-step.is-active {
+    color: var(--qty-accent-text);
+    border-color: color-mix(in srgb, var(--castor-primary, #3b82f6) 35%, var(--qty-border));
+    background: color-mix(in srgb, var(--castor-primary, #3b82f6) 10%, transparent);
+  }
+  .qty-ws .c5d-workflow-step.is-unavailable,
+  .qty-ws .c5d-workflow-step[aria-disabled="true"] {
+    pointer-events: none;
+    opacity: 0.55;
+    cursor: default;
+  }
+  .qty-ws .c5d-workflow-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.15rem;
+    height: 1.15rem;
+    flex-shrink: 0;
+    border-radius: 999px;
+    font-size: 0.65rem;
+    line-height: 1;
+    background: var(--qty-overlay-strong);
+  }
+
+  /*
+    Workspace must size to its content (Discover expanded panels included).
+    flex:1 + min-height:0 on an h-100 page capped the workspace box to the
+    remaining viewport; overflow:visible then painted Discover controls over
+    the following Advanced & reference block (UX-OVERLAP-001 @1366×768).
+    Page scroll remains on .qty-ws.qty-builder { overflow-y: auto }.
+  */
+  .qty-ws .c5d-workspace.c5d-workspace-flow,
+  .qty-ws .c5d-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--c5d-gap);
+    padding: 0.4rem 0.55rem 0.55rem;
+    align-items: start;
+    /* Content-sized: do not viewport-cap (see UX-OVERLAP-001 comment above). */
+    flex: 0 0 auto;
+    min-height: auto;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+  @media (min-width: 1200px) {
+    .qty-ws .c5d-workspace {
+      grid-template-columns: minmax(0, 1fr) var(--c5d-support-width);
+    }
+  }
+  .qty-ws .c5d-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .qty-ws .c5d-support {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  @media (min-width: 1200px) {
+    .qty-ws .c5d-support {
+      position: sticky;
+      top: 0.35rem;
+      max-height: calc(100vh - 5rem);
+      overflow: auto;
+    }
+  }
+
+  .qty-ws .c5d-card,
+  .qty-ws .c5d-card.qty-builder-section {
+    border: 1px solid var(--qty-border);
+    border-radius: var(--c5d-radius);
+    background: var(--qty-surface);
+    padding: 0.4rem 0.55rem;
+    box-shadow: none;
+  }
+  .qty-ws .c5d-card-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+  .qty-ws .c5d-section-title {
+    font-size: 0.78rem;
+    font-weight: 650;
+    margin: 0;
+    color: var(--qty-text);
+  }
+  .qty-ws .c5d-helper {
+    font-size: 0.68rem;
+    color: var(--qty-muted);
+    margin: 0;
+    line-height: 1.3;
+  }
+  .qty-ws .c5d-warning {
+    border-color: var(--qty-pill-unresolved-bd);
+    background: color-mix(in srgb, var(--qty-pill-unresolved-bg) 70%, var(--qty-surface));
+  }
+
+  .qty-ws .c5d-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.4rem;
+    padding: 0.28rem 0.4rem;
+    border: 1px solid var(--qty-border);
+    border-radius: var(--c5d-radius);
+    background: var(--qty-surface-2);
+  }
+
+  .qty-ws .c5d-action-primary.btn {
+    font-weight: 600;
+  }
+  .qty-ws .c5d-action-subtle.btn,
+  .qty-ws a.c5d-action-subtle {
+    font-weight: 500;
+  }
+
+  /* Discover — slim bar + expandable panel */
+  .qty-ws .c5d-discover {
+    padding: 0.3rem 0.45rem;
+  }
+  .qty-ws .c5d-discover-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.45rem;
+  }
+  .qty-ws .c5d-discover-bar .c5d-section-title {
+    margin: 0;
+  }
+  .qty-ws .c5d-discover-panel {
+    margin-top: 0.35rem;
+    padding-top: 0.35rem;
+    border-top: 1px dashed var(--qty-border);
+  }
+  .qty-ws .c5d-discover-panel[hidden],
+  .qty-ws details.c5d-discover-details:not([open]) > .c5d-discover-panel {
+    /* panel only shown when open via details */
+  }
+  .qty-ws details.c5d-discover-details > summary.c5d-discover-toggle {
+    list-style: none;
+    cursor: pointer;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--qty-muted);
+    padding: 0;
+  }
+  .qty-ws details.c5d-discover-details > summary.c5d-discover-toggle::-webkit-details-marker {
+    display: none;
+  }
+  .qty-ws details.c5d-discover-details > summary.c5d-discover-toggle::before {
+    content: "▸ ";
+  }
+  .qty-ws details.c5d-discover-details[open] > summary.c5d-discover-toggle::before {
+    content: "▾ ";
+  }
+
+  .qty-ws .c5d-filter-tabs.nav-tabs {
+    border-bottom-color: var(--qty-border);
+    gap: 0.1rem;
+    flex-wrap: wrap;
+  }
+  .qty-ws .c5d-filter-tabs .nav-link {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.25rem 0.45rem;
+    color: var(--qty-muted);
+    border: 1px solid transparent;
+    border-radius: 0.3rem 0.3rem 0 0;
+  }
+  .qty-ws .c5d-filter-tabs .nav-link.active {
+    color: var(--qty-text);
+    background: var(--qty-surface);
+    border-color: var(--qty-border) var(--qty-border) var(--qty-surface);
+  }
+  .qty-ws .c5d-filter-pane {
+    padding-top: 0.4rem;
+  }
+
+  .qty-ws .c5d-advanced {
+    /* Top margin ensures ≥8px document-flow gap after workspace content
+       (UX-OVERLAP-001). Do not position absolutely. */
+    margin: 0.5rem 0.55rem 0.65rem;
+    border: 1px dashed var(--qty-border);
+    border-radius: var(--c5d-radius);
+    padding: 0.25rem 0.5rem 0.4rem;
+    background: transparent;
+    position: relative;
+  }
+  .qty-ws .c5d-advanced > summary {
+    cursor: pointer;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--qty-muted);
+    padding: 0.25rem 0;
+  }
+  .qty-ws .c5d-advanced-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding-top: 0.35rem;
+  }
+
+  .qty-ws .c5d-support .c5d-card {
+    padding: 0.4rem 0.45rem;
+  }
+  .qty-ws .c5d-support .table {
+    font-size: 0.68rem;
+  }
+  .qty-ws .c5d-support .c5d-note-col {
+    display: none;
+  }
+  @media (min-width: 1400px) {
+    .qty-ws .c5d-support .c5d-note-col {
+      display: table-cell;
+    }
+  }
+
+  /* Prep table first-viewport priority */
+  .qty-ws #qty-prep-table-section {
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+  }
+  .qty-ws #qty-prep-table-section > .qty-builder-note {
+    display: none;
+  }
+  .qty-ws #qty-prep-table-section .c5d-more-about {
+    margin-bottom: 0.25rem !important;
+  }
+  .qty-ws #qty-prep-table-section .c5d-more-about > summary {
+    font-size: 0.65rem;
+    padding: 0;
+  }
+  .qty-ws .c5d-main details.c5d-more-about .qty-builder-note,
+  .qty-ws .c5d-main details.c5d-more-about .mi-footnote {
+    display: block;
+  }
+  .qty-ws .qty-prep-pagination {
+    margin-bottom: 0.3rem !important;
+    gap: 0.3rem !important;
+  }
+  .qty-ws .qty-prep-pagination .small {
+    font-size: 0.68rem;
+  }
+  .qty-ws .c5d-batch-secondary {
+    margin-top: 0.25rem;
+  }
+
+  /* Configure stays available but slim when collapsed */
+  .qty-ws #qty-configure-section > summary {
+    font-size: 0.72rem;
+    padding: 0.15rem 0;
+  }
+
+  /* TABLE-04 — one-table primary surface */
+  .qty-ws .c5d-workspace-table {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .qty-ws .qty-table-filter-bar {
+    border: 1px solid var(--qty-border);
+    border-radius: var(--c5d-radius);
+    padding: 0.35rem 0.45rem;
+    background: var(--qty-surface-2);
+  }
+  .qty-ws .qty-table-filter-bar .form-select {
+    min-width: 10rem;
+  }
+  .qty-ws #qtyBatchMeasurementModal .form-select {
+    min-width: 8.5rem;
+    max-width: none;
+  }
+  .qty-ws .c5d-header-actions .c5d-status-chips {
+    width: auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  /* WORKSPACE-05 — save/open status (restrained, not success-chip navigation) */
+  .qty-ws .qty-toolbar-sep {
+    display: inline-block;
+    width: 1px;
+    height: 1.1rem;
+    margin: 0 0.35rem;
+    background: var(--qty-border);
+    align-self: center;
+  }
+  .qty-ws .qty-toolbar-group {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .qty-ws .qty-toolbar-group--file {
+    gap: 0.25rem;
+  }
+  .qty-ws .qty-toolbar-group--selection {
+    padding: 0.15rem 0.35rem;
+    border: 1px solid var(--qty-border);
+    border-radius: 0.35rem;
+    background: rgba(59, 130, 246, 0.06);
+  }
+  @media (max-width: 1399.98px) {
+    .qty-ws .qty-table-filter-bar form {
+      row-gap: 0.5rem;
+    }
+    .qty-ws .qty-toolbar-group {
+      max-width: 100%;
+    }
+  }
+  .qty-ws .qty-prep-table-compact .qty-col-name,
+  .qty-ws .qty-prep-table-compact .qty-col-type {
+    min-width: 0;
+    max-width: none;
+  }
+  .qty-ws .qty-col-name,
+  .qty-ws .qty-col-type {
+    min-width: 0;
+    max-width: none;
+  }
+  .qty-ws .qty-name-text {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+  .qty-ws .qty-name-text:focus,
+  .qty-ws .qty-name-text:hover {
+    white-space: normal;
+    overflow: visible;
+    background: var(--qty-surface-2);
+    outline: 1px solid var(--qty-border);
+    position: relative;
+    z-index: 2;
+    padding: 0.1rem 0.2rem;
+    border-radius: 0.2rem;
+  }
+  .qty-ws .qty-field-picker-family-sum,
+  .qty-ws .qty-field-picker-group-sum {
+    cursor: pointer;
+    list-style: none;
+  }
+  .qty-ws .qty-field-picker-family-sum::-webkit-details-marker,
+  .qty-ws .qty-field-picker-group-sum::-webkit-details-marker {
+    display: none;
+  }
+  .qty-ws .qty-value-suggest-panel {
+    position: absolute;
+    z-index: 1080;
+    display: block;
+  }
+  .qty-ws .qty-filter-field-menu {
+    z-index: 1080;
+    background-color: var(--bs-body-bg);
+  }
+  .qty-ws .qty-filter-field-menu .qty-field-picker-tree {
+    max-height: 14rem;
+  }
+  .qty-ws #qtyColumnsModal .modal-content,
+  .qty-ws #qtyMeasurementSettingsModal .modal-content {
+    background-color: var(--bs-body-bg);
+    opacity: 1;
+  }
+  .qty-ws .qty-editable-name {
+    max-width: 10rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--qty-text);
+  }
+  .qty-ws .qty-editable-status {
+    font-size: 0.65rem;
+    font-weight: 550;
+    color: var(--qty-muted);
+    border: 1px solid var(--qty-border);
+    border-radius: 0.25rem;
+    padding: 0.1rem 0.35rem;
+    background: var(--qty-overlay);
+    white-space: nowrap;
+  }
+  .qty-ws .qty-editable-status--unsaved,
+  .qty-ws .qty-editable-status--error {
+    color: var(--qty-text);
+    border-color: var(--qty-border);
+  }
+  .qty-ws .qty-editable-status--saving {
+    color: var(--qty-muted);
+  }
+  .qty-ws .qty-open-table-row {
+    border-color: var(--qty-border) !important;
+    background: transparent;
+    font-size: 0.8rem;
+  }
+  .qty-ws .qty-open-table-row:hover,
+  .qty-ws .qty-open-table-row:focus {
+    background: var(--qty-overlay);
+  }
+
+  /* QTO-TABLE-POLISH-12 — hierarchical matrix presentation */
+  .qty-ws .qty-hierarchy-name {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+    min-width: 10rem;
+    min-height: 1.5rem;
+  }
+  /* ~20px indent increments Class → Type → Instance */
+  .qty-ws .qty-hierarchy-name.depth-0 { padding-left: 0; }
+  .qty-ws .qty-hierarchy-name.depth-1 { padding-left: 1.25rem; }
+  .qty-ws .qty-hierarchy-name.depth-2 { padding-left: 2.5rem; }
+  .qty-ws .qty-hierarchy-toggle {
+    flex: 0 0 1.15rem;
+    width: 1.15rem;
+    height: 1.15rem;
+    line-height: 1;
+    color: var(--qty-text);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .qty-ws .qty-hierarchy-toggle:focus-visible {
+    outline: 2px solid var(--castor-blue, #3b82f6);
+    outline-offset: 1px;
+  }
+  .qty-ws .qty-hierarchy-leaf-spacer {
+    display: inline-block;
+    flex: 0 0 1.15rem;
+    width: 1.15rem;
+  }
+  .qty-ws .qty-hierarchy-level-icon {
+    flex: 0 0 auto;
+    color: var(--qty-muted, #94a3b8);
+    font-size: 0.72rem;
+    line-height: 1;
+  }
+  .qty-ws .qty-hierarchy-primary,
+  .qty-ws .qty-name-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8125rem;
+  }
+  .qty-ws .qty-hierarchy-count {
+    flex: 0 0 auto;
+    font-size: 0.68rem;
+    white-space: nowrap;
+  }
+  .qty-ws tr.qty-hierarchy-row > td {
+    padding-top: 0.4rem;
+    padding-bottom: 0.4rem;
+    vertical-align: middle;
+  }
+  .qty-ws tr.qty-hierarchy-class {
+    background: color-mix(in srgb, var(--bs-body-bg) 88%, var(--castor-blue, #3b82f6));
+  }
+  .qty-ws tr.qty-hierarchy-class td,
+  .qty-ws tr.qty-hierarchy-class .qty-hierarchy-count,
+  .qty-ws tr.qty-hierarchy-class .qty-ifc-class-label {
+    font-weight: 600;
+  }
+  .qty-ws tr.qty-hierarchy-type {
+    background: color-mix(in srgb, var(--bs-body-bg) 96%, #94a3b8);
+  }
+  .qty-ws tr.qty-hierarchy-instance {
+    background: var(--bs-body-bg, #fff);
+    font-weight: 400;
+  }
+  .qty-ws .qty-col-total .qty-total-value,
+  .qty-ws .qty-col-numeric {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .qty-ws .qty-col-total .qty-total-value--subtotal {
+    font-weight: 600;
+  }
+  .qty-ws .qty-row-details-btn {
+    font-size: 0.72rem;
+    padding: 0.15rem 0.45rem;
+    min-height: 1.75rem;
+  }
+  .qty-ws tr.qty-hierarchy-loadmore-row td {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+  .qty-ws .qty-pill-partial {
+    color: #92400e;
+    background: rgba(245, 158, 11, 0.14);
+    border-color: rgba(180, 83, 9, 0.35);
+    font-weight: 550;
+  }
+  [data-bs-theme="dark"] .qty-ws .qty-pill-partial {
+    color: #fbbf24;
+    background: rgba(245, 158, 11, 0.16);
+    border-color: rgba(251, 191, 36, 0.35);
+  }
+  .qty-ws .qty-missing-marker {
+    font-variant-numeric: tabular-nums;
+    opacity: 0.75;
+  }
+  .qty-ws .qty-ifc-class-inherited {
+    display: block;
+    min-height: 1em;
+  }
+  .qty-ws .qty-col-menu-panel {
+    min-width: 12rem;
+    max-width: min(16rem, 90vw);
+    max-height: min(18rem, 45vh);
+    overflow-y: auto;
+  }
+  .qty-ws .qty-prep-scroll-hint.is-hidden {
+    display: none;
+  }
+</style>

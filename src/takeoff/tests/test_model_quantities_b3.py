@@ -15,8 +15,8 @@ from ifc_processor.tests.factories import (
     IFCFileFactory,
     IFCSpatialElementFactory,
 )
+from takeoff.services.ifc_qto_flags import entity_has_ifc_quantity
 from takeoff.services.model_quantities import ModelQuantitiesService
-from takeoff.services.quantities import entity_has_ifc_quantity
 
 
 @pytest.mark.django_db
@@ -164,8 +164,9 @@ def test_quantities_page_sections_and_honesty(client):
     assert 'data-testid="missing-quantities"' in html
     assert 'data-testid="qty-classification-unavailable"' in html
     assert "Unavailable" in html
-    assert "Length (model units)" in html
-    assert "model units" in html.lower()
+    assert "Length (model length units)" in html
+    assert "model volume units" in html.lower() or "model area units" in html.lower()
+    assert "model length units" in html.lower()
     assert "Inspect IFC Elements" in html
     assert "has_qto=no" in html
     assert "GID-C1" not in html
@@ -189,7 +190,8 @@ def test_quantities_page_sections_and_honesty(client):
     # Strip explicit negation caveats, then forbid remaining claim phrases.
     cleaned = re.sub(
         r"(?i)\bnot\b[^.<]{0,200}?(?:BOQ|QS valuation|ERP|invoice|procurement|"
-        r"payment|company actual cost|commercial 5D)[^.<]{0,120}",
+        r"payment|company actual cost|commercial 5D|commercial estimating|"
+        r"cost|verified QS)[^.<]{0,120}",
         "",
         body,
     )
@@ -197,6 +199,17 @@ def test_quantities_page_sections_and_honesty(client):
         cleaned.replace("Not BOQ", "")
         .replace("not BOQ / not commercial cost", "")
         .replace("must not be treated as commercial cost control", "")
+        .replace("This is not BOQ, cost, or verified QS measurement.", "")
+        .replace(
+            "Deterministic Quantity Preparation Data Model from indexed IFC. "
+            "Not Ask, not Modify, not BOQ, not cost, not verified QS measurement.",
+            "",
+        )
+        .replace(
+            "not indicate BOQ, 5D, QS takeoff, or measurement readiness.",
+            "",
+        )
+        .replace("not indicate BOQ, commercial 5D, QS takeoff, or selected measurement.", "")
     )
     for phrase in (
         "Bill of Quantities",
@@ -207,10 +220,15 @@ def test_quantities_page_sections_and_honesty(client):
         "Estimated total by level",
         "qto-level-canvas",
         "total_cost_estimate",
+        "future 5D",
+        "5D readiness",
+        "5D reviewers",
     ):
         assert phrase not in cleaned, phrase
 
-    assert len(response.content) < 200_000
+    # Quantities grew intentionally with prep builder + schema mapping + 5D Review entry.
+    # Keep a hard ceiling against accidental payload dumps, but do not punish approved UX.
+    assert len(response.content) < 600_000
 
 
 @pytest.mark.django_db

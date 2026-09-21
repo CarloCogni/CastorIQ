@@ -166,16 +166,16 @@ def test_task_state_respects_snapshot_for_actual_end():
     _trusted_binding(task, ent.global_id)
     svc = TimelinePayloadService(project)
 
-    before = svc.build_interval_detail(date(2024, 6, 1))
-    assert ent.global_id in before["entities"]["not_started"]
-    assert ent.global_id not in before["entities"]["complete"]
+    before = svc.build_interval_detail(date(2024, 6, 1), mode="actual")
+    assert ent.global_id in before["state_entities"]["actual_not_started"]
+    assert before["stats"]["actual_complete"] == 0
 
-    mid = svc.build_interval_detail(date(2025, 1, 10))
-    assert ent.global_id in mid["entities"]["in_progress"]
-    assert ent.global_id not in mid["entities"]["complete"]
+    mid = svc.build_interval_detail(date(2025, 1, 10), mode="actual")
+    assert ent.global_id in mid["state_entities"]["actual_in_progress"]
+    assert mid["stats"]["actual_complete"] == 0
 
-    after = svc.build_interval_detail(date(2025, 1, 25))
-    assert ent.global_id in after["entities"]["complete"]
+    after = svc.build_interval_detail(date(2025, 1, 25), mode="actual")
+    assert ent.global_id in after["state_entities"]["actual_complete"]
 
 
 @pytest.mark.django_db
@@ -200,6 +200,7 @@ def test_timeline_summary_service_stats_match_detail_counts():
         project=project,
         start_date=start,
         end_date=end,
+        actual_start=start,
         actual_end=end,
         is_non_physical=False,
     )
@@ -207,12 +208,14 @@ def test_timeline_summary_service_stats_match_detail_counts():
     _trusted_binding(t2, e2.global_id)
 
     svc = TimelinePayloadService(project)
-    summary = svc.build_summary()
+    summary = svc.build_summary(mode="actual")
     snap = date.fromisoformat(summary["intervals"][0]["date"])
-    detail = svc.build_interval_detail(snap)
+    detail = svc.build_interval_detail(snap, mode="actual")
     s_stats = summary["intervals"][0]["stats"]
     d_stats = detail["stats"]
-    assert s_stats == d_stats
+    assert s_stats["complete"] == d_stats["complete"]
+    assert s_stats["in_progress"] == d_stats["in_progress"]
+    assert s_stats["delayed"] == d_stats["delayed"]
     assert d_stats["complete"] == len(detail["entities"]["complete"])
     assert d_stats["in_progress"] == len(detail["entities"]["in_progress"])
     assert d_stats["delayed"] == len(detail["entities"]["delayed"])

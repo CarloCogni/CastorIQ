@@ -9,17 +9,45 @@ from environments.tests.factories import ProjectFactory
 from ifc_processor.tests.factories import IFCEntityFactory, IFCFileFactory
 from ifc_viewer.services.colormap import build_colormap
 from ifc_viewer.services.gap_analysis import build_gap_analysis
-from scheduling.models import TaskEntityBinding
+from scheduling.models import ScheduleSource, TaskEntityBinding
 from scheduling.tests.factories import TaskFactory
 
 _GREEN = "#22c55e"
 _GRAY = "#94a3b8"
+_NO_SCHEDULE = "#64748b"
+
+
+def _ensure_schedule_source(project) -> ScheduleSource:
+    """Persisted schedule source is required before Linked/Not-linked colours apply."""
+    return ScheduleSource.objects.create(
+        project=project,
+        filename="binding_reads.xer",
+        source_format="xer",
+        task_count=1,
+    )
+
+
+@pytest.mark.django_db
+def test_colormap_schedule_status_no_source_is_honest_empty():
+    """No ScheduleSource → No schedule imported (never Linked from Activity Id)."""
+    project = ProjectFactory()
+    ifc_file = IFCFileFactory(project=project)
+    entity = IFCEntityFactory(
+        ifc_file=ifc_file,
+        global_id="GID-COLOR-NOSRC",
+        properties={"Castor.Activity ID": "ACT-FAKE"},
+    )
+
+    result = build_colormap(ifc_file, "schedule_status", project_id=str(project.pk))
+    assert result["colormap"][entity.global_id] == _NO_SCHEDULE
+    assert {row["label"] for row in result["legend"]} == {"No schedule imported"}
 
 
 @pytest.mark.django_db
 def test_colormap_schedule_status_accepted_binding_is_linked():
     """Accepted binding-only entity is green without Activity ID property."""
     project = ProjectFactory()
+    _ensure_schedule_source(project)
     ifc_file = IFCFileFactory(project=project)
     entity = IFCEntityFactory(ifc_file=ifc_file, global_id="GID-COLOR-ACCEPT", properties={})
     task = TaskFactory(project=project)
@@ -39,6 +67,7 @@ def test_colormap_schedule_status_accepted_binding_is_linked():
 def test_colormap_schedule_status_review_binding_not_linked():
     """Review-only bindings must not appear as trusted linked (green) in colormap."""
     project = ProjectFactory()
+    _ensure_schedule_source(project)
     ifc_file = IFCFileFactory(project=project)
     entity = IFCEntityFactory(ifc_file=ifc_file, global_id="GID-COLOR-BIND", properties={})
     task = TaskFactory(project=project)
@@ -58,6 +87,7 @@ def test_colormap_schedule_status_review_binding_not_linked():
 def test_colormap_schedule_status_property_only_not_linked():
     """Activity ID property alone does not mark entity linked without a binding."""
     project = ProjectFactory()
+    _ensure_schedule_source(project)
     ifc_file = IFCFileFactory(project=project)
     entity = IFCEntityFactory(
         ifc_file=ifc_file,
@@ -73,6 +103,7 @@ def test_colormap_schedule_status_property_only_not_linked():
 def test_colormap_schedule_status_binding_and_property_still_linked():
     """Binding wins when both Activity ID property and binding exist."""
     project = ProjectFactory()
+    _ensure_schedule_source(project)
     ifc_file = IFCFileFactory(project=project)
     entity = IFCEntityFactory(
         ifc_file=ifc_file,
@@ -96,6 +127,7 @@ def test_colormap_schedule_status_binding_and_property_still_linked():
 def test_colormap_schedule_status_unlinked_entity_is_gray():
     """Entity with no binding and no Activity ID stays not linked."""
     project = ProjectFactory()
+    _ensure_schedule_source(project)
     ifc_file = IFCFileFactory(project=project)
     entity = IFCEntityFactory(ifc_file=ifc_file, global_id="GID-COLOR-UNLINKED", properties={})
 

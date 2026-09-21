@@ -1,0 +1,62 @@
+<!-- takeoff/components/quantities_batch_measurement_modal.html -->
+<div class="modal fade" id="qtyBatchMeasurementModal" tabindex="-1" aria-labelledby="qtyBatchMeasurementModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post"
+            action="{{ qty_prep_row_measurement_batch_url }}"
+            hx-post="{{ qty_prep_row_measurement_batch_url }}"
+            hx-swap="none"
+            id="qty-batch-measurement-form"
+            data-testid="qty-batch-measurement-form">
+        {% csrf_token %}
+        <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
+        <input type="hidden" name="action" value="apply">
+        <div id="qty-batch-measurement-keys"></div>
+        <div class="modal-header">
+          <h5 class="modal-title" id="qtyBatchMeasurementModalLabel">Apply measurement</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small text-secondary mb-2" data-testid="qty-batch-measurement-apply-copy">
+            Apply to <strong id="qty-batch-measurement-count">0</strong> selected rows.
+          </p>
+          <div class="mb-2">
+            <label class="form-label small mb-0" for="qty-batch-measurement-type">Measurement</label>
+            <select id="qty-batch-measurement-type"
+                    name="measurement_type"
+                    class="form-select form-select-sm"
+                    data-testid="qty-batch-measurement-type"
+                    required>
+              <option value="">Choose measurement</option>
+              <option value="count">Count</option>
+              <option value="length">Length</option>
+              <option value="area">Area</option>
+              <option value="volume">Volume</option>
+            </select>
+          </div>
+          <div class="mb-0 d-none" id="qty-batch-measurement-source-wrap">
+            <label class="form-label small mb-0" for="qty-batch-measurement-source">IFC Source</label>
+            <select id="qty-batch-measurement-source"
+                    name="selected_source"
+                    class="form-select form-select-sm"
+                    data-testid="qty-batch-measurement-source">
+              <option value="">Choose source</option>
+            </select>
+            <p class="small text-secondary mb-0 mt-1" id="qty-batch-measurement-source-help">
+              Required when selected rows share Net/Gross (or other) source choices.
+            </p>
+          </div>
+          <p class="small text-warning mb-0 mt-2 d-none"
+             id="qty-batch-measurement-conflict"
+             data-testid="qty-batch-measurement-conflict"></p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-primary" data-testid="qty-batch-measurement-apply">
+            Apply to selected rows
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

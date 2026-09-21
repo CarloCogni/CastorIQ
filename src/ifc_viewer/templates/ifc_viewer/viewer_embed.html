@@ -123,8 +123,8 @@ import * as THREE from "three";
 
 {% if ifc_file_url %}
 const IFC_URL      = "{{ ifc_file_url }}";
-const FRAG_URL     = "{% url 'ifc_viewer:viewer_fragments' project.pk %}";
-const COLORMAP_URL = "{% url 'ifc_viewer:viewer_colormap' project.pk %}";
+const FRAG_URL     = "{% url 'ifc_viewer:viewer_fragments' project.pk %}?ifc={{ viewer_ifc_file.pk }}";
+const COLORMAP_URL = "{% url 'ifc_viewer:viewer_colormap' project.pk %}?ifc={{ viewer_ifc_file.pk }}";
 const CSRF_TOKEN   = "{{ csrf_token }}";
 
 const container = document.getElementById("embed-canvas-wrap");
@@ -142,11 +142,18 @@ const meshToFragment      = new Map();   // InstancedMesh → Fragment (raycaste
 const expressIdToGlobalId = new Map();   // expressId → globalId (reverse of globalIdIndex)
 
 const C = {
-    tl_complete:    new THREE.Color('#10B981'),
-    tl_in_progress: new THREE.Color('#F59E0B'),
-    tl_delayed:     new THREE.Color('#EF4444'),
-    tl_no_task:     new THREE.Color('#D1D5DB'),
-    // not_started → hidden via fragment.setVisibility(false)
+    tl_complete:         new THREE.Color('#10B981'),
+    tl_in_progress:      new THREE.Color('#3B82F6'),
+    tl_in_progress_act:  new THREE.Color('#F59E0B'), /* Planned active-window only */
+    tl_delayed:          new THREE.Color('#EF4444'),
+    tl_delayed_late:     new THREE.Color('#B91C1C'),
+    tl_delayed_progress: new THREE.Color('#F97316'),
+    tl_no_actual_mid:    new THREE.Color('#F59E0B'),
+    tl_not_due:          new THREE.Color('#CBD5E1'),
+    tl_no_actual_data:   new THREE.Color('#7C3AED'),
+    tl_insufficient:     new THREE.Color('#A855F7'),
+    tl_no_task:          new THREE.Color('#64748B'),
+    // Truth+Context: future/not-due stay visible as muted grey (no hide by default)
 };
 
 // ── 1. Init ──────────────────────────────────────────────────────────
@@ -459,8 +466,21 @@ function resetAllColors() {
     _lastHighlightIds  = [];
     _lastHighlightColorMap = null;
     for (const fragment of model.items) {
+        if (fragment.mesh && fragment.mesh.userData && fragment.mesh.userData._tvOrigMat) {
+            fragment.mesh.material = fragment.mesh.userData._tvOrigMat;
+            delete fragment.mesh.userData._tvOrigMat;
+        }
         fragment.resetColor();
         fragment.setVisibility(true);
+        const mat = fragment.mesh && fragment.mesh.material;
+        const mats = Array.isArray(mat) ? mat : (mat ? [mat] : []);
+        mats.forEach((m) => {
+            m.transparent = false;
+            m.opacity = 1;
+            if (m.depthWrite === false) m.depthWrite = true;
+            if (m.emissive) m.emissive.setHex(0x000000);
+            if (m.emissiveIntensity != null) m.emissiveIntensity = 0;
+        });
     }
 }
 
@@ -472,6 +492,80 @@ function hideGlobalIds(globalIds) {
         if (!fragment) continue;
         fragment.setVisibility(false, [expressId]);
     }
+}
+
+function _ensureTvGhostMat() {
+    if (!window.__tvGhostMat) {
+        window.__tvGhostMat = new THREE.MeshLambertMaterial({
+            color: 0x94a3b8,
+            transparent: true,
+            opacity: 0.14,
+            depthWrite: false,
+        });
+    }
+    return window.__tvGhostMat;
+}
+
+/**
+ * Ghost future/unlinked context so solid status colours stay readable.
+ * Fragments that also carry status expressIds stay opaque.
+ */
+function ghostContextFragments(ghostGids, solidGids) {
+    if (!model) return;
+    _ensureTvGhostMat();
+    const solidEids = new Set();
+    for (const gid of solidGids || []) {
+        const eid = globalIdIndex.get(gid);
+        if (eid !== undefined) solidEids.add(eid);
+    }
+    const ghostEids = new Set();
+    for (const gid of ghostGids || []) {
+        const eid = globalIdIndex.get(gid);
+        if (eid !== undefined) ghostEids.add(eid);
+    }
+    let ghosted = 0;
+    for (const frag of model.items) {
+        if (!frag.mesh) continue;
+        let hasSolid = false;
+        let hasGhost = false;
+        for (const eid of frag.ids) {
+            if (solidEids.has(eid)) hasSolid = true;
+            if (ghostEids.has(eid)) hasGhost = true;
+            if (hasSolid && hasGhost) break;
+        }
+        if (hasSolid || !hasGhost) continue;
+        if (!frag.mesh.userData._tvOrigMat) {
+            frag.mesh.userData._tvOrigMat = frag.mesh.material;
+        }
+        frag.mesh.material = window.__tvGhostMat;
+        ghosted++;
+    }
+    return ghosted;
+}
+
+function clearTimelineEmphasize() {
+    /* Remove any leftover helpers from prior broken emphasize paths. */
+    const helpers = window.__tvEmphasizeHelpers;
+    if (helpers && helpers.length) {
+        for (const h of helpers) {
+            if (h.parent) h.parent.remove(h);
+            if (h.geometry) h.geometry.dispose();
+            if (h.material) h.material.dispose();
+        }
+    }
+    window.__tvEmphasizeHelpers = [];
+    window.__tvEmphasizeGids = [];
+}
+
+/**
+ * Exact-element selection colour only — no boxes, lines, or helpers.
+ * Parent restores cumulative paint before calling with new/empty GIDs.
+ */
+function applyTimelineEmphasize(gids) {
+    clearTimelineEmphasize();
+    if (!model || !gids || !gids.length) return;
+    colorByGlobalIds(gids, new THREE.Color("#facc15"));
+    window.__tvEmphasizeGids = gids.slice();
 }
 
 function wireframeNoTaskFragments(noTaskIds, solidIds) {
@@ -604,43 +698,134 @@ window.addEventListener("message", async (e) => {
             window.__castorPendingTimeline = msg;
             return;
         }
+        const incomingGen = msg.generation != null ? Number(msg.generation) : null;
+        const lastGen = window.__castorTlPaintGen != null ? Number(window.__castorTlPaintGen) : null;
+        if (incomingGen != null && lastGen != null && incomingGen < lastGen) {
+            /* Late/stale mode paint — do not overwrite a newer generation. */
+            return;
+        }
+        if (incomingGen != null) window.__castorTlPaintGen = incomingGen;
         window.__castorPendingTimeline = null;
-        const { not_started = [], in_progress = [], complete = [], no_task = [], delayed = [] } = msg;
+
+        /* Truth+Context fine paints (preferred) + legacy 4-bucket fallback. */
+        const paint = msg.paint || {};
+        const complete = paint.complete || msg.complete || [];
+        const in_progress = paint.in_progress || msg.in_progress || [];
+        const delayed = paint.delayed || msg.delayed || [];
+        const delayed_late = paint.delayed_late || [];
+        const delayed_progress = paint.delayed_progress || [];
+        const no_actual_mid = paint.no_actual_mid || [];
+        const not_due = paint.not_due || msg.not_started || [];
+        const no_actual_data = paint.no_actual_data || [];
+        const insufficient = paint.insufficient || [];
+        const no_task = paint.no_task || msg.no_task || [];
+        const hideFuture = !!msg.hide_future;
+
+        /* Actual uses shared blue; Planned may request amber via in_progress_amber. */
+        const inProgColor = (msg.mode === "planned" || msg.in_progress_amber)
+            ? C.tl_in_progress_act
+            : C.tl_in_progress;
 
         resetAllColors();
-        /* Per-expressId paint (same approach as standalone viewer timeline).
-           Fragment-wide setColor hid date-to-date differences when many GIDs
-           shared geometry and one stale "complete" state won the fragment. */
-        colorByGlobalIds(no_task || [], C.tl_no_task);
-        colorByGlobalIds(complete || [], C.tl_complete);
-        colorByGlobalIds(in_progress || [], C.tl_in_progress);
-        colorByGlobalIds(delayed || [], C.tl_delayed);
-        hideGlobalIds(not_started || []);
-        wireframeNoTaskFragments(no_task, [...in_progress, ...complete, ...delayed, ...not_started]);
+        clearTimelineEmphasize();
+        /* Paint order: muted context first, then status, then no-task wireframe last. */
+        colorByGlobalIds(not_due, C.tl_not_due);
+        colorByGlobalIds(insufficient, C.tl_insufficient);
+        colorByGlobalIds(no_actual_data, C.tl_no_actual_data);
+        colorByGlobalIds(no_actual_mid, C.tl_no_actual_mid);
+        colorByGlobalIds(complete, C.tl_complete);
+        colorByGlobalIds(in_progress, inProgColor);
+        colorByGlobalIds(delayed_progress, C.tl_delayed_progress);
+        colorByGlobalIds(delayed_late, C.tl_delayed_late);
+        colorByGlobalIds(delayed, C.tl_delayed);
+        colorByGlobalIds(no_task, C.tl_no_task);
+
+        const statusGids = [
+            ...complete, ...in_progress, ...delayed, ...delayed_late, ...delayed_progress,
+            ...no_actual_mid, ...no_actual_data, ...insufficient,
+        ];
+        /* Ghost future/unlinked context so status geometry stays readable through it. */
+        const ghostedFrags = (!hideFuture)
+            ? ghostContextFragments([...not_due, ...no_task], statusGids)
+            : 0;
+
+        if (hideFuture) {
+            hideGlobalIds(not_due);
+        }
+        wireframeNoTaskFragments(no_task, [
+            ...not_due, ...insufficient, ...no_actual_data, ...no_actual_mid,
+            ...in_progress, ...complete, ...delayed, ...delayed_late, ...delayed_progress,
+        ]);
 
         let mapped = 0;
-        const linkedBuckets = [...complete, ...in_progress, ...delayed];
+        const linkedBuckets = statusGids;
         for (const gid of linkedBuckets) {
             if (globalIdIndex.has(gid)) mapped++;
         }
-        let hiddenMapped = 0;
-        for (const gid of not_started) {
-            if (globalIdIndex.has(gid)) hiddenMapped++;
+        let mutedMapped = 0;
+        for (const gid of not_due) {
+            if (globalIdIndex.has(gid)) mutedMapped++;
         }
         const applied = {
             type: "castor:timeline-applied",
+            mode: msg.mode || null,
+            date: msg.date || null,
+            generation: incomingGen,
             linkedColoured: mapped,
-            hiddenMapped,
+            hiddenMapped: hideFuture ? mutedMapped : 0,
+            mutedMapped: hideFuture ? 0 : mutedMapped,
+            ghostedFragments: ghostedFrags || 0,
+            ghost_context: !hideFuture,
             complete: complete.length,
             in_progress: in_progress.length,
-            delayed: delayed.length,
-            not_started: not_started.length,
+            delayed: delayed.length + delayed_late.length + delayed_progress.length,
+            delayed_late: delayed_late.length,
+            delayed_progress: delayed_progress.length,
+            no_actual_mid: no_actual_mid.length,
+            not_started: not_due.length,
+            no_actual_data: no_actual_data.length,
+            insufficient: insufficient.length,
             no_task: no_task.length,
+            hide_future: hideFuture,
             gidIndexSize: globalIdIndex.size,
+            bucket_counts: {
+                complete: complete.length,
+                in_progress: in_progress.length,
+                delayed: delayed.length,
+                delayed_late: delayed_late.length,
+                delayed_progress: delayed_progress.length,
+                no_actual_mid: no_actual_mid.length,
+                not_due: not_due.length,
+                no_actual_data: no_actual_data.length,
+                insufficient: insufficient.length,
+                no_task: no_task.length,
+            },
         };
         window.__castorLastTlApplied = applied;
-        window.parent.postMessage(applied, "*");
+        /* Two rAFs so instance colours commit before parent/proof treat paint as settled. */
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (incomingGen != null
+                    && window.__castorTlPaintGen != null
+                    && incomingGen < window.__castorTlPaintGen) {
+                    return;
+                }
+                window.parent.postMessage(applied, "*");
+            });
+        });
         if (legendEl) legendEl.style.display = "none";
+        return;
+    }
+
+    if (msg.type === "castor:timeline-emphasize") {
+        if (!model) return;
+        applyTimelineEmphasize(msg.global_ids || []);
+        window.parent.postMessage({
+            type: "castor:timeline-emphasized",
+            count: (window.__tvEmphasizeGids || []).length,
+            gids: (window.__tvEmphasizeGids || []).slice(),
+            helperCount: (window.__tvEmphasizeHelpers || []).length,
+        }, "*");
         return;
     }
 
@@ -653,9 +838,13 @@ window.addEventListener("message", async (e) => {
             return;
         }
         try {
-            const resp = await fetch(`${COLORMAP_URL}?by=${by}`);
+            const resp = await fetch(`${COLORMAP_URL}&by=${encodeURIComponent(by)}`);
             if (!resp.ok) return;
             const data = await resp.json();
+            if (data.by && data.by !== by) {
+                console.warn("[embed] Colormap scheme mismatch:", data.by, "!=", by);
+                return;
+            }
             const colormap = data.colormap || {};
             const legend   = data.legend   || [];
             const byHex = {};
@@ -685,13 +874,63 @@ window.addEventListener("message", async (e) => {
 
     if (msg.type === "castor:highlight") {
         if (!model) return;
-        resetAllColors();
         _selectedGlobalId = null;
         const ids = msg.global_ids || [];
         _lastHighlightIds = ids;
         _lastHighlightColorMap = (msg.color_map && typeof msg.color_map === "object")
             ? msg.color_map
             : null;
+        /* Time View Now Playing: solid bright-yellow current activity +
+           ghosted / x-ray context so current geometry stays readable.
+           Dedicated materials avoid shared-material opacity leaks.
+           No camera move, no isolate/fit. */
+        if (msg.style === "now-playing") {
+            disableWireframe();
+            _disableSectionBox();
+            if (!window.__tvGhostMat) {
+                window.__tvGhostMat = new THREE.MeshLambertMaterial({
+                    color: 0x94a3b8,
+                    transparent: true,
+                    opacity: 0.06,
+                    depthWrite: false,
+                });
+            }
+            if (!window.__tvAccentMat) {
+                window.__tvAccentMat = new THREE.MeshLambertMaterial({
+                    color: 0xfacc15,
+                    emissive: 0xfde047,
+                    emissiveIntensity: 0.9,
+                    transparent: false,
+                    opacity: 1,
+                    depthWrite: true,
+                });
+            }
+            const accentEids = new Set();
+            for (const gid of ids) {
+                const eid = globalIdIndex.get(gid);
+                if (eid !== undefined) accentEids.add(eid);
+            }
+            for (const frag of model.items) {
+                if (!frag.mesh) continue;
+                if (!frag.mesh.userData._tvOrigMat) {
+                    frag.mesh.userData._tvOrigMat = frag.mesh.material;
+                }
+                let hasAccent = false;
+                for (const eid of frag.ids) {
+                    if (accentEids.has(eid)) { hasAccent = true; break; }
+                }
+                frag.mesh.material = hasAccent
+                    ? window.__tvAccentMat
+                    : window.__tvGhostMat;
+            }
+            if (ids.length) {
+                colorByGlobalIds(ids, new THREE.Color("#facc15"));
+                _selectedGlobalId = ids[0];
+            }
+            _syncFocusBtn();
+            return;
+        }
+        resetAllColors();
         if (ids.length) {
             enableWireframe(ids);
             _applyHighlightColors(ids, _lastHighlightColorMap);

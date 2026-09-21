@@ -1,0 +1,46 @@
+<!-- fived/components/schema_quantity_insight_help_modal.html — How 5D Quantity Review works -->
+
+<div class="modal fade" id="schemaQuantityInsightHelpModal" tabindex="-1"
+     aria-labelledby="schemaQuantityInsightHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+
+            <div class="modal-header border-bottom px-4 py-3"
+                 style="border-color: var(--bs-border-color) !important;">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="schemaQuantityInsightHelpLabel">
+                    <i class="bi bi-bar-chart-steps me-2 text-primary"></i>
+                    How 5D Quantity Review Works
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body px-4 py-4" data-testid="s3-help-modal-body">
+
+                <p class="fw-semibold fs-7 mb-2">What is it?</p>
+                <p class="text-secondary fs-7 mb-4" data-testid="s3-help-boundary-note">
+                    This page summarizes IFC-derived quantities using the project schema saved in
+                    the selected snapshot. Start with coverage, then review mapped groups and the
+                    work queue. Cost calculation, approvals, and schedule cost loading are
+                    separate workflows.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">How to use it</p>
+                <ul class="text-secondary fs-7 mb-4">
+                    <li>Read Schema insight summary and the coverage bar first.</li>
+                    <li>Use Classification / Package / Work Package tabs one at a time.</li>
+                    <li>Check What needs attention for the next setup steps.</li>
+                    <li>Open Advanced details only for technical traceability.</li>
+                    <li>Return to Quantities to adjust mappings, then freeze a new snapshot.</li>
+                </ul>
+
+                <p class="fw-semibold fs-7 mb-2">Caveats</p>
+                <ul class="text-secondary fs-7 mb-0">
+                    <li>Session schema mapping is preparation provenance, not an approved assignment.</li>
+                    <li>Units stay unresolved until model/snapshot units are confirmed via the Quantities Quantity units panel (session confirmation, then freeze).</li>
+                    <li>Total Quantity, Unit, and Measurement Basis are separate review fields — never merged into one label.</li>
+                    <li>External Excel or Ask import into this schema is not connected yet.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>

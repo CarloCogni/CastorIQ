@@ -9,6 +9,7 @@ import logging
 import os
 from datetime import date
 
+from django.core.exceptions import ValidationError
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.template.loader import render_to_string
@@ -22,6 +23,26 @@ from .services.colormap import build_colormap
 from .services.gap_analysis import build_gap_analysis
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_ifc_file(project, request) -> IFCFile | None:
+    """Resolve the IFC file a viewer request targets.
+
+    Honors an optional ``?ifc=<pk>`` query param so embedders with a
+    multi-file selector can pin a specific model; falls back to the latest
+    completed file (historical default of every viewer endpoint).
+    """
+    qs = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
+    ifc_pk = request.GET.get("ifc")
+    if ifc_pk:
+        try:
+            selected = qs.filter(pk=ifc_pk).first()
+        except (ValueError, ValidationError):
+            selected = None
+        if selected:
+            return selected
+    return qs.order_by("-created_at").first()
+
 
 UNITS_MAP: dict[str, str] = {
     "volume": "m³",
@@ -75,11 +96,7 @@ class ViewerView(ProjectTabMixin, TemplateView):
         project = ctx["project"]
         ctx["castor_subtab"] = "viewer"
 
-        ifc_file = (
-            IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-            .order_by("-created_at")
-            .first()
-        )
+        ifc_file = _resolve_ifc_file(project, self.request)
         ctx["viewer_ifc_file"] = ifc_file
         ctx["ifc_file_url"] = ifc_file.file.url if ifc_file else None
         return ctx
@@ -91,25 +108,22 @@ class FragmentsCacheView(ProjectAccessMixin, View):
     GET  — returns the .frag binary if it exists, 404 otherwise.
     POST — receives the .frag binary as a raw octet-stream body and saves it.
 
-    The .frag path is derived from the latest completed IFC file path with the
-    extension swapped to .frag.  Each new IFC upload gets a UUID-named file, so
-    a new upload automatically invalidates the old cache without explicit cleanup.
+    The .frag path is derived from the targeted IFC file path (``?ifc=<pk>``,
+    else the latest completed file) with the extension swapped to .frag.  Each
+    new IFC upload gets a UUID-named file, so a new upload automatically
+    invalidates the old cache without explicit cleanup.
     """
 
-    def _frag_path(self, project) -> str | None:
+    def _frag_path(self, project, request) -> str | None:
         """Return the filesystem path for the .frag cache file, or None."""
-        ifc_file = (
-            IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-            .order_by("-created_at")
-            .first()
-        )
+        ifc_file = _resolve_ifc_file(project, request)
         if not ifc_file or not ifc_file.file.name:
             return None
         return ifc_file.file.path.rsplit(".", 1)[0] + ".frag"
 
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
-        frag_path = self._frag_path(project)
+        frag_path = self._frag_path(project, request)
         if not frag_path or not os.path.exists(frag_path):
             return HttpResponse(status=404)
         with open(frag_path, "rb") as f:
@@ -117,7 +131,7 @@ class FragmentsCacheView(ProjectAccessMixin, View):
 
     def post(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
-        frag_path = self._frag_path(project)
+        frag_path = self._frag_path(project, request)
         if not frag_path:
             return HttpResponse("No completed IFC file found.", status=404)
         body = request.body
@@ -145,13 +159,9 @@ class ColormapView(ProjectAccessMixin, View):
             return JsonResponse({"error": "invalid by parameter"}, status=400)
 
         project = self.get_project()
-        ifc_file = (
-            IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-            .order_by("-created_at")
-            .first()
-        )
+        ifc_file = _resolve_ifc_file(project, request)
         if not ifc_file:
-            return JsonResponse({"colormap": {}, "legend": []})
+            return JsonResponse({"by": by, "colormap": {}, "legend": []})
 
         return JsonResponse(build_colormap(ifc_file, by, project_id=str(project.pk)))
 
@@ -483,18 +493,23 @@ class TimelineView(ProjectAccessMixin, View):
     """JSON — slim weekly timeline summary (stats only; GlobalIds via detail)."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
-        from scheduling.services.timeline_payload import TimelinePayloadService
+        from scheduling.services.timeline_payload import (
+            TimelinePayloadService,
+            parse_mode,
+        )
 
         project = self.get_project()
-        return JsonResponse(TimelinePayloadService(project).build_summary())
+        mode = parse_mode(request.GET.get("mode"))
+        return JsonResponse(TimelinePayloadService(project).build_summary(mode=mode))
 
 
 class TimelineIntervalDetailView(ProjectAccessMixin, View):
-    """JSON — trusted GlobalId buckets for one timeline snapshot date."""
+    """JSON — trusted GlobalId buckets for one timeline snapshot date + mode."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
         from scheduling.services.timeline_payload import (
             TimelinePayloadService,
+            parse_mode,
             parse_snapshot_date,
         )
 
@@ -506,8 +521,9 @@ class TimelineIntervalDetailView(ProjectAccessMixin, View):
                 status=400,
             )
         include_no_task = request.GET.get("include_no_task", "1") != "0"
+        mode = parse_mode(request.GET.get("mode"))
         payload = TimelinePayloadService(project).build_interval_detail(
-            snapshot, include_no_task=include_no_task
+            snapshot, mode=mode, include_no_task=include_no_task
         )
         return JsonResponse(payload)
 

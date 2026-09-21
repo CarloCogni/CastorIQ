@@ -1,0 +1,106 @@
+<!-- takeoff/components/quantities_batch_mapping_modal.html — TABLE-04 Assign values -->
+<div class="modal fade" id="qtyBatchMappingModal" tabindex="-1"
+     aria-labelledby="qtyBatchMappingModalLabel" aria-hidden="true"
+     data-testid="qty-batch-mapping-modal">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title" id="qtyBatchMappingModalLabel">Assign metadata</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-secondary mb-2" data-testid="qty-batch-mapping-openbim-note">
+          Assign Classification, Package, and Work Package for selected rows.
+          These are Castor schema targets — not IFC Classification Reference and not
+          exported authoring properties.
+        </p>
+        <p class="qty-builder-note mb-2" data-testid="qty-batch-mapping-boundary">
+          Applies to selected rows on the current page.
+          Saved in the current working session only — not an editable saved workspace.
+          Does not write back to the IFC and does not change project source configuration.
+          Use Save version only when you want a read-only copy for review.
+        </p>
+        <p class="small mb-3" data-testid="qty-batch-selected-summary">
+          Assigning to <strong id="qty-batch-selected-count">0</strong> selected
+          {% if qty_prep.hierarchy.enabled %}element(s) — parent rows include all matching descendants{% else %}row(s) (current page){% endif %}.
+          <span id="qty-batch-selected-classes" class="text-secondary ms-1"></span>
+        </p>
+
+        <form id="qty-batch-mapping-form"
+              data-testid="qty-batch-mapping-form"
+              hx-post="{{ qty_prep_row_mapping_batch_url }}"
+              hx-target="#qty-batch-mapping-preview"
+              hx-swap="innerHTML">
+          {% csrf_token %}
+          <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
+          <div id="qty-batch-row-keys" data-testid="qty-batch-row-keys"></div>
+
+          {% for field in qty_prep.manual_mapping_eligible_fields %}
+          <div class="mb-3" data-testid="qty-batch-field-{{ field.key }}">
+            <label class="form-label" for="qty-batch-node-{{ field.key }}">{{ field.label }}</label>
+            {% if field.has_schema_nodes %}
+            <select class="form-select form-select-sm qty-batch-target-input"
+                    name="{{ field.key }}__node_id"
+                    id="qty-batch-node-{{ field.key }}"
+                    data-testid="qty-batch-select-{{ field.key }}">
+              <option value="">— Leave unchanged —</option>
+              {% for node in field.selector.nodes %}
+              <option value="{{ node.node_id }}">{{ node.code }} — {{ node.label }}</option>
+              {% endfor %}
+            </select>
+            <p class="qty-mapping-hint mt-1 mb-0">Empty = leave that field unchanged on selected rows.</p>
+            {% else %}
+            <input type="text"
+                   class="form-control form-control-sm qty-batch-target-input"
+                   name="{{ field.key }}"
+                   id="qty-batch-text-{{ field.key }}"
+                   maxlength="120"
+                   autocomplete="off"
+                   placeholder="Leave blank to keep existing"
+                   data-testid="qty-batch-input-{{ field.key }}">
+            {% endif %}
+          </div>
+          {% empty %}
+          <p class="text-secondary small" data-testid="qty-batch-mapping-unavailable">
+            Assign metadata is available for included Classification, Package, and Work Package fields.
+          </p>
+          {% endfor %}
+
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <button type="submit"
+                    name="action"
+                    value="preview"
+                    class="btn btn-sm btn-outline-primary"
+                    data-testid="qty-batch-preview-btn">
+              Preview assignment
+            </button>
+            <button type="submit"
+                    name="action"
+                    value="apply"
+                    class="btn btn-sm btn-primary"
+                    data-testid="qty-batch-apply-btn"
+                    data-qty-batch-apply-requires-preview="1"
+                    hx-post="{{ qty_prep_row_mapping_batch_url }}"
+                    hx-swap="none"
+                    disabled
+                    title="Generate a preview before applying">
+              Apply to session
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">
+              Cancel
+            </button>
+          </div>
+          <p class="qty-mapping-hint mb-0" data-testid="qty-batch-apply-gate-hint">
+            Preview required before Apply. Changing selections or targets clears the preview.
+          </p>
+        </form>
+
+        <div id="qty-batch-mapping-preview"
+             data-testid="qty-batch-mapping-preview"
+             class="border-top pt-2">
+          <p class="text-secondary small mb-0">Preview appears here before Apply.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

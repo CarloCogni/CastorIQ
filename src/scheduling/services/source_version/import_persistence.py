@@ -195,6 +195,14 @@ def persist_schedule_import(
             result.skipped_count += 1
             logger.warning("Skipping task row: %s", exc)
 
+    persisted = result.created + result.updated + result.unchanged
+    if persisted == 0:
+        raise ValueError(
+            f"No tasks could be saved"
+            f"{f' ({result.skipped_count} row(s) skipped)' if result.skipped_count else ''}."
+            " Check required name/start/end columns and date formats."
+        )
+
     dep_objects: list[TaskDependency] = []
     dep_set: set[tuple] = set()
 

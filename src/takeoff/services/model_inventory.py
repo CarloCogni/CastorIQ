@@ -17,8 +17,14 @@ from typing import Any
 from uuid import UUID
 
 from ifc_processor.models import IFCEntity, IFCFile, IFCSpatialElement
-from scheduling.services.link_resolver import linked_entity_gids_for_project
-from takeoff.services.quantities import entity_has_ifc_quantity
+from takeoff.services.ifc_qto_flags import entity_has_ifc_quantity
+from takeoff.services.trusted_links import (
+    entities_with_multiple_trusted_tasks,
+    linked_entity_gids_for_project,
+    trusted_counts,
+    trusted_fanout_sizes,
+    trusted_task_ids,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -665,10 +671,9 @@ class ModelInventoryService:
         TimelinePayloadService.build_summary() here — that walk is too expensive
         for Model GET.
         """
-        from django.db.models import Count, Max, Min
+        from django.db.models import Max, Min
 
         from scheduling.models import Task
-        from scheduling.services.governance.reader import BindingGovernanceReader
 
         total = int(overview.get("total_entities") or 0)
         linked_entities = int(overview.get("trusted_linked_entities") or 0)
@@ -680,24 +685,22 @@ class ModelInventoryService:
         missing_qto = int(missing.get("missing_ifc_qto_count") or 0)
         qto_pct = overview.get("quantity_availability_pct")
 
-        reader = BindingGovernanceReader(self.project_id)
-        counts = reader.trusted_counts()
+        counts = trusted_counts(self.project_id)
         linked_tasks = int(counts.get("trusted_tasks") or 0)
         tasks_total = Task.objects.filter(project=self.project).count()
-        fan_sizes = sorted(
-            reader.trusted_bindings_qs()
-            .values("task_id")
-            .annotate(n=Count("entity_global_id", distinct=True))
-            .values_list("n", flat=True)
-        )
+        fan_sizes = trusted_fanout_sizes(self.project_id)
         max_fanout = fan_sizes[-1] if fan_sizes else 0
         median_fanout = fan_sizes[len(fan_sizes) // 2] if fan_sizes else 0
         p90_fanout = fan_sizes[int(len(fan_sizes) * 0.9)] if fan_sizes else 0
-        multi_gid = len(reader.entities_with_multiple_trusted_tasks())
+        multi_gid = len(entities_with_multiple_trusted_tasks(self.project_id))
         task_pct = round(100.0 * linked_tasks / tasks_total, 1) if tasks_total else None
 
         codes_n = Task.objects.filter(project=self.project).exclude(activity_code="").count()
-        wbs_n = Task.objects.filter(project=self.project).exclude(wbs_node_id=None).count()
+        # Canonical WBS is a package-era field; origin/main may not have it yet.
+        if hasattr(Task, "wbs_node_id"):
+            wbs_n = Task.objects.filter(project=self.project).exclude(wbs_node_id=None).count()
+        else:
+            wbs_n = 0
 
         dated = (
             Task.objects.filter(project=self.project)
@@ -711,7 +714,7 @@ class ModelInventoryService:
 
         first_linked_start: date | None = None
         if linked_tasks:
-            linked_ids = reader.trusted_task_ids()
+            linked_ids = trusted_task_ids(self.project_id)
             first_linked_start = (
                 Task.objects.filter(pk__in=linked_ids)
                 .exclude(start_date=None)

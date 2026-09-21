@@ -1,0 +1,30 @@
+<!-- takeoff/components/quantities_units_modal.html — REVIEW-08: units live in Measurement settings -->
+<div class="modal fade" id="qtyUnitsModal" tabindex="-1"
+     aria-labelledby="qtyUnitsModalLabel" aria-hidden="true"
+     data-testid="qty-units-modal">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title" id="qtyUnitsModalLabel">Units</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small mb-2" data-testid="qty-units-moved-note">
+          Output units are configured together with measurement and IFC source in
+          <strong>Measurement settings</strong>.
+        </p>
+        <button type="button"
+                class="btn btn-sm btn-primary"
+                data-bs-dismiss="modal"
+                data-bs-toggle="modal"
+                data-bs-target="#qtyMeasurementSettingsModal"
+                data-testid="qty-units-open-measurement-settings">
+          Open Measurement settings
+        </button>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>

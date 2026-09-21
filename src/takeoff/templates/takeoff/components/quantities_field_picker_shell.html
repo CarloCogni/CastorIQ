@@ -1,0 +1,39 @@
+<!-- takeoff/components/quantities_field_picker_shell.html — PERF-15C1 lazy shell
+     Expects: picker_id, mode, selected_key (optional),
+     scope_label, mark_added (optional comma string), option_testid, tree_testid,
+     no_matches_testid; project in context for catalogue URL -->
+{% with pid=picker_id|default:"qty-field-picker" %}
+<div class="qty-field-picker qty-field-picker-shell"
+     id="{{ pid }}"
+     data-testid="{{ pid }}"
+     data-picker-mode="{{ mode|default:'column' }}"
+     data-selected-key="{{ selected_key|default:'' }}"
+     data-catalogue-url="{% url 'takeoff:qty_field_catalogue' pk=project.pk %}"
+     data-catalogue-mode="{{ mode|default:'column' }}"
+     data-mark-added="{{ mark_added|default:'' }}"
+     data-scope-label="{{ scope_label|default:'' }}"
+     data-option-testid="{{ option_testid|default:'qty-field-picker-option' }}"
+     data-tree-testid="{% if tree_testid %}{{ tree_testid }}{% else %}{{ pid }}-tree{% endif %}"
+     data-no-matches-testid="{% if no_matches_testid %}{{ no_matches_testid }}{% else %}{{ pid }}-no-matches{% endif %}"
+     data-catalogue-state="idle">
+  {% if scope_label %}
+  <p class="small text-secondary mb-1" data-testid="{{ pid }}-scope">Scope: {{ scope_label }}</p>
+  {% endif %}
+  <div class="qty-field-picker-loading small text-secondary border rounded p-3"
+       data-testid="{{ pid }}-loading"
+       hidden>
+    <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+    Loading IFC fields…
+  </div>
+  <div class="qty-field-picker-error small text-danger border border-danger-subtle rounded p-2"
+       data-testid="{{ pid }}-error"
+       hidden></div>
+  <div class="qty-field-picker-host"
+       data-testid="{{ pid }}-host">
+    <p class="small text-secondary mb-0 p-2 border rounded qty-field-picker-idle"
+       data-testid="{{ pid }}-placeholder">
+      Open to load indexed fields for this model.
+    </p>
+  </div>
+</div>
+{% endwith %}
