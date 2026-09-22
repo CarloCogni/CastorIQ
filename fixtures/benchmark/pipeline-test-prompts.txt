@@ -1,0 +1,669 @@
+# ════════════════════════════════════════════════════════════════════════════
+# WRITEBACK V3 — BENCHMARK PROMPTS
+# ════════════════════════════════════════════════════════════════════════════
+#
+# Purpose ─────────────────────────────────────────────────────────────────────
+#   Real user language through the real pipeline (ground → generate → run →
+#   verify) against Ifc4_SampleHouse.ifc. Every expectation is human-readable
+#   and GlobalId-free; the runner resolves types and containers through the
+#   database index at run time.
+#
+# How to run ──────────────────────────────────────────────────────────────────
+# Requires a project loaded with ../../fixtures/benchmark/Ifc4_SampleHouse.ifc.
+#
+#   cd src && uv run manage.py benchmark_writeback --project "<uuid>" \
+#       --model ollama:qwen2.5-coder:7b --json ../runs/today.json
+#
+# Grammar (the runner PARSES these lines; keep it intact) ─────────────────────
+#   targets: <IfcType> x<N> [in "<storey|space>"] [named "<substring>"] [where <Pset.Prop> = <value>]
+#   diff:    <Pset.Prop> = <value> x<N>       property set on N entities (pset may be *)
+#   diff:    <Attribute> = <value> x<N>       Name, Description, Tag, ObjectType, LongName,
+#                                             Container, Materials, Classifications, Groups
+#   diff:    - <Pset.Prop> x<N>               property removed from N entities
+#   diff:    + <IfcType> x<N>                 N entities created
+#   diff:    - <IfcType> x<N>                 N entities deleted
+#   reject:  ["substring" / "substring"]      must be declined or rejected
+#   no-change:                                already so; nothing to approve
+#   advisory: <why>                           run and report, never scored
+#   note:    <text>                           carried into the report only; scoring unaffected
+#
+#   Several targets: lines are a union; several diff: lines must all hold.
+#
+# Fixture facts (Ifc4_SampleHouse.ifc) ────────────────────────────────────────
+#   Storeys: "Ground Floor" (0.0), "Roof" (2500).
+#   Spaces:  "1 - Living room", "2 - Bedroom", "3 - Entrance hall" on Ground Floor;
+#            "4 - Roof" on Roof.
+#   Walls:   5 = 3 IfcWall (external, IsExternal=true)
+#              Basic Wall:Wall-Ext_102Bwk-75Ins-100LBlk-12P:285330 / :285395 / :285459
+#            + 2 IfcWallStandardCase (partitions, IsExternal=false)
+#              Basic Wall:Wall-Partn_12P-70MStd-12P:285792 / :285846
+#            Pset_WallCommon on all five: Reference, IsExternal, LoadBearing=false,
+#            ExtendToStructure=true, ThermalTransmittance (0.2359 external, 0.351 partitions).
+#            NO FireRating anywhere. Pset_Maintenance on all five: Inspector=TBD,
+#            LastInspection=2026-01-01.
+#   Doors:   3 IfcDoor on the storey (not in spaces): 1 external (:285860),
+#            2 internal (IsExternal=false, one is :285959). Pset_DoorCommon.
+#   Windows: 4 IfcWindow, IsExternal=true; one is Windows_Sgl_Plain:1810x1210mm:286105.
+#   Furniture: 14 IfcFurniture — 12 in "1 - Living room", 2 in "2 - Bedroom".
+#
+# Section index ───────────────────────────────────────────────────────────────
+#    1. Single entity, property                    11. Delete
+#    2. Several named entities                     12. Containment and groups
+#    3. All of a type                              13. Reject — geometry
+#    4. Filtered by property                       14. Reject — not a modification
+#    5. Attributes                                 15. Reject — missing target or value
+#    6. Add / remove property                      16. Not found / partial names
+#    7. Property sets                              17. Custom properties
+#    8. Material and classification                18. Drift triggers
+#    9. Several changes in one sentence            19. Edge cases
+#   10. Create                                     20. Storeys and spaces
+#
+# ════════════════════════════════════════════════════════════════════════════
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 1. SINGLE ENTITY, PROPERTY
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 1.1 — full Revit name with "wall:" lead-in
+# targets: IfcWall x1 named ":285330"
+# diff: Pset_WallCommon.ThermalTransmittance = 0.18 x1
+change ThermalTransmittance to 0.18 on wall: IfcWall Basic Wall:Wall-Ext_102Bwk-75Ins-100LBlk-12P:285330
+
+# 1.2 — full name without IfcWall prefix, boolean value
+# targets: IfcWall x1 named ":285395"
+# diff: Pset_WallCommon.IsExternal = false x1
+set IsExternal to false on Basic Wall:Wall-Ext_102Bwk-75Ins-100LBlk-12P:285395
+
+# 1.3 — step-ID-only via trailing token
+# targets: IfcWall x1 named ":285459"
+# diff: Pset_WallCommon.ThermalTransmittance = 0.18 x1
+change ThermalTransmittance to 0.18 on wall :285459
+
+# 1.4 — SET on a property that does not exist yet (FireRating is absent)
+# targets: IfcWall x1 named ":285330"
+# diff: Pset_WallCommon.FireRating = EI240 x1
+set FireRating to EI240 on wall :285330
+
+# 1.5 — a door by step id
+# targets: IfcDoor x1 named ":285959"
+# diff: Pset_DoorCommon.FireRating = EI30 x1
+set FireRating to EI30 on the door :285959
+
+# 1.6 — numeric value, units in the value phrase
+# targets: IfcWall x1 named ":285395"
+# diff: Pset_WallCommon.ThermalTransmittance = 0.22 x1
+set ThermalTransmittance to 0.22 W/m2K on Basic Wall:Wall-Ext_102Bwk-75Ins-100LBlk-12P:285395
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 2. SEVERAL NAMED ENTITIES
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 2.1 — two walls by step ID, single property
+# targets: IfcWall x1 named ":285330"
+# targets: IfcWall x1 named ":285395"
+# diff: Pset_WallCommon.ThermalTransmittance = 0.18 x2
+set ThermalTransmittance to 0.18 on walls :285330 and :285395
+
+# 2.2 — three walls by full name
+# targets: IfcWall x3 named "Wall-Ext_102Bwk"
+# diff: Pset_WallCommon.FireRating = EI120 x3
+change FireRating to EI120 on Basic Wall:Wall-Ext_102Bwk-75Ins-100LBlk-12P:285330, Basic Wall:Wall-Ext_102Bwk-75Ins-100LBlk-12P:285395, and Basic Wall:Wall-Ext_102Bwk-75Ins-100LBlk-12P:285459
+
+# 2.3 — mixed types (1 wall + 1 window) on one property
+# targets: IfcWall x1 named ":285330"
+# targets: IfcWindow x1 named ":286105"
+# diff: Pset_WallCommon.IsExternal = false x1
+# diff: Pset_WindowCommon.IsExternal = false x1
+set IsExternal to false on Basic Wall:Wall-Ext_102Bwk-75Ins-100LBlk-12P:285330 and the window 1810x1210mm:286105
+
+# 2.4 — partial miss: one real wall, one imaginary
+# advisory: the model may proceed on the real wall or decline; both are defensible
+set ThermalTransmittance to 0.18 on wall :285330 and Imaginary-Wall-007
+
+# 2.5 — two walls with a property that exists; "and" without comma
+# targets: IfcWall x1 named ":285330"
+# targets: IfcWall x1 named ":285459"
+# diff: Pset_WallCommon.LoadBearing = true x2
+set LoadBearing to true on wall :285330 and wall :285459
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 3. ALL OF A TYPE
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 3.1 — all walls (IfcWallStandardCase is a wall too), FireRating absent
+# targets: IfcWall x5
+# diff: Pset_WallCommon.FireRating = REI120 x5
+change FireRating to REI120 on all walls
+
+# 3.2 — explicit "every" quantifier
+# targets: IfcWall x5
+# diff: Pset_WallCommon.ThermalTransmittance = 0.18 x5
+# note: expected to flag "overwrites different existing values" on ThermalTransmittance
+#   (review 11, 2026-09-18) — the 3 external walls start at 0.2359, the 2 partitions at
+#   0.351; both overwritten to 0.18 is the shape V-3's third flag condition exists to
+#   catch. Not scored (B-2 has no flag column) but read this as intended, not a regression.
+set ThermalTransmittance to 0.18 on every wall in the project
+
+# 3.3 — all windows
+# targets: IfcWindow x4
+# diff: Pset_WindowCommon.FireRating = EI60 x4
+add FireRating EI60 to all windows
+
+# 3.4 — all walls, boolean value; the two partitions are already false
+# targets: IfcWall x5
+# diff: Pset_WallCommon.IsExternal = false x3
+set IsExternal to false on all walls
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4. FILTERED BY PROPERTY
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 4.1 — IsExternal=true predicate (the three IfcWall)
+# targets: IfcWall x3 where Pset_WallCommon.IsExternal = true
+# diff: Pset_WallCommon.FireRating = EI120 x3
+set FireRating to EI120 on all external walls
+
+# 4.2 — LoadBearing=false predicate (all five walls)
+# targets: IfcWall x5 where Pset_WallCommon.LoadBearing = false
+# diff: Pset_WallCommon.FireRating = EI60 x5
+set FireRating to EI60 on all non-load-bearing walls
+
+# 4.3 — predicate on a numeric property (the two partitions are above 0.3)
+# targets: IfcWall x2 where Pset_WallCommon.IsExternal = false
+# diff: Pset_WallCommon.ThermalTransmittance = 0.18 x2
+change ThermalTransmittance to 0.18 on all walls with ThermalTransmittance above 0.3
+
+# 4.4 — the internal walls already have IsExternal=false
+# no-change:
+set IsExternal to false on all internal walls
+
+# 4.5 — conjunction of two predicates
+# targets: IfcWall x3 where Pset_WallCommon.IsExternal = true
+# diff: Pset_WallCommon.FireRating = EI180 x3
+set FireRating to EI180 on all external non-load-bearing walls
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5. ATTRIBUTES
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 5.1 — rename single wall (Name attribute)
+# targets: IfcWall x1 named ":285330"
+# diff: Name = "Wall-Ext-EastWing-01" x1
+rename wall :285330 to "Wall-Ext-EastWing-01"
+
+# 5.2 — Description attribute
+# targets: IfcWall x1 named ":285395"
+# diff: Description = "external load-bearing wall, north facade" x1
+set Description to "external load-bearing wall, north facade" on wall :285395
+
+# 5.3 — Tag attribute, two entities
+# targets: IfcWall x1 named ":285330"
+# targets: IfcWall x1 named ":285395"
+# diff: Tag = "EW-A1" x2
+set Tag to "EW-A1" on Basic Wall:Wall-Ext_102Bwk-75Ins-100LBlk-12P:285330 and :285395
+
+# 5.4 — ObjectType attribute, single
+# targets: IfcWall x1 named ":285459"
+# diff: ObjectType = "EXT-LB-WALL" x1
+set ObjectType to "EXT-LB-WALL" on wall :285459
+
+# 5.5 — LongName on a space
+# targets: IfcSpace x1 named "Living room"
+# diff: LongName = "Main Living Room" x1
+set LongName to "Main Living Room" on the space "1 - Living room"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. ADD / REMOVE PROPERTY
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 6.1 — explicit ADD on a standard pset property
+# targets: IfcWall x1 named ":285330"
+# diff: Pset_WallCommon.FireRating = EI120 x1
+add FireRating EI120 to wall :285330
+
+# 6.2 — explicit REMOVE on an existing standard property
+# targets: IfcWall x1 named ":285330"
+# diff: - Pset_WallCommon.ExtendToStructure x1
+remove ExtendToStructure from wall :285330
+
+# 6.3 — REMOVE on Reference (exists on all walls)
+# targets: IfcWall x5
+# diff: - Pset_WallCommon.Reference x5
+remove Reference from all walls
+
+# 6.4 — ADD with value, all walls
+# targets: IfcWall x5
+# diff: Pset_WallCommon.FireRating = EI90 x5
+add FireRating EI90 to all walls
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. PROPERTY SETS
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 7.1 — custom pset with two properties on the external walls
+# targets: IfcWall x3 where Pset_WallCommon.IsExternal = true
+# diff: Pset_FireCompliance.Standard = FS-2026 x3
+# diff: Pset_FireCompliance.Status = Pending x3
+add Pset_FireCompliance with Standard="FS-2026" and Status="Pending" to all external walls
+
+# 7.2 — custom pset with no properties
+# advisory: an empty pset has no property rows, so the diff cannot see it (documented limitation)
+add Pset_Acoustic to all walls
+
+# 7.3 — custom pset on a single entity
+# targets: IfcWall x1 named ":285330"
+# diff: Pset_Acoustic.RatingDb = 45 x1
+add Pset_Acoustic with RatingDb=45 to wall :285330
+
+# 7.4 — remove a standard pset (every property goes)
+# targets: IfcWall x1 named ":285330"
+# diff: - Pset_WallCommon.IsExternal x1
+# diff: - Pset_WallCommon.Reference x1
+remove Pset_WallCommon from wall :285330
+
+# 7.5 — remove a custom pset from all walls
+# targets: IfcWall x5
+# diff: - Pset_Maintenance.Inspector x5
+# diff: - Pset_Maintenance.LastInspection x5
+remove Pset_Maintenance from all walls
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 8. MATERIAL AND CLASSIFICATION
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 8.1 — assign material to all walls
+# targets: IfcWall x5
+# diff: Materials = concrete x5
+assign concrete material to all walls
+
+# 8.2 — assign material, single wall, named material
+# targets: IfcWall x1 named ":285395"
+# diff: Materials = Reinforced Concrete C30/37 x1
+set the material of wall :285395 to "Reinforced Concrete C30/37"
+
+# 8.3 — classification on all walls
+# targets: IfcWall x5
+# diff: Classifications = FS-2026/EW x5
+classify all walls under FireSafety with reference FS-2026/EW
+
+# 8.4 — classification on single wall
+# targets: IfcWall x1 named ":285330"
+# diff: Classifications = EF_25_10 x1
+classify wall :285330 under Uniclass with reference EF_25_10
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 9. SEVERAL CHANGES IN ONE SENTENCE (one code block, one diff, one commit)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 9.1 — two properties on one wall
+# targets: IfcWall x1 named ":285330"
+# diff: Pset_WallCommon.FireRating = EI120 x1
+# diff: Pset_WallCommon.LoadBearing = true x1
+set FireRating to EI120 and LoadBearing to true on wall :285330
+
+# 9.2 — pset add + classification on the same filtered set
+# targets: IfcWall x3 where Pset_WallCommon.IsExternal = true
+# diff: Pset_FireCompliance.Standard = FS-2026 x3
+# diff: Classifications = FS-2026/EW x3
+add Pset_FireCompliance with Standard="FS-2026" to all external walls and classify them under FireSafety with reference FS-2026/EW
+
+# 9.3 — walls and windows in one pset op
+# targets: IfcWall x5
+# targets: IfcWindow x4
+# diff: Pset_FireCompliance.Standard = FS-2026 x9
+add Pset_FireCompliance to all walls and all windows with Standard="FS-2026"
+
+# 9.4 — three properties on one wall (IsExternal is already true, so two rows)
+# targets: IfcWall x1 named ":285330"
+# diff: Pset_WallCommon.FireRating = EI120 x1
+# diff: Pset_WallCommon.LoadBearing = true x1
+on wall :285330 set FireRating to EI120, IsExternal to true, and LoadBearing to true
+
+# 9.5 — attribute + property in one message
+# targets: IfcWall x1 named ":285330"
+# diff: Name = "Wall-NorthFacade-01" x1
+# diff: Pset_WallCommon.FireRating = EI120 x1
+rename wall :285330 to "Wall-NorthFacade-01" and set its FireRating to EI120
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 10. CREATE (select returns the parent; every new entity is a flagged row)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 10.1 — three zones with names
+# diff: + IfcZone x3
+create three new IfcZone for Fire Zone A, Fire Zone B, and Fire Zone C
+
+# 10.2 — one space under a storey
+# targets: IfcBuildingStorey x1 named "Ground Floor"
+# diff: + IfcSpace x1
+create a new IfcSpace named "Storage-01" on the Ground Floor
+
+# 10.3 — classification system, made visible by classifying the walls
+# targets: IfcWall x5
+# diff: Classifications = FS-01 x5
+create a classification system called FireSafety and classify all walls under it with reference FS-01
+
+# 10.4 — material, made visible by assigning it
+# targets: IfcWall x3 where Pset_WallCommon.IsExternal = true
+# diff: Materials = Concrete C30/37 x3
+create a material named "Concrete C30/37" and assign it to all external walls
+
+# 10.5 — one zone
+# diff: + IfcZone x1
+create a new IfcZone called "Acoustic Zone 1"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 11. DELETE
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 11.1 — delete one wall by step ID
+# targets: IfcWall x1 named ":285330"
+# diff: - IfcWall x1
+delete wall :285330
+
+# 11.2 — delete the window
+# targets: IfcWindow x1 named ":286105"
+# diff: - IfcWindow x1
+delete the window 1810x1210mm:286105
+
+# 11.3 — delete two walls in one message
+# targets: IfcWall x1 named ":285330"
+# targets: IfcWall x1 named ":285395"
+# diff: - IfcWall x2
+delete walls :285330 and :285395
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 12. CONTAINMENT AND GROUPS
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 12.1 — move a wall to another storey
+# targets: IfcWall x1 named ":285330"
+# diff: Container = Roof x1
+move wall :285330 to the Roof storey
+
+# 12.2 — group membership: the zone does not exist yet, so it is created
+# targets: IfcWall x3 where Pset_WallCommon.IsExternal = true
+# diff: + IfcZone x1
+# diff: Groups = Fire Zone A x3
+add all external walls to a new zone called Fire Zone A
+
+# 12.3 — re-parent the window to a different storey
+# targets: IfcWindow x1 named ":286105"
+# diff: Container = Roof x1
+reassign window :286105 to the Roof storey
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 13. REJECT — GEOMETRY (out of scope by design)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 13.1 — translate a wall
+# reject:
+move wall :285330 1 meter east
+
+# 13.2 — translate a door
+# reject:
+move that door 1 meter north
+
+# 13.3 — rotate
+# reject:
+rotate the window 30 degrees
+
+# 13.4 — resize
+# reject:
+resize the door to 1200mm width
+
+# 13.5 — change thickness
+# reject:
+make wall :285330 20cm thicker
+
+# 13.6 — vertical translate
+# reject:
+move wall :285330 up by 100mm
+
+# 13.7 — create a wall (a physical element needs geometry)
+# reject:
+create a new wall between the Ground Floor and the Roof
+
+# 13.8 — change wall length
+# reject:
+extend wall :285395 by 2 meters
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 14. REJECT — NOT A MODIFICATION
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 14.1 — greeting
+# reject:
+hello
+
+# 14.2 — a question
+# reject:
+what walls do you have in this project?
+
+# 14.3 — show-me query
+# reject:
+show me all the doors on the Ground Floor
+
+# 14.4 — descriptive statement (no verb)
+# reject:
+the external walls have higher thermal mass
+
+# 14.5 — vague update intent
+# reject:
+update the model
+
+# 14.6 — single-word noise
+# reject:
+ok
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 15. REJECT — MISSING TARGET OR VALUE
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 15.1 — no value, no target
+# reject:
+set the height
+
+# 15.2 — target but no property and no value
+# reject:
+change the wall
+
+# 15.3 — verb only
+# reject:
+add properties to walls
+
+# 15.4 — value too vague
+# reject:
+set the property to something on wall :285330
+
+# 15.5 — rename without new name
+# reject:
+rename the door
+
+# 15.6 — create without names
+# reject:
+create three new IfcZone entities
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 16. NOT FOUND / PARTIAL NAMES
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 16.1 — fully imaginary entity
+# reject:
+set FireRating to EI120 on Wall-Imaginary-Does-Not-Exist
+
+# 16.2 — partial fragment matching the three external walls
+# targets: IfcWall x3 named "Wall-Ext_102Bwk"
+# diff: Pset_WallCommon.FireRating = EI120 x3
+set FireRating to EI120 on Wall-Ext_102Bwk
+
+# 16.3 — cross-message context reference
+# reject:
+change FireRating to EI120 on the wall I just changed
+
+# 16.4 — spatial reference that cannot be grounded
+# reject:
+set FireRating to EI120 on the third wall from the left
+
+# 16.5 — partial fragment with the longer prefix
+# targets: IfcWall x3 named "Wall-Ext_102Bwk"
+# diff: Pset_WallCommon.FireRating = EI120 x3
+change FireRating to EI120 on Basic Wall:Wall-Ext_102Bwk-75Ins-100LBlk-12P
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 17. CUSTOM PROPERTIES (grounding lists the psets that exist)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 17.1 — Inspector lives in Pset_Maintenance on every wall
+# targets: IfcWall x5
+# diff: Pset_Maintenance.Inspector = J. Smith x5
+set Inspector to J. Smith on all walls
+
+# 17.2 — a property no pset has; any pset name is acceptable
+# targets: IfcDoor x3
+# diff: *.CustomStatus = Active x3
+add CustomStatus=Active on all doors
+
+# 17.3 — same, on all walls
+# targets: IfcWall x5
+# diff: *.Status = Pending x5
+add Status="Pending" to all walls
+
+# 17.4 — the value is already there
+# no-change:
+set Pset_Maintenance.Inspector to TBD on all walls
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 18. DRIFT TRIGGERS (prompts that broke earlier versions)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 18.1 — lower-case verb + colon-separated full name
+# targets: IfcWall x1 named ":285330"
+# diff: Pset_WallCommon.FireRating = EI240 x1
+change firerating to EI240 of wall: IfcWall Basic Wall:Wall-Ext_102Bwk-75Ins-100LBlk-12P:285330
+
+# 18.2 — "all walls → 1 wall" regression
+# targets: IfcWall x5
+# diff: Pset_WallCommon.FireRating = REI120 x5
+change fire rating to REI120 to all walls
+
+# 18.3 — non-standard value notation, written as typed
+# targets: IfcWall x1 named ":285330"
+# diff: Pset_WallCommon.FireRating = 2 hours x1
+set FireRating to "2 hours" on wall :285330
+
+# 18.4 — property that does not exist in the standard pset
+# advisory: the model may write FireResistanceDuration as typed or map it to FireRating
+change FireResistanceDuration to EI240 on wall :285330
+
+# 18.5 — vague request
+# reject:
+update the model
+
+# 18.6 — the property is absent and the request words it, not the name (the 7B wrote ThermalTransmittance, 2026-09-15)
+# targets: IfcDoor x3 in "Ground Floor"
+# diff: Pset_DoorCommon.FireRating = 120 x3
+change fire rating on all doors to 120
+
+# 18.7 — over-refusal: entity named only by its Name string, no type word, no storey (2026-09-17)
+# targets: IfcDoor x1 named ":285959"
+# diff: Pset_DoorCommon.FireRating = EI30 x1
+set FireRating to EI30 on :285959
+
+# 18.8 — over-refusal: entity given only by GlobalId, no type stated (2026-09-17)
+# guid: IfcWall named ":285395"
+# targets: IfcWall x1 named ":285395"
+# diff: Pset_WallCommon.FireRating = EI120 x1
+set FireRating to EI120 on {GUID}
+
+# 18.9 — over-refusal: "IfcWall" as the literal class name, mixed with IfcWallStandardCase (2026-09-17)
+# targets: IfcWall x5
+# diff: Pset_WallCommon.FireRating = EI90 x5
+set FireRating to EI90 on every IfcWall
+
+# 18.10 — over-refusal: a counted definite phrase (2026-09-17)
+# targets: IfcDoor x2 where Pset_DoorCommon.IsExternal = false
+# diff: Pset_DoorCommon.FireRating = EI60 x2
+set FireRating to EI60 on the two internal doors
+
+# 18.11 — over-refusal: material assignment, indirect phrasing (2026-09-17)
+# targets: IfcWall x5
+# diff: Materials = Concrete C30/37 x5
+the walls need a Concrete C30/37 material assigned, please set it
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 19. EDGE CASES
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 19.1 — single character
+# reject:
+x
+
+# 19.2 — long irrelevant prose with a real request at the end
+# targets: IfcWall x1 named ":285330"
+# diff: Pset_WallCommon.FireRating = EI120 x1
+The building was constructed in 1972 and has undergone several renovations over the decades. The original architect intended a Brutalist aesthetic, although later interventions softened the facade with cladding. Acoustic performance was never a strong point of the original design, and the thermal envelope is below current standards. With all that context in mind, please set FireRating to EI120 on wall :285330.
+
+# 19.3 — mixed-case property and value
+# targets: IfcWall x1 named ":285330"
+# diff: Pset_WallCommon.FireRating = EI120 x1
+SeT FiReRaTiNg To Ei120 oN wAlL :285330
+
+# 19.4 — empty quotes as the value
+# reject:
+set FireRating to "" on wall :285330
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 20. STOREYS AND SPACES (grounding lists them; the model resolves the words)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 20.1 — every wall on the ground floor (all five)
+# targets: IfcWall x5 in "Ground Floor"
+# diff: Pset_WallCommon.FireRating = EI60 x5
+Set the fire rating of all walls on the ground floor to EI60
+
+# 20.2 — the internal doors, by a property
+# targets: IfcDoor x2 where Pset_DoorCommon.IsExternal = false
+# diff: Pset_DoorCommon.FireRating = EI30 x2
+set the fire rating of the internal doors to EI30
+
+# 20.3 — the furniture in a space
+# targets: IfcFurniture x12 in "1 - Living room"
+# diff: *.Reference = LR x12
+set Reference to LR on all the furniture in the living room
+
+# 20.4 — rename a space by its name
+# targets: IfcSpace x1 named "Bedroom"
+# diff: Name = "2 - Master bedroom" x1
+rename the space "2 - Bedroom" to "2 - Master bedroom"
+
+# 20.5 — doors sit in the storey, not in a space: this file cannot answer it
+# reject:
+set IsExternal to false on every door in the entrance hall
+
+# 20.6 — move furniture between spaces
+# targets: IfcFurniture x2 in "2 - Bedroom"
+# diff: Container = 1 - Living room x2
+move the bed and the desk from the bedroom into the living room
+
+# END OF FILE — 104 prompts across 20 sections.

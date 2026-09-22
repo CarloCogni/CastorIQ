@@ -243,16 +243,15 @@ class TestProposeSupersedesPriorPending:
             created_by=user,
             status=ModificationProposal.Status.PENDING,
         )
-        new_proposal.diff_preview = "[]"
-        new_proposal.save(update_fields=["diff_preview"])
-
         with patch("writeback.views.ModificationService") as MockSvc:
             instance = MockSvc.return_value
-            # The view will call supersede_pending() on this real session;
-            # delegate to the actual implementation to verify end-to-end.
+            # The view hands the session to propose_in_session; delegate the
+            # supersede part to the real implementation to verify end-to-end.
             real_svc = ModificationService(project, user=user)
-            instance.supersede_pending.side_effect = lambda s, u: real_svc.supersede_pending(s, u)
-            instance.propose.return_value = new_proposal
+            instance.propose_in_session.side_effect = lambda s, text, u, **kw: (
+                new_proposal,
+                real_svc.supersede_pending(s, u),
+            )
 
             response = client.post(
                 _modify_url(project.pk),
@@ -280,13 +279,9 @@ class TestProposeSupersedesPriorPending:
             created_by=user,
             status=ModificationProposal.Status.PENDING,
         )
-        new_proposal.diff_preview = "[]"
-        new_proposal.save(update_fields=["diff_preview"])
-
         with patch("writeback.views.ModificationService") as MockSvc:
             instance = MockSvc.return_value
-            instance.supersede_pending.return_value = []
-            instance.propose.return_value = new_proposal
+            instance.propose_in_session.return_value = (new_proposal, [])
 
             response = client.post(
                 _modify_url(project.pk),

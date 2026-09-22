@@ -37,7 +37,7 @@
                         </button>
                         <a class="btn btn-link btn-sm text-primary p-0"
                            title="Open in 3D Viewer"
-                           href="{{ viewer_url }}?highlight={{ row.global_id }}">
+                           href="{{ viewer_url }}?focus={{ row.global_id|urlencode }}">
                             <i class="bi bi-cube" style="font-size:0.8rem;"></i>
                         </a>
                     </div>

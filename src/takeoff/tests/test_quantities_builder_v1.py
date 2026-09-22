@@ -121,9 +121,11 @@ def test_builder_page_markers_and_disabled_modify_handoff(client):
     assert 'data-testid="quantities-measurement-rules"' in html
     assert "Generated Preparation Data Model" in html
     assert "Unresolved Data Register" in html
-    assert "Send unresolved rows to Castor Modify" in html
-    assert 'data-testid="qty-send-unresolved-to-modify"' in html
-    assert "disabled" in html
+    # TABLE-04 dropped the disabled handoff CTA; eligibility is still reported.
+    assert 'data-testid="qty-reg-eligible-handoff"' in html
+    assert 'data-testid="qty-reg-not-eligible-handoff"' in html
+    assert 'data-testid="qty-send-unresolved-to-modify"' not in html
+    assert "Send unresolved rows to Castor Modify" not in html
     assert "Raw Indexed Quantity Inventory" in html
     assert 'data-testid="qty-raw-inventory-details"' in html
 
@@ -150,8 +152,10 @@ def test_builder_page_markers_and_disabled_modify_handoff(client):
     assert "Generated 5D Table" not in page
     assert "future 5D" not in page.lower()
     assert "5D readiness" not in page.lower()
-    # Handoff CTA must not link into Modify from this screen.
-    cta = html.split('data-testid="qty-send-unresolved-to-modify"', 1)[1].split("</button>", 1)[0]
-    assert "href=" not in cta
-    assert "Castor Modify handles suggestions, review" in html
-    assert "writeback, Git trace, and re-index" in html
+    # Nothing on this screen routes into Modify; the boundary is stated instead.
+    assert 'data-testid="quantities-boundary-copy"' in html
+    boundary = html.split('data-testid="quantities-boundary-copy"', 1)[1].split("</p>", 1)[0]
+    assert "Not Ask, not Modify, not BOQ, not cost" in boundary
+    assert "href=" not in boundary
+    # Only the project nav links to Modify; the Quantities page body does not.
+    assert "/writeback/" not in page

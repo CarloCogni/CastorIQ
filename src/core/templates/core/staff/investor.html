@@ -2,7 +2,7 @@
 
 <!-- core/staff/investor.html — Tab 7, Investor View. -->
 <!-- Screenshot-friendly composition of: cohort retention (Plotly), proposal -->
-<!-- acceptance by tier, Ollama-vs-paid token mix, IFC ingestion scatter, -->
+<!-- proposal acceptance (overall + by Guardian verdict), Ollama-vs-paid token mix, IFC ingestion scatter, -->
 <!-- design-partner engagement table, printable dateline header. -->
 
 {% block title %}Staff Dashboard — Investor View{% endblock %}
@@ -73,46 +73,68 @@
     </div>
 </div>
 
-<!-- Section 2 — Proposal acceptance by tier. -->
+<!-- Section 2 — Proposal acceptance, overall and by Guardian verdict. -->
 <div class="card mb-4" style="background-color: var(--bs-tertiary-bg); border-color: var(--bs-border-color);">
     <div class="card-body">
         <div class="d-flex align-items-baseline justify-content-between mb-3">
             <h6 class="mb-0 fs-7 text-uppercase">
                 <span class="badge me-2" style="background-color: rgba(139,92,246,0.18); color: var(--castor-accent, #8b5cf6);">2</span>
-                Proposal acceptance by tier (30d)
+                Proposal acceptance (30d)
             </h6>
             <span class="text-secondary fs-8">{{ acceptance.overall_total }} proposals total</span>
         </div>
 
         {% if acceptance.overall_total > 0 %}
+        {% with o=acceptance.overall %}
         <div class="d-flex flex-column gap-3">
-            {% for t in acceptance.by_tier %}
             <div class="d-flex align-items-center gap-3 fs-7">
-                <div style="min-width: 90px;">
-                    <span class="fw-semibold">T{{ t.tier }}</span>
-                    <span class="text-secondary fs-8 ms-1">target ≥{{ t.target_pct }}%</span>
+                <div style="min-width: 110px;">
+                    <span class="fw-semibold">All proposals</span>
+                    <span class="text-secondary fs-8 ms-1">target ≥{{ o.target_pct }}%</span>
                 </div>
                 <div class="flex-grow-1">
                     <div class="progress" style="height: 18px; background-color: var(--bs-body-bg);">
-                        {% if t.accepted_pct is not None %}
-                        <div class="progress-bar
-                                    {% if t.meets_target %}bg-success{% else %}bg-warning{% endif %}"
+                        {% if o.accepted_pct is not None %}
+                        <div class="progress-bar {% if o.meets_target %}bg-success{% else %}bg-warning{% endif %}"
                              role="progressbar"
-                             style="width: {{ t.accepted_pct }}%;"
-                             aria-valuenow="{{ t.accepted_pct }}"
+                             style="width: {{ o.accepted_pct }}%;"
+                             aria-valuenow="{{ o.accepted_pct }}"
                              aria-valuemin="0"
                              aria-valuemax="100">
-                            <span class="fs-8 px-2">{{ t.accepted_pct }}%</span>
+                            <span class="fs-8 px-2">{{ o.accepted_pct }}%</span>
                         </div>
                         {% endif %}
                     </div>
                 </div>
                 <div style="min-width: 110px; text-align: right;" class="text-secondary fs-8">
-                    {{ t.applied }} / {{ t.total }}
+                    {{ o.applied }} / {{ o.total }}
+                </div>
+            </div>
+            <!-- By Guardian verdict: does a documented conflict lower acceptance? -->
+            {% for g in acceptance.by_guardian %}
+            <div class="d-flex align-items-center gap-3 fs-8">
+                <div style="min-width: 110px;" class="text-secondary">
+                    <i class="bi bi-shield me-1"></i>{{ g.verdict }}
+                </div>
+                <div class="flex-grow-1">
+                    <div class="progress" style="height: 12px; background-color: var(--bs-body-bg);">
+                        {% if g.accepted_pct is not None %}
+                        <div class="progress-bar bg-secondary"
+                             role="progressbar"
+                             style="width: {{ g.accepted_pct }}%;"
+                             aria-valuenow="{{ g.accepted_pct }}"
+                             aria-valuemin="0"
+                             aria-valuemax="100"></div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div style="min-width: 110px; text-align: right;" class="text-secondary">
+                    {{ g.accepted_pct|default_if_none:"—" }}{% if g.accepted_pct is not None %}%{% endif %} · {{ g.applied }} / {{ g.total }}
                 </div>
             </div>
             {% endfor %}
         </div>
+        {% endwith %}
         {% else %}
         <p class="text-secondary fs-7 mb-0">
             <i class="bi bi-clock-history me-1"></i>
@@ -194,7 +216,7 @@
     <div class="card-body">
         <div class="d-flex align-items-baseline justify-content-between mb-2">
             <h6 class="mb-0 fs-7 text-uppercase">
-                <span class="badge me-2" style="background-color: rgba(20,184,166,0.18); color: var(--castor-facilities, #14b8a6);">5</span>
+                <span class="badge me-2" style="background-color: rgba(59, 130, 246,0.18); color: var(--castor-facilities, #3b82f6);">5</span>
                 Design-partner engagement (30d)
             </h6>
             <span class="text-secondary fs-8">top 20 by call volume</span>

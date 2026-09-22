@@ -2,7 +2,7 @@
 """Document models - PDF/DOCX processing."""
 
 from django.db import models
-from pgvector.django import VectorField
+from pgvector.django import HnswIndex, VectorField
 
 from core.models import UUIDModel
 from environments.models import Project
@@ -209,6 +209,14 @@ class DocumentChunk(UUIDModel):
         indexes = [
             models.Index(fields=["document", "chunk_index"]),
             models.Index(fields=["document", "page_number"]),
+            # ANN index for Ask retrieval — mirrors IFCEntity's HNSW index.
+            HnswIndex(
+                name="docchunk_embedding_hnsw",
+                fields=["embedding"],
+                m=16,
+                ef_construction=64,
+                opclasses=["vector_cosine_ops"],
+            ),
         ]
 
     def __str__(self):

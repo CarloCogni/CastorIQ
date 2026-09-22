@@ -299,7 +299,7 @@ def test_quantities_page_renders_batch_controls(client):
     assert 'data-testid="qty-batch-mapping-toolbar"' in html
     assert 'data-testid="qty-batch-row-check"' in html
     assert 'data-testid="qty-batch-mapping-modal"' in html
-    assert "Assign metadata" in html or "Assign values" in html
+    assert "Assign values" in html
     assert "Map selected visible rows" not in html
     prep_chunk = html.split('data-testid="quantities-prep-table"', 1)[1][:12000]
     assert "manual_session_schema_node" not in prep_chunk

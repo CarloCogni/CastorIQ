@@ -4,7 +4,7 @@ import hashlib
 
 from django.db import models
 from django.utils import timezone
-from pgvector.django import VectorField
+from pgvector.django import HnswIndex, VectorField
 
 from core.models import UUIDModel
 from environments.models import Project
@@ -312,6 +312,16 @@ class IFCEntity(UUIDModel):
             models.Index(fields=["ifc_file", "spatial_container"]),
             models.Index(fields=["ifc_type", "name"]),
             models.Index(fields=["ifc_file", "ifc_type", "element_type"]),
+            # ANN index for Ask retrieval — without it every vector query is a
+            # full sequential scan. Build needs maintenance_work_mem headroom
+            # on large existing tables; see docs/rag-pipeline.md.
+            HnswIndex(
+                name="ifcentity_embedding_hnsw",
+                fields=["embedding"],
+                m=16,
+                ef_construction=64,
+                opclasses=["vector_cosine_ops"],
+            ),
         ]
 
     def __str__(self):

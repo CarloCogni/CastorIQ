@@ -6,7 +6,7 @@
             <i class="bi bi-arrow-left"></i> Back
         </a>
         <h5 class="m-0 d-flex align-items-center gap-2">
-            <i class="bi bi-megaphone" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <i class="bi bi-megaphone" style="color: var(--castor-facilities, #3b82f6);"></i>
             <span>{{ ar.title }}</span>
         </h5>
         <span class="badge text-bg-light border fs-8">{{ ar.get_status_display }}</span>
@@ -71,7 +71,7 @@
                         {% csrf_token %}
                         <input type="text" name="note" placeholder="Triage note (optional)" class="form-control form-control-sm mb-2">
                         <button class="btn btn-sm w-100" type="submit"
-                                style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+                                style="background-color: var(--castor-facilities, #3b82f6); color: white; border: none;">
                             <i class="bi bi-check2-circle"></i> Mark triaged
                         </button>
                     </form>

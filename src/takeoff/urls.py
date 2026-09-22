@@ -70,11 +70,6 @@ urlpatterns = [
         name="qty_field_values",
     ),
     path(
-        "projects/<uuid:pk>/field-catalogue/",
-        views.QuantityFieldCatalogueView.as_view(),
-        name="qty_field_catalogue",
-    ),
-    path(
         "projects/<uuid:pk>/prep-freeze/",
         views.QuantityPrepFreezeView.as_view(),
         name="qty_prep_freeze",
@@ -109,5 +104,10 @@ urlpatterns = [
         "projects/<uuid:pk>/export/",
         views.QTOExportView.as_view(),
         name="qto_export",
+    ),
+    path(
+        "projects/<uuid:pk>/field-catalogue/",
+        views.QuantityFieldCatalogueView.as_view(),
+        name="qty_field_catalogue",
     ),
 ]

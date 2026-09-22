@@ -40,7 +40,7 @@ _FORBIDDEN_PRIMARY = (
 
 @pytest.mark.django_db
 def test_quantities_workspace_v1_layout_markers(client):
-    """TABLE-04 one-table Quantities shell + honesty markers (Slice 2a layout retired)."""
+    """Builder sections + raw inventory + hardened chrome."""
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed", name="pilot-qty.ifc")
     IFCEntityFactory(
@@ -58,43 +58,107 @@ def test_quantities_workspace_v1_layout_markers(client):
     assert 'data-testid="quantities-page"' in html
     assert 'data-testid="quantities-workspace-toolbar"' in html
     assert 'data-testid="quantities-workspace-title"' in html
-    assert "IFC Quantity Preparation" in html or "Quantities" in html
+    assert "Quantities" in html
+    assert 'data-testid="quantities-workspace-subtitle"' in html
+    assert "Build Quantity Preparation Data Model" in html
     assert 'data-testid="quantities-not-boq-badge"' in html
     assert "Not BOQ" in html
     assert "Model quantities only" in html
     assert 'data-testid="quantities-open-model"' in html
     assert 'data-testid="quantities-open-ifc-elements"' in html
     assert "Open Link Analysis" in html
+    assert "Open Model" not in html
     assert "Open IFC Elements" in html
 
-    # Primary surface is the prep table (REVIEW-08 / TABLE-04).
+    # Slice 2a
+    assert 'data-testid="quantities-setup-summary"' in html
+    assert "Preparation Setup Summary" in html
+    assert 'data-testid="quantities-schema-builder"' in html
+    assert "Schema Builder" in html
+    assert 'data-testid="quantities-source-mapping"' in html
+    assert "Source Mapping" in html
+    assert 'data-testid="quantities-measurement-rules"' in html
+    assert "User-defined Measurement Rules" in html
     assert 'data-testid="quantities-prep-table"' in html
-    assert 'data-testid="qty-c5d-workspace"' in html
-
-    # Modify handoff CTA removed from main page; help still explains disabled path.
+    assert "Generated Preparation Data Model" in html
+    assert "Generated Preparation Table" not in html
+    assert 'data-testid="quantities-unresolved-register"' in html
+    assert "Unresolved Data Register" in html
+    assert "Rows eligible for Modify handoff" in html
+    assert "Rows ready for Modify handoff" not in html
+    assert "Rows not eligible for handoff" in html
+    assert "Rows not ready for handoff" not in html
+    assert 'data-testid="qty-select-basis-IfcWall"' in html
+    assert 'data-testid="qty-generate-prep-model"' in html
+    assert "Generate Preparation Data Model" in html
+    # TABLE-04: no Modify handoff section / CTA on the one-table workspace.
     assert 'data-testid="quantities-modify-handoff"' not in html
     assert 'data-testid="qty-send-unresolved-to-modify"' not in html
-    assert "Send unresolved rows to Castor Modify is disabled" in html
+    assert "disabled" in html
+    assert "Not Ask, not Modify, not BOQ, not cost" in html
+    assert 'data-testid="quantities-model-reference"' in html
+    assert "Raw Indexed Quantity Inventory" in html
+    assert 'data-testid="qty-raw-inventory-details"' in html
+    assert 'data-testid="qty-raw-inventory-compact"' in html
 
-    # Advanced & reference: demoted legacy export + boundary copy.
+    # Reference inventory (relocated readiness UI, relabeled)
+    assert 'data-testid="quantities-stats-strip"' in html
+    assert "mi-stats" in html
+    assert "Elements with indexed quantity values" in html
+    assert "Elements without indexed quantity values" in html
+    assert "Raw indexed quantity availability" in html
+    assert "With IFC Qto" not in html
+    assert "Missing IFC Qto" not in html
+    assert "with IFC Qto" not in html
+    assert "Quantity Coverage" not in html
+    assert "Model Quantity Readiness" not in html
+    assert "elements with indexed quantity values" in html.lower()
+    assert 'data-testid="quantity-breakdown-rail"' in html
+    assert 'data-testid="quantity-main-grid"' in html
+    assert 'data-testid="quantity-readiness-inspector"' in html
+    assert 'data-testid="quantity-by-ifc-class"' in html
+    assert 'data-testid="quantity-by-level"' in html
+    assert 'data-testid="missing-quantities"' in html
+    assert 'data-testid="quantity-readiness"' in html
+    assert 'data-testid="qty-classification-unavailable"' in html
+    assert "Unavailable" in html
+    assert "Length (model length units)" in html
+    assert "model length units" in html.lower()
+    assert "m³" not in html
+    assert "m²" not in html
+    assert 'class="mi-grid"' in html
+    assert "prefers-reduced-motion" in html
     assert 'data-testid="quantities-optional-estimate"' in html
     assert 'data-testid="quantities-boundary-copy"' in html
+    assert "verified QS measurement" in html
     assert html.index('data-testid="quantities-workspace-toolbar"') < html.index(
         'data-testid="quantities-optional-estimate"'
     )
+    # Legacy QTO cache export is demoted into Advanced and clearly scoped.
+    assert 'data-testid="qty-advanced-export"' in html
     assert "Export legacy QTO cache" in html
     assert "Export preparation data model" not in html
     assert "Export indexed quantities" not in html
     assert "Export Excel" not in html
-    assert "legacy qto cache export is separate from export table" in html.lower()
     assert 'data-testid="qty-advanced-legacy-export-copy"' in html
-
-    for phrase in _FORBIDDEN_PRIMARY:
-        assert phrase not in html, phrase
+    assert "Legacy QTO cache export is separate from Export table." in html
+    assert "qty-advanced-recompute" not in html
+    # TABLE-04 removed the standalone Visual Summary / Insights sections; the
+    # Unresolved Data Register is the single derived-signal surface.
+    assert 'data-testid="quantities-visual-summary"' not in html
+    assert 'data-testid="quantities-preparation-insights"' not in html
+    assert "Preparation Data Model Visual Summary" not in html
+    assert "Quantity Preparation Insights" not in html
+    assert 'data-testid="quantities-unresolved-register"' in html
+    assert "Derived only from the Generated Preparation Data Model" in html
+    assert html.index('data-testid="quantities-prep-table"') < html.index(
+        'data-testid="quantities-unresolved-register"'
+    )
+    # Forbidden as positive claims.
     assert "proposal readiness" not in html.lower()
-    # DYNAMIC-07: no invented SI labels on default shell without project_units.
-    assert "m³" not in html
-    assert "m²" not in html
+    assert "Quantity Coverage" not in html
+    assert "Qto Coverage" not in html
+    assert "Model Quantity Readiness" not in html
 
 
 @pytest.mark.django_db

@@ -99,13 +99,31 @@ def _str_val_row(row, key: str) -> str:
 
 @pytest.mark.django_db
 def test_discover_excludes_noisy_id_keys():
-    """Discovery descriptors never invent keys and skip *.id noise when scanned."""
+    """Discovery skips id/guid noise but keeps every other indexed key.
+
+    DYNAMIC-07: the catalogue is source-backed and complete, so ``Qto_*``
+    quantity fields are included (grouped as Quantity sets with numeric
+    typing) rather than filtered out as a curated Identity-only list.
+    """
     project = _project_with_props()
-    # Direct scan may return empty under MIN_PROP_NONEMPTY in tiny fixtures.
     cols = discover_indexed_property_columns(project=project)
-    assert all(not str(c["source_property"]).lower().endswith(".id") for c in cols)
+    by_source = {str(c["source_property"]): c for c in cols}
+
+    assert cols, "tiny fixtures must still surface discovered columns"
     assert all(str(c["key"]).startswith("prop:") for c in cols)
-    # Qto_* quantity fields are intentional catalogue members (DYNAMIC-07 / REVIEW-08B).
+    assert all(not str(c["source_property"]).lower().endswith(".id") for c in cols)
+    assert all("guid" not in str(c["source_property"]).lower() for c in cols)
+    assert "Other.id" not in by_source
+
+    # Non-noisy authoring keys survive discovery.
+    assert "Other.Type" in by_source
+    assert "Other.Family" in by_source
+
+    # Qto_* is catalogued, not excluded.
+    qto = [c for c in cols if str(c["source_property"]).startswith("Qto_")]
+    assert qto
+    assert all(c["group"] == "Quantity sets" for c in qto)
+    assert all(c["value_type"] == "numeric" for c in qto)
 
 
 @pytest.mark.django_db
@@ -141,6 +159,10 @@ def test_runtime_sem_cols_and_page_panel(client):
     )
     assert response.status_code == 200
     html = response.content.decode("utf-8")
-    assert 'data-testid="qty-column-field"' in html or 'data-testid="qty-columns-modal"' in html
-    assert "Add evidence columns" not in html
+    # TABLE-04: property columns are managed from the Add column modal, and a
+    # selected sem_col is rendered as a real table column.
+    assert 'data-testid="qty-columns-open"' in html
+    assert 'data-testid="qty-columns-modal"' in html
+    assert 'data-testid="qty-manage-columns"' in html
+    assert f'data-testid="qty-prep-col-{col}"' in html
     assert "BOQ-ready" not in html

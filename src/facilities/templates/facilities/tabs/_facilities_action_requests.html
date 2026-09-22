@@ -20,10 +20,10 @@
 <div class="d-flex flex-column gap-3 facilities-scope" id="facilities-action-requests-body">
     <div class="d-flex align-items-center gap-3 flex-wrap">
         <div class="d-flex align-items-center gap-2">
-            <i class="bi bi-megaphone fs-5" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <i class="bi bi-megaphone fs-5" style="color: var(--castor-facilities, #3b82f6);"></i>
             <h5 class="m-0">Action Requests</h5>
             {% if page_obj %}
-            <span class="badge rounded-pill" style="background-color: rgba(20,184,166,0.15); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.35);">
+            <span class="badge rounded-pill" style="background-color: rgba(59, 130, 246,0.15); color: var(--castor-facilities, #3b82f6); border: 1px solid rgba(59, 130, 246,0.35);">
                 {{ page_obj.paginator.count }} request{{ page_obj.paginator.count|pluralize }}
             </span>
             {% endif %}
@@ -40,7 +40,7 @@
         <div class="ms-auto d-flex gap-2 flex-wrap">
             {% if user_permission == "owner" or user_permission == "editor" %}
             <button class="btn btn-sm d-inline-flex align-items-center gap-2"
-                    style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;"
+                    style="background-color: var(--castor-facilities, #3b82f6); color: white; border: none;"
                     hx-get="{% url 'facilities:ar_create' project.pk %}"
                     hx-target="#ar-drawer-mount"
                     hx-swap="innerHTML">

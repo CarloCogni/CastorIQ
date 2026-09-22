@@ -35,5 +35,5 @@ For cross-property reasoning (*"which AHUs are missing a `Pset_Performance.Capac
 
 ## Reference
 
-- View: `src/ifc_processor/views.py` (the `schedule_*` views)
+- Views: `src/environments/views.py` — `ScheduleView` and `ScheduleTablePartial`
 - Template: `src/ifc_processor/templates/ifc_processor/tabs/_schedule.html`

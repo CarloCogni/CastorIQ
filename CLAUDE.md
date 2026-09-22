@@ -2,7 +2,7 @@
 
 ## Project Identity
 
-Castor is a bi-directional LLM assistant that bridges IFC building models and technical documentation. It enables natural language queries across both data domains (Ask mode) and proposes IFC modifications through a risk-stratified approval flow with Git-based version control (Modify mode).
+Castor is a bi-directional LLM assistant that bridges IFC building models and technical documentation. It enables natural language queries across both data domains (Ask mode) and proposes IFC modifications as generated code that is run on a copy, diffed, and approved by a human, with Git-based version control (Modify mode).
 
 **Domain:** AEC (Architecture, Engineering, Construction) / BIM (Building Information Modeling)
 **Stack:** Django 5.x, PostgreSQL 16 + pgvector, Ollama, IfcOpenShell, LangChain, HTMX, Bootstrap 5
@@ -16,17 +16,19 @@ Castor is a bi-directional LLM assistant that bridges IFC building models and te
 | Mode | Pipeline | Entry Point |
 |------|----------|-------------|
 | Ask | RAG: embed query, pgvector search, LLM response with citations | `chat/services/rag_service.py` |
-| Modify | RSAA: intent classify, tier escalate, validate, approve, Git commit | `writeback/services/modification_service.py` |
+| Modify | V3: ground (index lookup) → generate (code) → run (sandbox, diff) → verify (scope, flags, blind explanation) → approve (fingerprint, swap, Git) | `writeback/services/modification_service.py` |
 
-### Write-Back Tier System (RSAA)
+### Write-Back V3 (maximal verification)
 
-| Tier | What LLM Does | Safety |
-|------|---------------|--------|
-| 1 GREEN | Intent classification + param extraction only | Pre-coded handlers execute |
-| 2 ORANGE | Generates ordered operation plan (JSON Schema) | Each step validated independently |
-| 3 RED | Generates IfcOpenShell Python code | 7-layer sandbox + human code review |
+| Step | What happens | Model call? |
+|------|--------------|-------------|
+| ground | Storeys, spaces, entity counts and psets read from the index as exact strings | no |
+| generate | One fenced block: `select(model)` and `modify(model, targets)`; `REJECT:` for non-modifications | yes |
+| run | Child process on a scratch copy; snapshot → select → modify → snapshot → diff | no |
+| verify | Scope (anything outside the selection or any geometry → repair, max 2); one flag rule (value not in the request, entity added/removed); blind explanation | yes (explainer) |
+| approve | Fingerprint check → `os.replace(scratch, original)` → git commit with the code → index refresh from the diff. The code never runs twice | no |
 
-Escalation: Always Tier 1 first, auto-escalate to 2 on validation failure, 3 for entity creation/deletion/spatial ops.
+Contract: `docs/writeback_V3/spec.md`. No tiers, no router, no validators, no journal.
 
 ---
 
@@ -36,7 +38,7 @@ Escalation: Always Tier 1 first, auto-escalate to 2 on validation failure, 3 for
 
 The codebase IS the reference documentation. Markdown files in `docs/` exist for **concepts, rationale, and architecture** — not to inventory files, models, or services.
 
-Every module, class, and public method gets a docstring. Every file starts with a header comment identifying itself (e.g. `# writeback/services/tier1_validator.py`). Naming is documentation.
+Every module, class, and public method gets a docstring. Every file starts with a header comment identifying itself (e.g. `# writeback/services/verifier.py`). Naming is documentation.
 
 ### Clean Code Principles
 
@@ -157,10 +159,10 @@ Read the relevant skill file before generating code in that domain.
 
 ## Key Design Decisions (Don't Violate)
 
-1. **Local-first:** all LLM inference via Ollama. No cloud API calls.
+1. **Local-first:** Ollama is the default for every call and the only provider that needs no key. Anthropic and Groq run only when the site config or a user's own key (BYOK) selects them, never silently; `LLM_MASTER_KILL` and `force_local_ollama` pin everything back to Ollama.
 2. **IFC file is source of truth:** DB is queryable index. Write-back modifies file, then syncs DB.
 3. **Service layer pattern:** business logic NEVER in views or forms.
-4. **Minimal Authority:** LLM never exercises more power than the task requires.
+4. **Maximal Verification:** the model writes the change as code; what the code did to a copy is measured (diff) and gated deterministically before a human sees it. The code is never run a second time.
 5. **Guardian advises, never blocks:** RAV check is non-blocking, wrapped in try/except.
 6. **Per-project Git repos:** IFC files tracked in project-scoped Git repositories.
 7. **Shared 1024d vector space:** IFC entities and document chunks in same embedding space.
@@ -170,7 +172,7 @@ Read the relevant skill file before generating code in that domain.
 
 ## When Modifying Code
 
-- Before `writeback/`: Read `.claude/skills/writeback-ops.md` FIRST, then `docs/writeback/`
+- Before `writeback/`: Read `.claude/skills/writeback-ops.md` FIRST, then `docs/writeback_V3/`
 - Before `chat/RAG`: Read `docs/rag-pipeline.md`
 - Before `ifc_processor/`: Read `docs/ifc-processor.md`
 - Before adding views: Keep them dumb. Create or extend a service.
@@ -192,7 +194,7 @@ Never hand-write migration files. Run `uv run src/manage.py makemigrations` and 
 
 ## Documentation Philosophy
 
-**What gets documented in `docs/`:** Architecture rationale, cross-module concepts (RAG pipeline, writeback tiers, RAV), onboarding context.
+**What gets documented in `docs/`:** Architecture rationale, cross-module concepts (RAG pipeline, writeback V3, RAV), onboarding context.
 
 **What does NOT get a markdown file:** Lists of models, services, or URL patterns. Anything that changes when you add a field or file.
 

@@ -53,8 +53,8 @@
                             <i class="bi bi-table"></i> Entity table
                         </span>
                         <span class="text-secondary">
-                            <strong class="text-body">Right pane.</strong> One row per occurrence
-                            (<code>IfcElement</code>) within the current spatial scope, paginated 50 at a time.
+                            <strong class="text-body">Middle pane.</strong> One row per occurrence
+                            (<code>IfcElement</code>) within the current spatial scope, paginated 25 at a time.
                             Columns: Type · Name · Tag · Description · Element Type · Container · GlobalID.
                         </span>
                     </div>
@@ -67,6 +67,18 @@
                             <strong class="text-body">Modal on row click.</strong> Header (type, name, GlobalID),
                             IFC <em>Description</em> + <em>Tag</em>, AI Summary, and every stored property set,
                             quantity set, and type set.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(59, 130, 246, 0.15); color: var(--bs-primary); border: 1px solid rgba(59, 130, 246, 0.3);">
+                            <i class="bi bi-badge-3d"></i> 3D viewer
+                        </span>
+                        <span class="text-secondary">
+                            <strong class="text-body">Right pane, opt-in.</strong> Toggle it with the
+                            <em>3D</em> button in the header. Renders the selected model in the browser;
+                            drag the divider to resize. Loads on first open only, so leaving it closed
+                            keeps the tab fast.
                         </span>
                     </div>
                 </div>
@@ -124,6 +136,19 @@
                     <div class="d-flex gap-2 align-items-start">
                         <span class="badge rounded-pill flex-shrink-0 mt-1"
                               style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);">
+                            <i class="bi bi-badge-3d"></i> See it in 3D
+                        </span>
+                        <span class="text-secondary">
+                            With the 3D pane open, clicking a table row or a tree node highlights the matching
+                            element(s) in the model, and clicking an element in the model highlights its row and
+                            shows a selection chip with <em>Details</em> (opens the inspector) and <em>Focus</em>
+                            (zooms in with a section box). <em>View in 3D</em> links on Ask citations and Modify
+                            proposals land here with the element focused.
+                        </span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="badge rounded-pill flex-shrink-0 mt-1"
+                              style="background-color: rgba(148, 163, 184, 0.15); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);">
                             <i class="bi bi-download"></i> Export CSV
                         </span>
                         <span class="text-secondary">
@@ -175,7 +200,8 @@
                 </p>
                 <div class="d-flex flex-column gap-1 fs-8 text-secondary">
                     <span><i class="bi bi-dot"></i>Read-only. To change anything in the model, switch to <strong class="text-body">Modify</strong>.</span>
-                    <span><i class="bi bi-dot"></i>Geometry isn't rendered here — Explore shows attributes and properties, not the 3D view.</span>
+                    <span><i class="bi bi-dot"></i>The 3D pane's first load parses the whole IFC in the browser and can take a while on large models; later loads reuse a cached geometry file.</span>
+                    <span><i class="bi bi-dot"></i>Tree-node highlighting in 3D is capped at 2 000 elements per selection.</span>
                     <span><i class="bi bi-dot"></i>Only entities that survived parse appear. Rejected rows live in the admin <em>IFCDataIssue</em> log.</span>
                     <span><i class="bi bi-dot"></i>Search is substring, case-insensitive, and joined as OR across name / GlobalID / tag / description. No regex.</span>
                     <span><i class="bi bi-dot"></i>If the file selector shows nothing, no IFC file in this project has finished parsing yet.</span>

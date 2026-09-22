@@ -11,6 +11,7 @@ the current layout.
 """
 
 from .assets import (
+    AssetDocumentFolder,
     AssetInventory,
     Classification,
     ClassificationReference,
@@ -49,6 +50,7 @@ __all__ = [
     "DEFAULT_ENABLED_PSETS",
     "DEFAULT_PHASES",
     "ActionRequest",
+    "AssetDocumentFolder",
     "AssetInventory",
     "Classification",
     "ClassificationReference",

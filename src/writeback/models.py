@@ -52,19 +52,75 @@ class ModificationProposal(UUIDModel):
     )
     # AI explanation of changes
     explanation = models.TextField(
+        blank=True,
         verbose_name="Explanation",
-        help_text="AI-generated explanation of proposed changes",
+        help_text="The blind explanation; empty when the explainer failed (the card shows a placeholder)",
     )
-    # Structured changes (list of entity modifications)
-    changes = models.JSONField(
+    # ── V3: the proposal row is the journal ────────────────
+    code = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Generated Code",
+        help_text="The select()/modify() block that produced the diff; runs once, at proposal time",
+    )
+    target_global_ids = models.JSONField(
         default=list,
-        verbose_name="Changes",
-        help_text="Structured list of entity modifications",
+        blank=True,
+        verbose_name="Target GlobalIds",
+        help_text="What select() returned; the only entities modify() may touch",
     )
-    # Human-readable diff
+    diff = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Diff",
+        help_text="IfcDiff.as_dict(): what the code did to the scratch copy, measured by the harness",
+    )
+    base_fingerprint = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        verbose_name="Base Fingerprint",
+        help_text="SHA-256 of the original file when proposed; approval refuses on mismatch",
+    )
+    scratch_path = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        verbose_name="Scratch Path",
+        help_text="The reviewed copy that replaces the original on approval",
+    )
+    explainer_model = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="Explainer Model",
+        help_text="The model that wrote the blind explanation",
+    )
+    guardian_skipped = models.BooleanField(
+        default=False,
+        verbose_name="Guardian Skipped",
+        help_text="The user switched the document check off for this request",
+    )
+    flags_acknowledged_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Flags Acknowledged At",
+        help_text="When the user ticked every flagged diff row in the approve request",
+    )
+    # ── V2 columns, kept nullable for history rows; never reused ──
+    changes = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        verbose_name="Changes (V2)",
+        help_text="V2 mutation journal. Null on V3 proposals",
+    )
     diff_preview = models.TextField(
-        verbose_name="Diff Preview",
-        help_text="Human-readable preview of changes",
+        null=True,
+        blank=True,
+        default=None,
+        verbose_name="Diff Preview (V2)",
+        help_text="V2 rendered diff rows as JSON text. Null on V3 proposals",
     )
     # Affected entity count
     affected_count = models.PositiveIntegerField(
@@ -106,36 +162,42 @@ class ModificationProposal(UUIDModel):
         related_name="proposal",
         verbose_name="Git Commit",
     )
-    # ── RSAA Classification (added for Modify mode) ────────
+    # ── V2 RSAA classification, kept nullable for history rows ──
     tier = models.IntegerField(
         choices=Tier.choices,
         null=True,
         blank=True,
-        verbose_name="RSAA Tier",
-        help_text="1=GREEN (certified), 2=ORANGE (planner), 3=RED (direct)",
+        verbose_name="RSAA Tier (V2)",
+        help_text="V2 tier. Null on V3 proposals",
     )
     operation = models.CharField(
         max_length=50,
+        null=True,
         blank=True,
-        verbose_name="Operation",
-        help_text="e.g. SET_PROPERTY, ADD_PROPERTY, SET_ATTRIBUTE",
+        default=None,
+        verbose_name="Operation (V2)",
+        help_text="V2 operation name. Null on V3 proposals",
     )
     intent_json = models.JSONField(
-        default=dict,
+        null=True,
         blank=True,
-        verbose_name="Intent JSON",
-        help_text="Full parsed intent from the LLM classifier",
+        default=None,
+        verbose_name="Intent JSON (V2)",
+        help_text="V2 parsed intent. Null on V3 proposals",
     )
     filter_spec = models.JSONField(
-        default=dict,
+        null=True,
         blank=True,
-        verbose_name="Filter Spec",
-        help_text="Entity filter used to resolve targets",
+        default=None,
+        verbose_name="Filter Spec (V2)",
+        help_text="V2 entity filter. Null on V3 proposals",
     )
     confidence = models.FloatField(
-        default=0.0,
-        verbose_name="Confidence",
-        help_text="LLM classification confidence (0.0–1.0)",
+        null=True,
+        blank=True,
+        default=None,
+        verbose_name="Confidence (V2)",
+        help_text="V2 classification confidence. Null on V3 proposals",
     )
     error_message = models.TextField(
         blank=True,
@@ -176,15 +238,12 @@ class ModificationProposal(UUIDModel):
         max_length=255, blank=True, help_text="Citation (e.g., 'Fire Strategy.pdf, p.14')"
     )
 
-    # Tier 3 review acknowledgement — gates Execute on T3 only.
+    # V2 code-review acknowledgement, kept for history rows. V3 gates on
+    # flagged diff rows instead (``flags_acknowledged_at``).
     code_review_acknowledged_at = models.DateTimeField(
         null=True,
         blank=True,
-        verbose_name="Code Review Acknowledged At",
-        help_text=(
-            "Timestamp when the user ticked 'I have reviewed this code and accept "
-            "responsibility' on a Tier 3 proposal. Tier 3 approval is refused if blank."
-        ),
+        verbose_name="Code Review Acknowledged At (V2)",
     )
     code_review_acknowledged_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -192,7 +251,7 @@ class ModificationProposal(UUIDModel):
         null=True,
         blank=True,
         related_name="code_acknowledged_proposals",
-        verbose_name="Code Review Acknowledged By",
+        verbose_name="Code Review Acknowledged By (V2)",
     )
 
     class Meta:
@@ -207,6 +266,23 @@ class ModificationProposal(UUIDModel):
 
     def __str__(self):
         return f"Proposal: {self.request_text[:50]}..."
+
+    @property
+    def is_v3(self) -> bool:
+        """True for proposals that carry code, targets and a measured diff."""
+        return bool(self.code) and isinstance(self.diff, dict)
+
+    @property
+    def flagged_keys(self) -> set[str]:
+        """Keys of the diff rows the one flag rule flags for this request."""
+        from writeback.services.verifier import flagged_keys
+
+        return flagged_keys(self.diff or {}, self.request_text or "")
+
+    @property
+    def has_flagged_rows(self) -> bool:
+        """True when approval needs every flagged row ticked."""
+        return bool(self.flagged_keys)
 
 
 class GitCommit(UUIDModel):

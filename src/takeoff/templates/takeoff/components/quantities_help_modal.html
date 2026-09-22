@@ -9,7 +9,7 @@
                  style="border-color: var(--bs-border-color) !important;">
                 <h5 class="modal-title fw-semibold fs-6 mb-0" id="qtoHelpLabel">
                     <i class="bi bi-calculator me-2 text-primary"></i>
-                    How IFC Quantity Preparation Works
+                    How Quantities Works
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -18,12 +18,12 @@
 
                 <p class="fw-semibold fs-7 mb-2">What is it?</p>
                 <p class="text-secondary fs-7 mb-4">
-                    IFC Quantity Preparation opens on one quantity table built from indexed IFC (openBIM-first).
-                    Use Add column, Filter, Measurement settings, Apply measurement, Assign metadata,
-                    Save table, Open table, and (under More) Save version / Export table.
-                    There is no six-stage Discover→Configure→Map→Units→Freeze→Review rail.
-                    Advanced &amp; reference keeps configure/schema tools and Zone availability notes.
-                    Help covers boundaries (not Ask, Modify, BOQ, cost, rates, or writeback).
+                    Quantities opens on one quantity table built from indexed IFC (openBIM-first).
+                    Use Columns, Filter, Set measurement, Assign values, Units,
+                    Save table, Open table, Save version, and Export table
+                    from the primary toolbar. There is no six-stage Discover→Configure→Map→Units→Freeze→Review rail.
+                    Advanced &amp; reference keeps configure/schema tools available when needed.
+                    Help covers boundaries (not Ask, Modify, BOQ, cost, or writeback).
                 </p>
                 <p class="text-secondary fs-7 mb-4" data-testid="qty-help-openbim-neutrality">
                     Some fields are exported by the authoring tool into the IFC file, such as Family,
@@ -69,19 +69,17 @@
                     <li>Quantity table — Class → Type → Instance. Classes start collapsed. “Expand classes” reveals Types only; expand a Type for elements. Collapse a Class resets its Type expansion. Parent quantities always cover all matching descendants.</li>
                     <li>Add column — one searchable catalogue (table fields, assigned values, and indexed IFC Element/Type/Qto/Spatial/Classification fields). Search first; Add is disabled until a selection. Calculation (Sum / Average / Min / Max) applies to eligible numeric columns on Class/Type parents from matching instance leaves.</li>
                     <li>Type identity follows IFC type GlobalId (IfcRelDefinesByType). Distinct GlobalIds that share a display name stay separate — full GlobalId is in Row details.</li>
-                    <li>Apply measurement / Assign metadata — parent selection targets descendant elements (deduplicated). Assign metadata is session-only and does not write back to IFC.</li>
+                    <li>Set measurement / Assign values — parent selection targets descendant elements (deduplicated). Assign values is session-only and does not write back to IFC.</li>
                     <li>Units — convert displayed Quantity from model units; raw model values stay available for export.</li>
                     <li>Save table — durable editable work for this project (name required). Open table resumes it.</li>
                     <li>Save version — creates a read-only snapshot; editing continues afterward. Open Saved versions from the status chip.</li>
                     <li>Export table — ZIP of the current working table (model + output values).</li>
                     <li>Advanced &amp; reference — optional configure/schema/source/rules and legacy export.</li>
-                    <li>IFC columns — add IFC properties, model location, classification references, and exported properties; separate from Castor schema Assign metadata.</li>
+                    <li>IFC columns — add IFC properties, model location, classification references, and exported properties; separate from Castor schema Assign values.</li>
                     <li>Semantic source readiness — frozen with each saved version and shown in 5D Quantity Review.
                         Missing evidence means not found in this IFC export — not unsupported forever.</li>
                     <li>Unresolved Data Register — counts only included schema gaps for counting source intents; no fake readiness percentages.
                         Session row reviews do not change these counts. Session manual mapping values may clear mapping gaps for that row only.</li>
-                    <li>Preparation Data Model Visual Summary — count charts from generated rows only (Advanced).</li>
-                    <li>Quantity Preparation Insights — deterministic operational notes (not AI).</li>
                     <li>Raw Indexed Quantity Inventory — input evidence only, under Advanced.</li>
                 </ul>
 
@@ -108,7 +106,8 @@
                     <li>Not mapped means intentional blank — not counted as missing.</li>
                     <li>Future Modify handoff / Manual field count as unresolved mapping gaps until a session value is entered.</li>
                     <li>Package Mapping is preparation grouping — this screen does not generate BOQ or cost output.</li>
-                    <li>Send unresolved rows to Castor Modify is disabled in this slice.</li>
+                    <li>This screen has no handoff into Castor Modify — the Unresolved Data Register
+                        only reports how many rows would be eligible.</li>
                     <li>Advanced tools “Export legacy QTO cache” dumps the optional legacy QTO cache only
                         (may include cost/cache fields if present). It does not export the generated
                         preparation data model, schema, source intent, row reviews, or manual mapping values.

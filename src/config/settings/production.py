@@ -42,6 +42,12 @@ X_FRAME_OPTIONS = "DENY"
 # loops forever.
 SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "True").lower() == "true"
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# The in-container Docker healthcheck probes /healthz/ over plain HTTP on
+# 127.0.0.1:8000; exempting it keeps SECURE_SSL_REDIRECT from 302-ing the
+# probe to an HTTPS port Daphne doesn't serve. Public traffic still enters
+# via nginx, which owns the HTTP→HTTPS redirect at the edge. Django matches
+# these patterns against request.path with the leading slash stripped.
+SECURE_REDIRECT_EXEMPT = [r"^healthz/$"]
 SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", str(60 * 60 * 24 * 365)))
 SECURE_HSTS_PRELOAD = True
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True

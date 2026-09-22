@@ -1,0 +1,9 @@
+# Contributions to AECO practice and future research directions
+
+## 7.1 Contributions
+
+CastorIQ contributes four elements to the state of practice. First, maximal verification as a governance pattern for LLM-mediated modification of authoritative engineering data: the model writes the change as code, the code runs once on a copy, the measured diff is gated deterministically and explained by a model that has not seen the request, and the reviewed copy is swapped in under version control. It is instantiated against IFC, and applies to any structured artefact whose changes can be diffed. Second, RAV as a distinct component of a write path, a document-grounded second opinion on every proposal, with the retrieval design that made it measurable. Third, the shared vector substrate for IFC entities and document chunks, which makes cross-domain retrieval routine. Fourth, a full-lifecycle platform (4D, 5D, 7D) on one substrate and consumer hardware, without cloud dependency, together with the reproducible harnesses and dated records that measure it. All four are available under AGPL-3.0.
+
+## 7.2 Future research directions
+
+Three directions follow. First, server-hosted IFC editing through modeller add-ons, answering the CDE round-trip friction of Section 5.4: a Blender add-on that keeps the file in CastorIQ and streams changes back would remove the download-edit-upload cycle, and the pattern extends to Revit, ArchiCAD and Rhino. Second, closing the local model's measured gaps: fine-tuning a code model on execution-verified IfcOpenShell code, which the harness already produces as labelled pairs, and grounding requests against the class hierarchy and material assignments. Third, the Guardian verdict fix and a per-prompt expert labelling scored against the harness, so that the human row of the evaluation carries an agreement statistic.

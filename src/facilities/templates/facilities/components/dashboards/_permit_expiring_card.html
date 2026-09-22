@@ -1,0 +1,36 @@
+<!-- facilities/components/dashboards/_permit_expiring_card.html — live permits-expiring count linking to the Permits sub-tab -->
+
+<div class="col-12 col-md-6 col-lg-4">
+    <a href="{% url 'facilities:permit_list' project.pk %}"
+       class="text-decoration-none h-100 d-block"
+       style="color: inherit;">
+        <div class="p-3 rounded border d-flex flex-column gap-2 h-100"
+             style="background-color: var(--bs-body-bg); border-color: var(--castor-facilities, #3b82f6) !important;">
+
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-shield-check fs-5" style="color: var(--castor-facilities, #3b82f6);"></i>
+                <span class="fw-semibold"
+                      title="Active permits already past validity, or ending within the next 90 days">
+                    Permits needing renewal
+                </span>
+                {% if facilities_permits_expiring_count %}
+                <span class="badge rounded-pill ms-auto"
+                      style="background-color: rgba(245,158,11,0.15); color: #ca8a04; border: 1px solid rgba(245,158,11,0.35);">
+                    action
+                </span>
+                {% endif %}
+            </div>
+
+            <div class="flex-grow-1 d-flex align-items-center justify-content-center py-2">
+                <span class="display-6 m-0" style="color: var(--castor-facilities, #3b82f6);">
+                    {{ facilities_permits_expiring_count|default:0 }}
+                </span>
+            </div>
+
+            <div class="fs-8 text-secondary border-top pt-2 d-flex align-items-center gap-1">
+                <i class="bi bi-arrow-right"></i>
+                <span>Open the permit register</span>
+            </div>
+        </div>
+    </a>
+</div>

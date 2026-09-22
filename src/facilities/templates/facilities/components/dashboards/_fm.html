@@ -4,10 +4,10 @@
 
 <div class="row g-3">
     {% include "facilities/components/dashboards/_asset_count_card.html" %}
-    {% include "facilities/components/dashboards/_placeholder_card.html" with icon="clipboard2-check" title="Open work orders" hint="M3 · CMMS core" %}
+    {% include "facilities/components/dashboards/_wo_count_card.html" %}
+    {% include "facilities/components/dashboards/_permit_expiring_card.html" %}
+    {% include "facilities/components/dashboards/_request_count_card.html" %}
     {% include "facilities/components/dashboards/_placeholder_card.html" with icon="calendar-event" title="Overdue PMs" hint="M5 · PM Planner" %}
-    {% include "facilities/components/dashboards/_placeholder_card.html" with icon="exclamation-diamond" title="Permits expiring ≤ 90 days" hint="M6 · Documents v2" %}
-    {% include "facilities/components/dashboards/_placeholder_card.html" with icon="chat-left-text" title="Occupant requests" hint="M4 · Occupant Portal" %}
     {% include "facilities/components/dashboards/_placeholder_card.html" with icon="bar-chart" title="Narrative KPIs" hint="M7 · AI narrative" %}
-    {% include "facilities/components/dashboards/_placeholder_card.html" with icon="cloud-upload" title="Export IFC" hint="M2 · Reconciliation" %}
+    {% include "facilities/components/dashboards/_activity_feed.html" %}
 </div>

@@ -135,16 +135,15 @@
                 <!-- 6. Modify funnel -->
                 <p class="fw-semibold fs-7 mb-2">
                     <i class="bi bi-funnel me-1" style="color: var(--castor-primary, #3b82f6);"></i>
-                    Modify funnel by tier
+                    Modify funnel by week
                 </p>
                 <p class="text-secondary fs-7 mb-4">
-                    Last 30 days of <code>ModificationProposal</code> rows, grouped by RSAA tier
-                    (T1 / T2 / T3, with an "untiered" column for rows that never picked a tier).
-                    Stages are <em>pending → approved → applied → rejected → failed</em> — each
-                    stage is its own coloured segment so you can read both within-tier
-                    progression and cross-tier patterns. The hypothesis under test (per the
-                    master plan): T1 lands ≥90% applied, T2 ≥70%, T3 ≥50%. Sparse during early
-                    beta — the section empty-states cleanly when no proposals exist.
+                    Last 30 days of <code>ModificationProposal</code> rows, grouped by ISO week
+                    (V3 has one pipeline and no tiers, so time is the second axis). Stages are
+                    <em>pending → approved → applied → rejected → failed</em> — each stage is its
+                    own coloured segment so you can read how proposals settle week by week.
+                    Sparse during early beta — the section empty-states cleanly when no proposals
+                    exist.
                 </p>
 
                 <!-- 7. Activity heatmap -->

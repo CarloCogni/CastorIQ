@@ -94,6 +94,11 @@ urlpatterns = [
         name="explore_entities",
     ),
     path(
+        "<uuid:pk>/explore/ifc/<uuid:ifc_id>/entity/by-gid/<str:global_id>/",
+        views.ExploreEntityDetailPartial.as_view(),
+        name="explore_entity_detail_gid",
+    ),
+    path(
         "<uuid:pk>/explore/ifc/<uuid:ifc_id>/entity/<uuid:entity_id>/",
         views.ExploreEntityDetailPartial.as_view(),
         name="explore_entity_detail",

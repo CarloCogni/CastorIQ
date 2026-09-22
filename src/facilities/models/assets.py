@@ -392,6 +392,152 @@ class FacilityAsset(UUIDModel):
         return self.spatial_container
 
 
+class AssetDocumentFolder(UUIDModel):
+    """A user-named document folder attached to exactly one Facilities card —
+    an asset, work order, permit or occupant request.
+
+    Facility managers organise paperwork (manuals, certificates, photos of
+    nameplates, service reports, method statements) into folders of their own
+    naming. The folder does not own file uploads — it *links* to
+    :class:`documents.models.Document` rows already uploaded to the project, so
+    one document can appear under many folders without duplication and the RAG
+    pipeline keeps a single source. Folders are managed centrally on the
+    Documents tab; ``project`` denormalises the owning project for listing, and
+    the four target FKs (exactly one set) say which card the folder belongs to.
+    """
+
+    project = models.ForeignKey(
+        "environments.Project",
+        on_delete=models.CASCADE,
+        related_name="document_folders",
+        null=True,
+        blank=True,
+        verbose_name="Project",
+    )
+    # Target card — exactly one is set (see clean()/card_* helpers).
+    asset = models.ForeignKey(
+        FacilityAsset,
+        on_delete=models.CASCADE,
+        related_name="document_folders",
+        null=True,
+        blank=True,
+        verbose_name="Asset",
+    )
+    work_order = models.ForeignKey(
+        "facilities.WorkOrder",
+        on_delete=models.CASCADE,
+        related_name="document_folders",
+        null=True,
+        blank=True,
+        verbose_name="Work Order",
+    )
+    permit = models.ForeignKey(
+        "facilities.Permit",
+        on_delete=models.CASCADE,
+        related_name="document_folders",
+        null=True,
+        blank=True,
+        verbose_name="Permit",
+    )
+    action_request = models.ForeignKey(
+        "facilities.ActionRequest",
+        on_delete=models.CASCADE,
+        related_name="document_folders",
+        null=True,
+        blank=True,
+        verbose_name="Action Request",
+    )
+    name = models.CharField(
+        max_length=120,
+        verbose_name="Folder Name",
+        help_text="User-chosen label, e.g. 'Manuals', 'Certificates', 'Service reports'.",
+    )
+    documents = models.ManyToManyField(
+        "documents.Document",
+        blank=True,
+        related_name="asset_folders",
+        verbose_name="Documents",
+        help_text="Project documents linked into this folder.",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Created By",
+    )
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "Document Folder"
+        verbose_name_plural = "Document Folders"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["asset", "name"],
+                name="uniq_asset_document_folder_name",
+            ),
+        ]
+
+    # ── Target-card helpers (which Facilities card this folder belongs to) ──
+    @property
+    def card(self):
+        return self.asset or self.work_order or self.permit or self.action_request
+
+    @property
+    def card_kind(self) -> str:
+        if self.asset_id:
+            return "asset"
+        if self.work_order_id:
+            return "work"
+        if self.permit_id:
+            return "permit"
+        if self.action_request_id:
+            return "request"
+        return ""
+
+    @property
+    def card_kind_label(self) -> str:
+        return {
+            "asset": "Asset",
+            "work": "Work order",
+            "permit": "Permit",
+            "request": "Request",
+        }.get(self.card_kind, "—")
+
+    @property
+    def card_label(self) -> str:
+        card = self.card
+        if card is None:
+            return "(unassigned)"
+        if self.asset_id:
+            return card.asset_tag or getattr(card, "display_name", str(card))
+        if self.work_order_id:
+            return f"{card.wo_number} · {card.title}"
+        if self.permit_id:
+            return f"{card.permit_number} · {card.title}"
+        if self.action_request_id:
+            return card.title
+        return str(card)
+
+    def card_url(self) -> str:
+        from django.urls import reverse
+
+        pid = self.project_id
+        if self.asset_id:
+            return reverse("facilities:assets_detail", args=[pid, self.asset_id])
+        if self.work_order_id:
+            return reverse("facilities:work_detail", args=[pid, self.work_order_id])
+        if self.permit_id:
+            return reverse("facilities:permit_detail", args=[pid, self.permit_id])
+        if self.action_request_id:
+            return reverse("facilities:ar_detail", args=[pid, self.action_request_id])
+        return ""
+
+    def __str__(self) -> str:
+        return f"{self.card_label} / {self.name}"
+
+
 class AssetInventory(UUIDModel):
     """Cost / acquisition companion to :class:`FacilityAsset` (``Pset_AssetInventory``).
 

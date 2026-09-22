@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
+    "django.contrib.postgres",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
@@ -269,7 +270,11 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 ASK_PROVIDER = os.getenv("ASK_PROVIDER", "ollama")  # ollama | anthropic | groq
 ASK_MODEL = os.getenv("ASK_MODEL", "claude-sonnet-4-6")
 MODIFY_PROVIDER = os.getenv("MODIFY_PROVIDER", "ollama")  # ollama | anthropic | groq
-MODIFY_MODEL = os.getenv("MODIFY_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+# The Modify pipeline writes IfcOpenShell code, so its default is a code-tuned
+# Ollama tag sized for the 12 GB tier (7B on 8 GB, 30B on 24 GB; see the Modify
+# help modal). Ask keeps OLLAMA_MODEL. A cloud provider ignores this and uses
+# the model chosen in admin (or the catalogue default).
+MODIFY_MODEL = os.getenv("MODIFY_MODEL", "qwen2.5-coder:14b")
 # Last-resort circuit-breaker. When set, the dispatcher refuses every cloud call and
 # the site renders a "paused for maintenance" banner. Local Ollama still works.
 LLM_MASTER_KILL = os.getenv("LLM_MASTER_KILL", "0") == "1"
@@ -284,6 +289,12 @@ FIELD_ENCRYPTION_KEY = os.getenv("FIELD_ENCRYPTION_KEY", "")
 # RAG Token Budget
 RAG_RESPONSE_RESERVE = int(os.getenv("RAG_RESPONSE_RESERVE", "1500"))
 RAG_SAFETY_RATIO = float(os.getenv("RAG_SAFETY_RATIO", "0.90"))
+# Soft cosine-distance cutoff for vector retrieval: candidates farther than
+# this are dropped (the closest few always survive — see RAGService).
+RAG_DISTANCE_CEILING = float(os.getenv("RAG_DISTANCE_CEILING", "0.55"))
+# When True, deterministic Ask answers skip the LLM entirely and return a
+# templated fact block (zero tokens, flat tone). Default: LLM narrates.
+RAG_DETERMINISTIC_BYPASS_LLM = os.getenv("RAG_DETERMINISTIC_BYPASS_LLM", "false").lower() == "true"
 
 # Vector Configuration
 PGVECTOR_DIMENSIONS = int(os.getenv("PGVECTOR_DIMENSIONS", "1024"))
@@ -313,7 +324,7 @@ SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
 
 # Logging
 # Project loggers go to console at INFO so per-entity narratives (scan loop,
-# RAG pipeline, modification tiers) are visible during development. Library
+# RAG pipeline, the Modify pipeline's phases) are visible during development. Library
 # loggers (httpx, ollama, langchain) stay at WARNING so they don't drown app
 # signal — without this, every Ollama request emits multiple DEBUG lines and
 # the scan trace is impossible to read.
@@ -362,12 +373,3 @@ LOGGING = {
         "channels.server": {"handlers": ["console"], "level": "WARNING", "propagate": False},
     },
 }
-
-# ── Writeback rejection-hint generator ─────────────────────────────
-# Strategy 3 (LLM-fallback) is wired but gated behind a category whitelist
-# that starts empty. Strategies 1 (Templated) and 2 (Registry-grounded) are
-# always on and add no LLM cost. Add categories to ``WRITEBACK_HINT_LLM_CATEGORIES``
-# only after observing real rejections that 1+2 cannot address — see
-# ``writeback/services/hint_generator.py`` for the strategy contracts.
-WRITEBACK_HINT_LLM_FALLBACK = True
-WRITEBACK_HINT_LLM_CATEGORIES: tuple[str, ...] = ()

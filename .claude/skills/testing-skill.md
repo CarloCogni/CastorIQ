@@ -48,10 +48,10 @@ def test_<method_or_behavior>_<scenario>_<expected_result>():
 
 Examples:
 ```python
-def test_classify_single_set_property_returns_tier1_intent()
-def test_classify_invalid_json_response_raises_intent_parse_error()
-def test_build_entity_context_empty_entities_returns_no_entities()
-def test_proposal_approve_already_applied_raises_validation_error()
+def test_extract_code_block_returns_none_without_both_functions()
+def test_scope_error_names_a_change_outside_the_selection()
+def test_zero_targets_is_repaired_with_the_zero_target_error()
+def test_execute_refuses_when_the_file_changed_since_the_proposal()
 ```
 
 ### Structure (Arrange-Act-Assert)
@@ -59,23 +59,17 @@ def test_proposal_approve_already_applied_raises_validation_error()
 Every test follows AAA with a one-line docstring:
 
 ```python
-def test_classify_rename_request_uses_set_attribute(mock_llm):
-    """SET_ATTRIBUTE is chosen when user says 'rename', not SET_PROPERTY."""
+def test_value_absent_from_the_request_is_flagged():
+    """The one flag rule: a new value the request never mentions needs a tick."""
     # Arrange
-    classifier = IntentClassifier(user=None)
-    mock_llm.return_value = json.dumps({
-        "tier": 1, "operation": "SET_ATTRIBUTE",
-        "filter": {"ifc_type": "IfcWall", "name_pattern": "W-01"},
-        "attribute": "Name", "new_value": "W-01-Updated",
-        "confidence": 0.95, "explanation": "Rename wall"
-    })
+    rows = aggregate_rows(sample_diff(after="EI999"))
 
     # Act
-    result = classifier.classify("Rename wall W-01 to W-01-Updated", "IfcWall (1): W-01")
+    flagged = flag_rows(rows, "Set the fire rating of all walls to EI60")
 
     # Assert
-    assert result["operation"] == "SET_ATTRIBUTE"
-    assert "pset" not in result
+    assert [r.flagged for r in flagged] == [True]
+    assert flagged[0].after == "EI999"
 ```
 
 ### Markers
@@ -84,7 +78,7 @@ def test_classify_rename_request_uses_set_attribute(mock_llm):
 @pytest.mark.django_db          # Only when hitting the real DB
 @pytest.mark.asyncio             # Async consumer / service tests
 @pytest.mark.slow                # Integration tests > 2s (LLM calls, IFC parsing)
-@pytest.mark.parametrize(...)    # Use for operation types, tier variants, severity levels
+@pytest.mark.parametrize(...)    # Use for diff shapes, error kinds, severity levels
 ```
 
 Register custom markers in `pyproject.toml`:
@@ -156,18 +150,25 @@ class IFCEntityFactory(factory.django.DjangoModelFactory):
 
 
 class ModificationProposalFactory(factory.django.DjangoModelFactory):
+    """A complete V3 row: code, targets, a measured diff, a fingerprint."""
+
     class Meta:
         model = "writeback.ModificationProposal"
     ifc_file = factory.SubFactory(IFCFileFactory)
-    created_by = factory.LazyAttribute(lambda o: o.ifc_file.uploaded_by)
-    request_text = "Set fire rating to EI120"
-    explanation = "Change FireRating on matched walls"
-    changes = factory.LazyFunction(list)
-    diff_preview = "FireRating: EI60 → EI120"
+    created_by = factory.SubFactory(UserFactory)
+    request_text = "Set fire rating to EI120 on all walls"
+    explanation = "Sets Pset_WallCommon.FireRating to EI120 on three walls."
+    explainer_model = "test-model"
+    code = SAMPLE_CODE                       # a select()/modify() block
+    target_global_ids = factory.LazyFunction(lambda: list(WALL_IDS))
+    diff = factory.LazyFunction(sample_diff)  # IfcDiff.as_dict() with three property rows
+    base_fingerprint = "0" * 64
+    scratch_path = ""
     status = "pending"
-    tier = 1
-    operation = "SET_PROPERTY"
 ```
+
+The real one lives in `writeback/tests/factories.py` with `sample_diff()` next to it; never set the
+nullable V2 columns (`tier`, `operation`, `changes`, `diff_preview`) on a V3 row.
 
 Adapt and extend these as needed. Always check actual model fields before generating a factory — don't guess nullable/required fields.
 
@@ -182,10 +183,11 @@ For every public method, test:
 - **Failure modes**: dependency raises exception, LLM returns garbage, IFC file missing
 - **Input validation**: wrong types, missing required args
 
-For LLM-dependent services (IntentClassifier, GuardianService, Tier2Planner, Tier3Executor, ConflictScanService, RAGService):
+For LLM-dependent services (CodeGenerator, the explainer, GuardianService, ConflictScanService, RAGService):
 - Mock the LLM response, test parsing logic and downstream behavior
-- Test malformed LLM output (invalid JSON, missing fields, unexpected tier)
-- Test confidence normalization (0.0-1.0 → 0-100 conversion)
+- Test malformed LLM output (no fenced block, a block missing `modify`, invalid JSON from Guardian)
+- For the pipeline, hand `ModifyPipeline` a scripted generator (`ScriptedGenerator` in
+  `writeback/tests/test_pipeline.py`) and let the sandbox, the diff and the verifier run for real
 
 ### 2. Models
 

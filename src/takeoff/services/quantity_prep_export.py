@@ -467,9 +467,12 @@ def csv_headers_from_layout(
     *,
     show: Mapping[str, bool],
 ) -> list[str]:
-    """CSV headers following visible table layout order.
+    """CSV headers following visible table layout, plus schema-included mapping fields.
 
-    Full provenance remains in preparation_export.json; CSV mirrors the UI layout.
+    Layout columns mirror the working table. Mapping fields that remain included
+    via preparation schema (``show``) but are not yet added as columns still
+    appear in CSV so session Assign values / origins are not silently dropped.
+    Full nested provenance remains in preparation_export.json.
     """
     cols = [c for c in (table_columns or []) if isinstance(c, Mapping)]
     if not cols:
@@ -496,6 +499,18 @@ def csv_headers_from_layout(
             if origin not in seen:
                 seen.add(origin)
                 headers.append(origin)
+    # Schema-included mapping fields omitted from the current layout.
+    for field in MAPPING_FIELD_KEYS:
+        if not show.get(field):
+            continue
+        if field in seen:
+            continue
+        seen.add(field)
+        headers.append(field)
+        origin = f"{field}_origin"
+        if origin not in seen:
+            seen.add(origin)
+            headers.append(origin)
     if "row_key" not in seen:
         headers.insert(0, "row_key")
     return headers

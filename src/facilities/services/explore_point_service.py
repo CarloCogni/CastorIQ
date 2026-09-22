@@ -230,23 +230,36 @@ def _coord(value: Any) -> Decimal:
     return n.quantize(Decimal("0.001"))
 
 
-def _coerce_tables(raw: Any) -> list[dict[str, str]]:
-    """Validate the per-point linked-table list shape."""
+def _coerce_tables(raw: Any) -> list[dict[str, Any]]:
+    """Validate the per-point linked-table list shape.
+
+    Two entry flavours round-trip:
+    - catalog tables: ``{key, filterBy}``
+    - per-element property tables: ``{key: "element:<id>", elementId,
+      elementName, props: [<chosen property names>]}``
+    """
     if not isinstance(raw, list):
         return []
-    out: list[dict[str, str]] = []
+    out: list[dict[str, Any]] = []
     for item in raw:
         if not isinstance(item, dict):
             continue
         key = item.get("key")
         if not key:
             continue
-        out.append(
-            {
-                "key": str(key),
-                "filterBy": str(item.get("filterBy") or "globalId"),
-            }
-        )
+        entry: dict[str, Any] = {"key": str(key)}
+        if item.get("elementId"):
+            entry["elementId"] = str(item["elementId"])[:64]
+            entry["elementName"] = str(item.get("elementName") or "")[:255]
+            props = item.get("props")
+            entry["props"] = (
+                [str(p)[:120] for p in props if isinstance(p, str)]
+                if isinstance(props, list)
+                else []
+            )
+        else:
+            entry["filterBy"] = str(item.get("filterBy") or "globalId")
+        out.append(entry)
     return out
 
 

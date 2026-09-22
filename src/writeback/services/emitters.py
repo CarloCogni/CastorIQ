@@ -8,17 +8,28 @@ capturing events for tests, or silently discarding (legacy HTTP path).
 
 Usage:
     emitter = WebSocketEmitter(send_json_callable)
-    emitter.emit("classify", "running", "Classifying intent...")
-    emitter.emit("classify", "done", "Tier 1 — SET_PROPERTY", {"tier": 1})
+    emitter.emit(Phase.GENERATE, "running", "Writing the change as code…")
+    emitter.emit(Phase.RUN, "done", "5 targets", {"targets": 5})
 """
 
 from __future__ import annotations
 
 import logging
 import threading
+from enum import StrEnum
 from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
+
+
+class Phase(StrEnum):
+    """The five progress phases of the Modify pipeline, in order."""
+
+    GROUND = "ground"
+    GENERATE = "generate"
+    RUN = "run"
+    VERIFY = "verify"
+    GUARDIAN = "guardian"
 
 
 class CancellationError(Exception):
@@ -41,10 +52,10 @@ class PipelineEmitter(Protocol):
         Emit a pipeline progress event.
 
         Args:
-            phase: Pipeline phase name (classify, validate, diff, guardian, plan, codegen, review)
+            phase: A :class:`Phase` member (ground, generate, run, verify, guardian)
             status: Phase status (running, done, error)
             message: Human-readable description
-            detail: Optional structured data for the phase (tier, entities_count, verdict, etc.)
+            detail: Optional structured data; the page renders ``targets``, ``flags``, ``verdict``
         """
         ...
 
@@ -163,6 +174,32 @@ class WebSocketEmitter:
 
         if self.is_cancelled():
             raise CancellationError("Pipeline cancelled by user.")
+
+
+class StdoutEmitter:
+    """Writes pipeline events to a stream. Used by management commands.
+
+    Accepts any object with a ``write`` method (Django's ``self.stdout``,
+    ``sys.stdout``, or an ``io.StringIO`` in tests).
+    """
+
+    def __init__(self, stream) -> None:
+        self.stream = stream
+
+    def emit(
+        self,
+        phase: str,
+        status: str,
+        message: str,
+        detail: dict[str, Any] | None = None,
+    ) -> None:
+        line = f"  [{phase}/{status}] {message}"
+        if detail:
+            line = f"{line} {detail}"
+        self.stream.write(line)
+
+    def is_cancelled(self) -> bool:
+        return False
 
 
 class CapturingEmitter:

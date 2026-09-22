@@ -1,3 +1,5 @@
+> **Note (2026-09-15).** The writeback sections below (triage, slots, resolver, tier router, journal) describe **V2** and are kept as history. V3 replaced that pipeline; its limitations are listed in [`writeback_V3/spec.md`](writeback_V3/spec.md) §Non-goals and in the Modify help modal.
+
 # Known Limitations
 
 A running log of observed reliability limits when running Castor on local
@@ -235,6 +237,228 @@ it finishes naturally. On constrained hardware this can pile up if the
 user retries quickly. There is no clean way to cancel a running Ollama
 generation from the client side; the workaround is to rate-limit retries
 in the UI, which we do.
+
+---
+
+## 3. An intent the schema cannot express is substituted, not refused
+
+### Symptom
+
+The user asks for something the pipeline's internal representation has no
+way to describe. The model does not fail, and does not say it cannot
+comply — it resolves the request into the nearest thing the schema *can*
+hold, and the system proceeds confidently with a different operation from
+the one requested. Because every downstream stage sees a well-formed
+request, nothing reports a problem: the change validates, previews,
+approves, writes and commits as a success.
+
+### Why it matters
+
+Castor's whole safety argument is that the model is granted the smallest
+decision space the task requires (**Minimal Authority**), and that
+deterministic code owns everything else. Narrow per-stage schemas are how
+that boundary is enforced. This entry is the cost of that design: a schema
+tight enough to constrain the model is also tight enough to make some user
+intents inexpressible, and an inexpressible intent gets silently rewritten
+rather than rejected.
+
+It is also the failure mode our test strategy is structurally blind to.
+Unit tests substitute a scripted model response, so the slot payload is
+always one a developer hand-wrote — and a developer writing a payload for
+"remove X" writes a *sensible* one. The gap only appears when a real model
+is asked to fill a real schema it cannot satisfy.
+
+### Concrete example
+
+Model: `llama3.1:8b` via local Ollama, temperature 0.1. Observed
+2026-08-05 during the first automated natural-language benchmark run.
+
+Verbatim prompt:
+
+```
+remove Reference from all walls
+```
+
+Observed behaviour — the property the user asked to clear was instead
+written with a fragment of their own sentence, on every matched wall:
+
+```
+SET_PROPERTY: Pset_WallCommon.Reference = 'all walls'
+SET_PROPERTY: Pset_WallCommon.Reference = 'all walls'
+SET_PROPERTY: Pset_WallCommon.Reference = 'all walls'
+SET_PROPERTY: Pset_WallCommon.Reference = 'all walls'
+SET_PROPERTY: Pset_WallCommon.Reference = 'all walls'
+```
+
+Second instance, same run:
+
+```
+remove ExtendToStructure from wall :285330
+  -> SET_PROPERTY: Pset_WallCommon.ExtendToStructure = True
+```
+
+The slot schema for a property change carried `{pset, property, value}`
+and no operation field, so a value was mandatory. The user-facing help had
+advertised this exact operation, with a clickable worked example.
+
+### Mitigations in place
+
+- The specific gap is closed: `PropertySlots` now carries an `operation`
+  (`SET` | `REMOVE`) which `tier_router._route_tier1` honours, and the
+  finalizer discards a value on a REMOVE even when the model supplies one.
+  An omitted or unrecognised operation defaults to the *safe* member.
+- The general check is the natural-language benchmark
+  (`manage.py benchmark_writeback`), which compares each outcome against a
+  declared expectation instead of against the pipeline's own reasoning.
+  It is what surfaced this, and it is the only layer that can.
+- Verifying the written file separately from the routing decision
+  (**fidelity** vs **understanding**, see [testing.md](testing.md)) keeps
+  this class of failure legible: here execution was flawless while
+  comprehension was wrong, and a single blended score would have hidden it.
+
+### Residual risk
+
+**The class is not eliminated — only this instance is.** Every narrow
+schema in the pipeline is a candidate: triage kinds, the attribute slot
+set, the Tier 3 op set, the facilities intent schemas. Any user intent
+that falls outside one of them is liable to be rounded to the nearest
+member rather than refused, and the resulting change will look correct at
+every checkpoint.
+
+The benchmark only detects this where the corpus already contains a prompt
+expressing the intent. An intent nobody thought to write down stays
+invisible for exactly the same reason it was inexpressible in the first
+place.
+
+### What to do
+
+- When adding a capability, check the slot schema can *express* it before
+  assuming the model will convey it. If an operation exists in the writer
+  and the validator but no stage can emit it, it is unreachable — treat
+  that as a defect, not a gap.
+- Model intent as an explicit enumerated slot. Do not infer it downstream
+  from verbs in free text.
+- Make the absent case explicit in the prompt *and* enforce it in the
+  finalizer. Instructions alone are not a control.
+- When a user reports that Castor "did something else", suspect this
+  before suspecting the model: check whether the request was expressible
+  at all.
+- Add the prompt to `fixtures/benchmark/pipeline-test-prompts.txt` with
+  its expected outcome, so the next run regression-tests it.
+
+---
+
+## 4. Base models write weak IfcOpenShell code
+
+### Symptom
+
+Modify V3 has the model write IfcOpenShell code. Small local models make up helpers, use API
+keywords from older IfcOpenShell versions, and misread IFC semantics (a subtype mistaken for its
+parent, a zone treated as a spatial container). The code fails in the sandbox and uses up the
+repair budget, or it selects the wrong entities.
+
+### Why it matters
+
+Local-first means the default Modify model fits in 8–12 GB. IfcOpenShell is a very small, version-drifted
+share of what those models were trained on, so how well they know the API sets the ceiling
+on Modify's pass rate, whatever verification surrounds it.
+
+### Concrete example
+
+Model: `qwen2.5-coder:7b` via local Ollama (decision log, *review 6*). Verbatim prompt:
+
+```
+Create a new IfcZone called "Acoustic Zone 1"
+```
+
+Observed:
+
+```
+AttributeError: IfcZone has no attribute 'ContainsElements'
+```
+
+In the 2026-09-15 bake-off, 15 of the 7B row's 56 failures were rejections after three code errors
+(e.g. a hallucinated `by_guid` helper) and 19 were wrong selections
+([evaluation record](evaluation/2026-09-15-writeback-v3-bakeoff.md)).
+
+### Mitigations in place
+
+The reviewed API sheet (`writeback/services/api_sheet.py`, checked against the installed
+ifcopenshell), exact grounding strings from the index, sheet modules bound in the sandbox, up to two
+repairs that see the real error, and the scope gate. Wrong code ends in a repair or a rejection,
+never in a change outside the selection.
+
+### Residual risk
+
+The pass rate stays bounded by the model. Larger coder models help but need more graphics memory.
+
+### What to do
+
+Use the largest coder model the machine can hold without CPU offload. Fine-tuning a local model on
+execution-verified IfcOpenShell code is **tracked as future work** in
+[`brainstorming/ifc_code_model_training.md`](brainstorming/ifc_code_model_training.md).
+
+---
+
+## 5. Conflict-scan recall is bounded by retrieval, then by the model's reading of absence
+
+### Symptom
+
+The conflict scanner (the RAV surface, `docs/conflict-scan.md`) misses planted
+contradictions. The first measured run found 5 of 25 conflict triples
+(recall 0.20) and only 1 of 11 clear-cut ones, on a corpus where every
+conflict is a single property on a single element.
+
+### Why it matters
+
+RAV is advisory and never blocks, so a miss costs nothing at approval time;
+but a scanner that reports "no conflicts" on a model with planted ones gives
+false comfort, and the panel's question is whether the number moves when the
+cause is addressed, not whether it is known.
+
+### Concrete example
+
+Model: `qwen2.5-coder:7b` via local Ollama, corpus `fixtures/benchmark/rav/`,
+three runs. The thermal specification says external cavity walls
+(`Wall-Ext_102Bwk-75Ins-100LBlk-12P`) shall not exceed 0.18 W/m²K; the three
+walls carry 0.2359. Before the retrieval fix no thermal chunk ever reached a
+wall: embedding top-K per chunk returned the nearest five entities, three
+near-identical walls crowded each other out, and the case was never shown to
+the model. After the fix the walls are reached by the chunk that quotes their
+reference and the conflict is found on every run
+([record](evaluation/2026-09-15-rav-retrieval-fix.md)).
+
+### Mitigations in place
+
+Retrieval by lookup before retrieval by embedding (reference pass, label pass,
+then top-K), verification of the current value a finding claims against the
+indexed properties (a value the entity does not carry is stored as `(not set)`,
+never invented), attribution of a finding to the chunk that quotes the
+requirement, and the Modify context size passed on every call so a longer
+prompt is not truncated. Measured on 2026-09-15, three repeats against a
+three-repeat baseline: precision 0.60 → 0.70, recall 0.16 → 0.65, F1 0.25 →
+0.68 on the coder model, and precision 0.29 → 0.71, recall 0.20 → 0.77, F1
+0.24 → 0.74 on `llama3.1:8b`; clear-conflict recall 1/11 → 6–8/11 and
+9–10/11; every key entity reached by its right document (11/15 → 15/15). The recall and F1 deltas exceed the
+baseline's spread by more than an order of magnitude; precision did not fall.
+
+### Residual risk
+
+What still fails is the model, not retrieval: an absent property the
+requirement targets (acoustic rating on doors, fire rating on a slab) is read
+as "not applicable"; the one marginal case (0.117 against ≤ 0.10) is rounded
+away; two documents that disagree about the same walls are not both reported;
+"as designed" values in the same excerpt as a limit are compared against the
+limit. Aligned requirements held on 18–23 of 26 after the fix (21–25 of 26
+before): the price of reaching more entities is a few more chances to
+misapply a requirement. The corpus is small and self-labelled.
+
+### What to do
+
+Treat RAV output as a checklist for a person, not a verdict. Cite elements in
+specifications by their model reference; the reference pass depends on it.
+Expert labelling of a larger set is the open validation item
+(`docs/fmp-delivery/rubric-map.md` §5).
 
 ---
 

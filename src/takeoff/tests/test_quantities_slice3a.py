@@ -14,6 +14,9 @@ from takeoff.services.quantity_preparation_ui import (
     parse_basis_overrides_from_query,
 )
 
+# TABLE-04 renders core columns only by default; value columns are opt-in.
+_VALUE_COL_ORDER = "ifc_class,name,quantity,measurement,unit,classification_code,status,actions"
+
 
 def _wall_slab_project():
     """Project with Wall (NetArea + NetVolume) and Slab (NetVolume) for override tests."""
@@ -167,7 +170,10 @@ def test_count_basis_uses_element_count(client):
     )
     wall = next(r for r in ui["prep_rows"] if r["ifc_class"] == "IfcWall")
     assert wall["quantity_basis"] in {"Count", "element_count"}
-    assert wall["measurement_type"] == "count" or wall["quantity_basis"] in {"Count", "element_count"}
+    assert wall["measurement_type"] == "count" or wall["quantity_basis"] in {
+        "Count",
+        "element_count",
+    }
     assert wall["total"] == 2
     assert wall["missing_quantity_source"] is False
 
@@ -183,16 +189,21 @@ def test_page_get_overrides_and_boundaries(client):
     assert 'data-qty-ifc-class="IfcWall"' in default_html
     assert 'data-qty-basis-unresolved="1"' in default_html
     # TABLE-04 one-table: Generate Preparation rail removed; Assign values is primary.
-    assert "Assign metadata" in default_html or "Assign values" in default_html or "Generate Preparation Data Model" in default_html
-    assert 'name="basis_IfcWall"' in default_html or 'data-testid="quantities-prep-table"' in default_html
+    assert "Assign values" in default_html or "Generate Preparation Data Model" in default_html
+    assert (
+        'name="basis_IfcWall"' in default_html
+        or 'data-testid="quantities-prep-table"' in default_html
+    )
 
+    # TABLE-04 default layout is core columns only; opt the value columns in.
     overridden = client.get(
         url,
         {
             "basis_IfcWall": "NetArea",
             "basis_IfcSlab": "NetVolume",
             "table_layout": "v2",
-            "col_order": "ifc_class,name,quantity,measurement,status,actions",
+            "col_order": _VALUE_COL_ORDER,
+            "source_classification_code": "manual_field",
         },
     ).content.decode()
     # Match full prep row by ifc class attribute (unresolved flag precedes ifc class).
@@ -204,7 +215,7 @@ def test_page_get_overrides_and_boundaries(client):
     assert "12.5" in wall_chunk
     # Placeholder option text may still appear in the measurement <select>.
     assert "Missing basis rule" not in wall_chunk
-    assert "Missing classification" in wall_chunk or "classification" in wall_chunk.lower()
+    assert "Missing classification" in wall_chunk
 
     slab_attr_pos = overridden.index('data-qty-ifc-class="IfcSlab"')
     slab_tr_start = overridden.rfind("<tr", 0, slab_attr_pos)
@@ -285,13 +296,9 @@ def test_unit_basis_derivation_copy_and_available_measures(client):
     assert wall_rule["quantity_basis"] == "NetArea"
 
     client.force_login(project.owner)
-    # REVIEW-08 defaults omit measurement/unit/quantity — request them explicitly.
     html = client.get(
         reverse("takeoff:qto", kwargs={"pk": project.pk}),
-        {
-            "table_layout": "v2",
-            "col_order": "ifc_class,name,quantity,measurement,unit,status,actions",
-        },
+        {"table_layout": "v2", "col_order": _VALUE_COL_ORDER},
     ).content.decode()
     # TABLE-04: detailed unit-basis derivation notes may live under Advanced only.
     assert (
@@ -299,12 +306,10 @@ def test_unit_basis_derivation_copy_and_available_measures(client):
         or 'data-testid="quantities-units-modal"' in html
         or "Output units" in html
     )
-    assert 'data-testid="qty-prep-col-measurement"' in html or 'data-testid="qty-prep-col-measurement-basis"' in html
-    assert 'data-testid="qty-prep-col-model-unit"' in html or 'data-testid="qty-prep-col-unit"' in html
-    assert (
-        'data-testid="qty-prep-col-total-quantity"' in html
-        or 'data-testid="qty-prep-col-quantity"' in html
-    )
+    # Quantity, Measurement and Unit stay separate opt-in columns.
+    assert 'data-testid="qty-prep-col-quantity"' in html
+    assert 'data-testid="qty-prep-col-measurement"' in html
+    assert 'data-testid="qty-prep-col-unit"' in html
     if 'data-testid="qty-basis-rules-table"' in html:
         assert (
             "model volume units"
@@ -324,7 +329,6 @@ def test_unit_basis_derivation_copy_and_available_measures(client):
         or 'data-testid="qty-available-measures-IfcBeam"' in html
         or 'data-testid="quantities-set-measurement-modal"' in html
         or "Set measurement" in html
-        or "Apply measurement" in html
     )
     assert 'data-testid="qty-prep-scroll-hint"' in html or "qty-prep-table-compact" in html
     assert "qty-prep-table-compact" in html or 'data-testid="quantities-prep-table"' in html

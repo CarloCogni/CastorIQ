@@ -146,9 +146,7 @@ def test_class_only_filter_truthful_baseline():
         properties={"Qto_ColumnBaseQuantities.NetVolume": 2.0},
     )
     session = SessionStore()
-    full = build_qty_prep_session_ui(
-        project=project, user=project.owner, session=session, query={}
-    )
+    full = build_qty_prep_session_ui(project=project, user=project.owner, session=session, query={})
     baseline = full["qty_prep"]["baseline_row_count"]
     assert baseline >= 2
     filtered = build_qty_prep_session_ui(

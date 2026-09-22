@@ -22,9 +22,9 @@ There are three categories a developer typically thinks about. Here is where eac
 
 Four principles govern every test in this suite.
 
-**Test the riskiest boundary first.** The `FilterEngine` and the Tier 1 / Tier 2 / Tier 3 pipeline are the highest-stakes code in Castor. A wrong filter targets the wrong entities. A broken tier escalation silently corrupts an IFC file. These services have the deepest test coverage. Model `__str__` methods and view auth checks are tested last.
+**Test the riskiest boundary first.** The sandbox, the round-trip diff and the verifier are the highest-stakes code in Castor. A scope check that lets a stray change through silently corrupts an IFC file; a flag rule that misses a value lets it through unreviewed. These have the deepest test coverage. Model `__str__` methods and view auth checks are tested last.
 
-**Mock at the boundary, not inside.** The LLM (Ollama), the embedding service, Git, and IfcOpenShell are external dependencies — they are always patched at the callsite boundary. Internal service logic (filter resolution, validation, plan structure) is never mocked: we test the real thing. This distinction is load-bearing. If you mock `FilterEngine.resolve()` in a pipeline test, you have tested nothing.
+**Mock at the boundary, not inside.** The LLM (Ollama), the embedding service, Git, and IfcOpenShell are external dependencies — they are always patched at the callsite boundary. Internal service logic (grounding, the scope check, the flag rule, the sandbox protocol) is never mocked: we test the real thing. This distinction is load-bearing. If you mock `verifier.scope_error()` in a pipeline test, you have tested nothing.
 
 **No `@pytest.mark.django_db` where not needed.** Pure-logic tests (token utils, emitters, message normalizer, registry) carry no DB marker and run in milliseconds without PostgreSQL. DB markers are reserved for tests that genuinely require the ORM. This keeps the fast feedback loop fast.
 
@@ -53,15 +53,16 @@ Four principles govern every test in this suite.
 | Layer | Marker | Needs DB? | Extra prerequisites | Examples |
 |---|---|---|---|---|
 | Pure logic | _(none)_ | No | — | `test_token_utils`, `test_message_normalizer`, `test_emitters`, `test_llm_model_registry` |
-| LLM-mocked | _(none)_ | No | — | `test_triage_classifier`, `test_slot_extractor`, `test_hint_generator`, `test_tier3_executor`, `test_git_service`, `test_token_budget` |
-| DB-dependent | `@pytest.mark.django_db` | Yes | Docker + PostgreSQL | `test_filter_engine`, `test_tier1_validator`, `test_models` |
+| LLM-mocked | _(none)_ | No | — | `test_generator`, `test_explainer`, `test_git_service`, `test_token_budget` |
+| DB-dependent | `@pytest.mark.django_db` | Yes | Docker + PostgreSQL | `test_pipeline`, `test_execution_service`, `test_models` |
 | Pipeline integration smoke | `@pytest.mark.slow` | Yes | Docker + PostgreSQL | `test_modification_pipeline` |
 | IfcOpenShell integration | `@pytest.mark.slow` | No | Real `.ifc` fixture (committed) | `test_ifc_writer_integration` |
 | Playwright E2E | `@pytest.mark.slow` | Yes | Docker + PostgreSQL + Chromium | `tests/e2e/` |
+| **NL benchmark** | _(not pytest)_ | Yes | Docker + PostgreSQL + a live model | `manage.py benchmark_writeback` — see below |
 
 **Guard:** never use `@pytest.mark.django_db` on a test that does not touch the ORM. Every spurious DB marker slows down the fast suite.
 
-**Never:** mock `FilterEngine`, `Tier1Validator`, or any internal service logic. These are what the tests exist to exercise.
+**Never:** mock the verifier, the sandbox, the diff or any internal service logic. These are what the tests exist to exercise; the pipeline tests hand `ModifyPipeline` a scripted generator and let everything after the model run for real.
 
 ---
 
@@ -103,19 +104,16 @@ Castor/
       factories.py              ← ModificationProposalFactory, ConflictFactory
       test_message_normalizer.py  ← Pure regex — no DB
       test_emitters.py          ← NullEmitter, CapturingEmitter — no DB
-      test_filter_engine.py     ← FilterEngine.resolve() — @django_db
-      test_tier1_validator.py   ← Tier1Validator full validation matrix — @django_db
-      test_triage_classifier.py ← stage 1 — segment kinds, mock LLM, no DB
-      test_slot_extractor.py    ← stage 2 — per-kind slot prompts + guards, mock LLM, no DB
-      test_tier_router.py       ← stage 3.5 — deterministic routing, no LLM, no DB
-      test_hint_generator.py    ← Tier 0 hints (Templated / Registry / LLM-fallback gating), mock LLM
-      test_tier2_planner.py     ← _validate_plan + generate_plan — mock LLM, no DB
-      test_tier3_executor.py    ← Code validation only — pure Python, no DB
+      test_grounding.py         ← the index lookup and the one type match — @django_db
+      test_verifier.py          ← scope check, aggregation, the one flag rule — pure
+      test_generator.py         ← code extraction, REJECT line, the repair prompt, mock LLM, no DB
+      test_explainer.py         ← the blind explanation, mock LLM, no DB
+      test_pipeline.py          ← ground → generate → run → verify with a scripted model — @slow
+      test_execution_service.py ← the approval swap: lock, fingerprint, commit, index — @django_db
       test_git_service.py       ← Patches git.Repo — no file I/O
       test_models.py            ← ModificationProposal, GitCommit __str__ and defaults
       test_views.py             ← Approve/reject/apply auth gates
       test_consumers.py         ← Async WebSocket consumer — @pytest.mark.asyncio
-      test_modification_pipeline.py  ← Full Tier 1 via CapturingEmitter — @pytest.mark.slow
 ```
 
 **Root `tests/conftest.py`** provides cross-app fixtures used when the test spans more than one Django app — e.g. a view test that needs a user, project, and IFC file together. **App-level `conftest.py`** (currently only `writeback/tests/conftest.py`) provides specialised fixtures that are only meaningful in that domain, importing factories from sibling apps.
@@ -165,7 +163,7 @@ assert "validate" in phases
 
 | Component | Reason |
 |---|---|
-| `Tier3Executor._run_sandboxed()` with real code | Executes arbitrary Python; covered by end-to-end only |
+| `code_sandbox.run_code_subprocess()` with real code | Spawns a child process running arbitrary Python; covered by end-to-end only |
 | `GitService.track_ifc()` / `snapshot()` with a real Git repo | Real repo in tests is slow and brittle; gated at unit level by patching `Repo` |
 | `ifc_processor.services.parser.*` | Heavy IfcOpenShell parsing; slow integration test only |
 | `EmbeddingService.embed()` internals | Wraps Ollama; always mocked at every consumer |
@@ -173,6 +171,131 @@ assert "validate" in phases
 | `GuardianService` standalone | Fully mocked in the pipeline smoke test via `monkeypatch` |
 | `ConflictScanService` | Too large a mock surface for meaningful unit tests |
 | Django admin | No custom admin logic in this project |
+
+---
+
+## Natural-Language Benchmark
+
+> This section is the operational how-to for the NL writeback benchmark. For the
+> overview of **all** Castor benchmarks — including the IFC parser performance
+> harness in `benchmarks/ifc_parser/`, which is not covered here — see
+> [docs/benchmarks.md](benchmarks.md).
+
+Every layer above mocks the LLM. That is correct for unit tests — but it means
+the suite can be entirely green while the system fails to understand a sentence
+a real user would type. `manage.py benchmark_writeback` closes that gap: real
+prompts, real model, real IFC write.
+
+It is **not** part of the pytest suite and never will be. It needs a live model
+and a processed project, it takes minutes, and its results are non-deterministic.
+Run it before shipping a pipeline change, and when choosing a model.
+
+### Four columns, deliberately separate
+
+| Column | Question | Varies by model? |
+|---|---|---|
+| **Targets match** | Did `select()` return exactly the entities the corpus names (resolved through the index)? | **Yes** — this is the bake-off dimension |
+| **Diff match** | Does the measured before/after diff contain the rows the corpus expects, with the right counts? | Yes |
+| **Integrity** | Did nothing change outside the selection, and did no geometry move? | No — the pipeline gates on it, so it should stay 100% |
+| **Reject / no-change** | Were requests that must be declined declined, and requests that already hold reported as "already so"? | Yes |
+
+The diff is measured by the harness, never reported by the code: the sandbox
+child snapshots the scratch copy before and after `select` + `modify`
+(`ifc_processor/services/ifc_diff.py`) across entity population (typed, so a
+created zone or a deleted wall reads as such), a per-product geometry hash over
+the world placement matrix and the representation tree, every property set,
+the tracked attributes, and the relationship-derived values (container,
+materials, classifications, groups, type object). A change on an entity
+`select()` did not return, or any geometry drift, is a scope violation the
+pipeline sends back for repair; the benchmark's integrity column would show a
+regression in that gate. The same module backs the standalone round-trip suite
+`ifc_processor/tests/test_ifc_round_trip.py` and the relationship-diff suite
+`ifc_processor/tests/test_ifc_diff_relationships.py`.
+
+**Why targets, not routing.** V2 scored *understanding* as "did the router pick
+the tier the corpus says". V3 has no router: the model writes the selection and
+the harness executes it, so the honest question is whether the selected
+GlobalIds equal the expected set. A model that writes elegant mutation code on
+the wrong walls scores zero here, which is the failure that matters.
+
+### The corpus
+
+`fixtures/benchmark/pipeline-test-prompts.txt` — 98 prompts over 20 sections.
+Expectations are human-readable and GlobalId-free; the runner resolves them
+through the index at run time:
+
+```
+# targets: IfcWall x5 in "Ground Floor"            → select() must return exactly these
+# targets: IfcDoor x2 where Pset_DoorCommon.IsExternal = false
+# diff:    Pset_WallCommon.FireRating = EI60 x5     → aggregated diff row with that count
+# diff:    - Pset_WallCommon.Reference x5           → property removed
+# diff:    + IfcZone x3  /  - IfcWall x1            → entities created / deleted
+# diff:    Container = Roof x1                      → a relationship value (also Materials,
+                                                      Classifications, Groups)
+# reject:  ["geometry"]                             → must be declined or rejected
+# no-change:                                        → already so
+# advisory: <why>                                   → run and report, never scored
+```
+
+Bound literally to `fixtures/benchmark/Ifc4_SampleHouse.ifc`, which is committed
+(`.gitignore` ignores `*.ifc` and negates that path). Load it into a project and
+let the pipeline finish before benchmarking.
+
+### Running it
+
+```bash
+cd src
+
+# Fast iteration: one section.
+uv run manage.py benchmark_writeback --project <uuid> --filter 1
+
+# Full pass, saved as a baseline.
+uv run manage.py benchmark_writeback --project <uuid> --json ../runs/baseline.json
+
+# Did my pipeline change break anything?
+uv run manage.py benchmark_writeback --project <uuid> --baseline ../runs/baseline.json
+
+# Which model should we use? (one artifact per row; --note records the hardware)
+uv run manage.py benchmark_writeback --project <uuid> --repeat 2 \
+    --model ollama:qwen2.5-coder:7b --model anthropic:claude-sonnet-4-6 \
+    --note vram=8GB --json ../runs/bakeoff.json
+```
+
+`--repeat N` runs each case N times and reports the worst result — the honest
+way to handle LLM non-determinism rather than averaging it away. Before trusting
+a single-run "regression", re-run against an unchanged pipeline to see the noise
+floor.
+
+Baseline `--json` snapshots go under `runs/`, which is gitignored; commit a
+known-good baseline deliberately with `git add -f` — the convention is defined
+in [docs/benchmarks.md](benchmarks.md#results-convention-runs).
+
+### Debugging one failing case
+
+The benchmark tells you *that* a prompt failed, and the artifact tells you
+*where*: every case in the `--json` file carries the generated code, the
+rejection reason or the outcome, the explanation and the integrity detail. To
+dissect one case, put it alone in a corpus file and run
+`benchmark_writeback --corpus that-file.txt`; the pipeline logs the grounding
+size and every phase at INFO.
+
+### Safety
+
+The project's own IFC file is never modified. Each case executes against a fresh
+copy in a `TemporaryDirectory`, so cases cannot contaminate each other either —
+which matters, because several corpus cases assert the `SET_PROPERTY` →
+`ADD_PROPERTY` fallback that only fires while `FireRating` is still absent.
+
+No proposal is persisted. `FailureRecord`s created by expected rejections (about
+a third of the corpus) are purged at the end unless `--keep-failure-records` is
+passed, so a run cannot bury real production failures.
+
+The parser and verifiers *are* unit-tested, with no LLM required:
+
+```bash
+uv run pytest src/writeback/tests/test_benchmark_corpus.py \
+              src/writeback/tests/test_benchmark_verify.py -q
+```
 
 ---
 
@@ -189,30 +312,25 @@ All patches use `monkeypatch` or `unittest.mock.patch`. Prefer `monkeypatch` —
 | Ollama API (token budget) | `core.token_budget._fetch_context_window_from_ollama` |
 | WebSocket send | `patch.object(consumer, 'send_json')` |
 
-**LLM mock pattern** — patch `get_llm` per pipeline-stage module, since each stage instantiates its own LLM lazily on the first call:
+**LLM mock pattern** — V3 makes two model calls (code, blind explanation) plus Guardian; each module fetches its LLM through `get_llm`, so patch it per module:
 
 ```python
 @pytest.fixture
 def mock_llm():
     mock = MagicMock()
     with (
-        patch("writeback.services.triage_classifier.get_llm", return_value=mock),
-        patch("writeback.services.slot_extractor.get_llm", return_value=mock),
-        patch("writeback.services.entity_resolver.get_llm", return_value=mock),
-        patch("writeback.services.tier2_planner.get_llm", return_value=mock),
-        patch("writeback.services.tier3_planner.get_llm", return_value=mock),
-        patch("writeback.services.tier3_reviewer.get_llm", return_value=mock),
+        patch("writeback.services.generator.get_llm", return_value=mock),
+        patch("writeback.services.explainer.get_llm", return_value=mock),
+        patch("writeback.services.guardian_service.get_llm", return_value=mock),
     ):
         yield mock
 ```
 
-Alternatively, when testing a single stage in isolation, inject a mock via the constructor — the pipeline stages accept an optional `llm=` kwarg specifically for this:
+For the pipeline itself, do not mock the model at all: hand `ModifyPipeline` a scripted generator that returns canned answers in order (see `ScriptedGenerator` in `writeback/tests/test_pipeline.py`) and let the real sandbox, diff and verifier run on the fixture file:
 
 ```python
-mock_llm = MagicMock()
-mock_llm.invoke.return_value.content = json.dumps({"segments": [...]})
-classifier = TriageClassifier(llm=mock_llm)
-result = classifier.classify("set FireRating to EI120 on all walls")
+pipeline = ModifyPipeline(project, generator=ScriptedGenerator(RENAME_BLOCK))
+outcome = pipeline.run("Rename the wall to Wall-Renamed", ifc_file=ifc_file, emitter=CapturingEmitter())
 ```
 
 ---
@@ -266,22 +384,21 @@ uv run pytest --cov=src --cov-report=term-missing --cov-report=html -m "not slow
 # Skip slow integration tests only (DB tests still run)
 uv run pytest -m "not slow"
 
-# Fast suite only — skip DB and slow integration tests
-uv run pytest -m "not slow" --ignore=src/writeback/tests/test_filter_engine.py \
-    --ignore=src/writeback/tests/test_tier1_validator.py
+# Fast suite only — skip the slow pipeline and fixture-file tests
+uv run pytest -m "not slow"
 
 # Pure-logic tests only (no DB, no Docker required)
 uv run pytest src/core/tests/ \
     src/writeback/tests/test_message_normalizer.py \
     src/writeback/tests/test_emitters.py \
-    src/writeback/tests/test_tier3_executor.py \
+    src/writeback/tests/test_verifier.py \
     src/writeback/tests/test_git_service.py
 
 # Single test file
-uv run pytest src/writeback/tests/test_filter_engine.py -v
+uv run pytest src/writeback/tests/test_verifier.py -v
 
 # Single test by name
-uv run pytest src/writeback/tests/test_filter_engine.py -k "test_empty_filter" -v
+uv run pytest src/writeback/tests/test_verifier.py -k "test_scope_error" -v
 
 # App-specific coverage with missing-line report
 uv run pytest src/writeback/tests/ --cov=src/writeback --cov-report=term-missing -v
@@ -338,7 +455,7 @@ The HTML coverage report (`htmlcov/index.html`) opens in a browser. Click any fi
 
 **What to look for:**
 
-- **Red lines in `writeback/services/`** — highest risk. Uncovered branches in `filter_engine.py`, `tier1_validator.py`, or `modification_service.py` mean potential silent IFC corruption.
+- **Red lines in `writeback/services/` and `ifc_processor/services/ifc_diff.py`** — highest risk. Uncovered branches in `verifier.py`, `ifc_diff.py` or `execution_service.py` mean potential silent IFC corruption.
 - **Red lines in `core/token_budget.py`** — context overflow guard. Uncovered fallback branches risk LLM context silently truncating.
 - **Red lines in views** — usually missing auth-gate tests. Lower risk but important for security.
 
@@ -347,8 +464,8 @@ The HTML coverage report (`htmlcov/index.html`) opens in a browser. Click any fi
 | Layer | Target coverage |
 |---|---|
 | Pure logic (token utils, normalizer) | 100% |
-| LLM-mocked services (classifier, tier3, git) | ≥ 85% |
-| DB-dependent services (filter engine, validator) | ≥ 80% |
+| LLM-mocked services (generator, explainer, Guardian, git) | ≥ 85% |
+| DB-dependent services (grounding, proposal, execution) | ≥ 80% |
 | Views | ≥ 70% (auth gates covered) |
 | Integration smoke | Not counted in coverage — presence is the signal |
 

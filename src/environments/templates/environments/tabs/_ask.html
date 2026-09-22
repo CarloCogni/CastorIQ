@@ -554,5 +554,17 @@ const AskChat = {
     });
 
     AskChat.initWebSocket();
+
+    // Prefill handed off from the Explore tab's "Ask about this" button
+    // (sessionStorage survives the .tab-ask navigation; setTimeout would not).
+    const askPrefill = sessionStorage.getItem('castor.prefill.ask');
+    if (askPrefill && AskChat.inputEl) {
+        AskChat.inputEl.value = askPrefill;
+        if (typeof autoGrow === 'function') autoGrow(AskChat.inputEl);
+        AskChat.inputEl.focus();
+        const len = AskChat.inputEl.value.length;
+        AskChat.inputEl.setSelectionRange(len, len);
+        sessionStorage.removeItem('castor.prefill.ask');
+    }
 })();
 </script>

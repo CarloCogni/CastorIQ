@@ -13,9 +13,12 @@ from django.urls import reverse
 
 from environments.tests.factories import ProjectFactory, UserFactory
 from ifc_processor.tests.factories import IFCEntityFactory, IFCFileFactory
+from ifc_viewer.services.colormap import _LINKED as LINKED_COLOR
+from ifc_viewer.services.colormap import _NO_SCHEDULE as NO_SCHEDULE_COLOR
+from ifc_viewer.services.colormap import _NOT_LINKED as NOT_LINKED_COLOR
 from ifc_viewer.services.colormap import build_colormap
 from ifc_viewer.services.gap_analysis import build_gap_analysis
-from scheduling.models import TaskEntityBinding
+from scheduling.models import ScheduleSource, TaskEntityBinding
 from scheduling.services.governance.classifier import GovernanceStateClassifier
 from scheduling.services.governance.evidence import evidence_label_for_binding
 from scheduling.services.governance.policy import TRUSTED_BINDING_POLICY_ID
@@ -28,6 +31,11 @@ from scheduling.services.link_resolver import (
     linked_entity_gids_for_project,
 )
 from scheduling.tests.factories import TaskFactory
+
+
+def _schedule_source(project) -> ScheduleSource:
+    """Persist the import audit record that makes Linked / Not linked meaningful."""
+    return ScheduleSource.objects.create(project=project, filename="programme.xer", task_count=1)
 
 
 def _bind(task, gid: str, *, needs_review: bool = False, method=None, confidence=1.0):
@@ -55,14 +63,52 @@ def test_trusted_query_returns_only_accepted():
 
 @pytest.mark.django_db
 def test_colormap_excludes_review_bindings():
-    """Colormap schedule_status excludes review bindings."""
+    """Colormap schedule_status paints review-only bindings as Not linked."""
     project = ProjectFactory()
+    _schedule_source(project)
     ifc_file = IFCFileFactory(project=project)
     entity = IFCEntityFactory(ifc_file=ifc_file, global_id="GID-C", properties={})
     _bind(TaskFactory(project=project), entity.global_id, needs_review=True)
 
     result = build_colormap(ifc_file, "schedule_status", project_id=str(project.pk))
-    assert result["colormap"][entity.global_id] == "#94a3b8"
+
+    assert result["colormap"][entity.global_id] == NOT_LINKED_COLOR
+    assert result["counts"]["linked"] == 0
+    assert result["counts"]["not_linked"] == 1
+
+
+@pytest.mark.django_db
+def test_colormap_paints_trusted_binding_as_linked():
+    """A trusted binding is the only thing that earns the Linked colour."""
+    project = ProjectFactory()
+    _schedule_source(project)
+    ifc_file = IFCFileFactory(project=project)
+    entity = IFCEntityFactory(ifc_file=ifc_file, global_id="GID-L", properties={})
+    _bind(TaskFactory(project=project), entity.global_id, needs_review=False)
+
+    result = build_colormap(ifc_file, "schedule_status", project_id=str(project.pk))
+
+    assert result["colormap"][entity.global_id] == LINKED_COLOR
+    assert result["counts"]["linked"] == 1
+
+
+@pytest.mark.django_db
+def test_colormap_without_schedule_source_is_honest_not_not_linked():
+    """No imported schedule reports "No schedule imported", not a link verdict.
+
+    Not-linked is a claim about a schedule that exists; without a
+    ``ScheduleSource`` there is nothing to be unlinked from.
+    """
+    project = ProjectFactory()
+    ifc_file = IFCFileFactory(project=project)
+    entity = IFCEntityFactory(ifc_file=ifc_file, global_id="GID-NS", properties={})
+
+    result = build_colormap(ifc_file, "schedule_status", project_id=str(project.pk))
+
+    assert result["colormap"][entity.global_id] == NO_SCHEDULE_COLOR
+    assert result["legend"] == [{"label": "No schedule imported", "color": NO_SCHEDULE_COLOR}]
+    assert result["counts"]["no_schedule"] == 1
+    assert result["counts"]["not_linked"] == 0
 
 
 @pytest.mark.django_db
@@ -82,6 +128,7 @@ def test_gap_analysis_excludes_review_bindings():
 def test_property_only_not_trusted():
     """Activity ID property without accepted binding is not trusted."""
     project = ProjectFactory()
+    _schedule_source(project)
     ifc_file = IFCFileFactory(project=project)
     entity = IFCEntityFactory(
         ifc_file=ifc_file,
@@ -96,7 +143,9 @@ def test_property_only_not_trusted():
     assert result.primary == GovernanceCategory.PROPERTY_HINT
     assert result.trusted is False
     colormap = build_colormap(ifc_file, "schedule_status", project_id=str(project.pk))
-    assert colormap["colormap"][entity.global_id] == "#94a3b8"
+    # An IFC Activity Id string never earns the Linked colour.
+    assert colormap["colormap"][entity.global_id] == NOT_LINKED_COLOR
+    assert colormap["colormap"][entity.global_id] != LINKED_COLOR
 
 
 @pytest.mark.django_db

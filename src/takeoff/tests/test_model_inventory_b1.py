@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import re
-
 import pytest
 from django.urls import reverse
 
@@ -145,7 +143,7 @@ def test_inventory_no_trusted_links_shows_zero_coverage(client):
 
 
 @pytest.mark.django_db
-def test_hub_nav_model_points_at_viewer(client):
+def test_hub_nav_includes_model_inventory(client):
     project = ProjectFactory()
     client.force_login(project.owner)
     html = client.get(
@@ -153,31 +151,4 @@ def test_hub_nav_model_points_at_viewer(client):
     ).content.decode()
 
     assert 'data-testid="hub-model"' in html
-    viewer = reverse("ifc_viewer:viewer", kwargs={"pk": project.pk})
-    model_tag = next(
-        t.group(0)
-        for t in re.finditer(r"<a\b[^>]*>", html)
-        if 'data-testid="hub-model"' in t.group(0)
-    )
-    assert viewer in model_tag
-    assert reverse("takeoff:model_inventory", kwargs={"pk": project.pk}) not in model_tag
-
-
-@pytest.mark.django_db
-def test_hub_nav_controls_stays_executive(client):
-    """Packaging founder contract: Controls stays primary executive_controls."""
-    project = ProjectFactory()
-    client.force_login(project.owner)
-    html = client.get(
-        reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=data_sources"
-    ).content.decode()
-
-    controls = reverse("scheduling:executive_controls", kwargs={"pk": project.pk})
-    controls_tag = next(
-        t.group(0)
-        for t in re.finditer(r"<a\b[^>]*>", html)
-        if 'data-testid="hub-controls"' in t.group(0)
-    )
-    assert controls in controls_tag
-    assert "model_inventory" not in controls_tag
-    assert "inventory" not in controls_tag
+    assert reverse("takeoff:model_inventory", kwargs={"pk": project.pk}) in html

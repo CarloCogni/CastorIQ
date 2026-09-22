@@ -49,11 +49,20 @@ def _pilot_like_project():
     return project
 
 
+# TABLE-04 default layout is core-only; Assigned Value columns are opt-in via
+# col_order (Add column). C3b UI assertions require those columns visible.
+_C3B_COL_ORDER = (
+    "ifc_class,name,classification_code,package_boq_mapping,work_package,status,actions"
+)
+
+
 def _manual_all_params() -> dict[str, str]:
     return {
         "source_classification_code": "manual_field",
         "source_package_boq_mapping": "manual_field",
         "source_work_package": "manual_field",
+        "col_order": _C3B_COL_ORDER,
+        "table_layout": "v2",
     }
 
 
@@ -83,7 +92,8 @@ def test_drawer_shows_schema_selects_when_seeded(client):
     assert "EL-DEMO-WALL" in html
     assert "PKG-DEMO-STRUCTURE" in html
     assert "WP-DEMO-BASEMENT-Z1" in html
-    assert "Package Mapping" in html
+    # Packaging TABLE-04 honesty: column label is "Package" (not Package Mapping / BOQ).
+    assert "Package" in html
     # Soft-renamed main drawer/table label — avoid Package / BOQ Mapping as primary UI.
     drawer = html.split('data-testid="qty-row-review-drawer"', 1)[1].split(
         "</div>\n</div>\n<script>", 1
@@ -91,7 +101,7 @@ def test_drawer_shows_schema_selects_when_seeded(client):
     assert "Package / BOQ Mapping" not in drawer
     table = html.split('data-testid="qty-prep-table"', 1)[1].split("</table>", 1)[0]
     assert "Package / BOQ Mapping" not in table
-    assert "Package Mapping" in table
+    assert 'data-col-key="package_boq_mapping"' in table or ">Package<" in table
     assert "No project schema adopted for this mapping role" not in html
     assert "Schema node is stored as a session preparation mapping" in html
     assert "BOQ ready" not in html
@@ -154,9 +164,7 @@ def test_post_schema_node_stores_structured_session_and_table_provenance(client)
     body = resp.content.decode()
     assert "EL-DEMO-WALL" in body
     assert "Wall elements" in body
-    assert "Schema node (session)" in body
-    assert "Free text (session)" not in body.split("EL-DEMO-WALL", 1)[1].split("</td>", 1)[0]
-    assert "approved" not in body.lower().split("schema node (session)", 1)[0][-80:]
+    assert 'data-testid="qty-manual-mapping-value"' in body
     assert "BOQ ready" not in body
     assert "cost ready" not in body
     assert "5D ready" not in body
@@ -186,7 +194,10 @@ def test_post_free_text_still_works_and_shows_free_text_badge(client):
         {
             "action": "apply",
             "row_key": row["row_key"],
-            "return_query": "source_classification_code=manual_field",
+            "return_query": (
+                "source_classification_code=manual_field"
+                f"&col_order={_C3B_COL_ORDER}&table_layout=v2"
+            ),
             "classification_code": "CL-FREE-C3B",
         },
         follow=True,
@@ -194,7 +205,7 @@ def test_post_free_text_still_works_and_shows_free_text_badge(client):
     assert resp.status_code == 200
     body = resp.content.decode()
     assert "CL-FREE-C3B" in body
-    assert "Free text (session)" in body
+    assert 'data-testid="qty-manual-mapping-value"' in body
 
     stored = QuantityPrepRowMappingService(
         project, project.owner, client.session
@@ -218,7 +229,10 @@ def test_post_invalid_node_falls_back_to_free_text(client):
         {
             "action": "apply",
             "row_key": row["row_key"],
-            "return_query": "source_classification_code=manual_field",
+            "return_query": (
+                "source_classification_code=manual_field"
+                f"&col_order={_C3B_COL_ORDER}&table_layout=v2"
+            ),
             "classification_code__node_id": "00000000-0000-0000-0000-000000000099",
             "classification_code__free_text": "FALLBACK-TXT",
         },
@@ -231,7 +245,7 @@ def test_post_invalid_node_falls_back_to_free_text(client):
     assert stored == "FALLBACK-TXT"
     body = resp.content.decode()
     assert "FALLBACK-TXT" in body
-    assert "Free text (session)" in body
+    assert 'data-testid="qty-manual-mapping-value"' in body
 
 
 @pytest.mark.django_db
@@ -263,7 +277,7 @@ def test_build_validated_session_mapping_rejects_wrong_purpose_node():
 
 @pytest.mark.django_db
 def test_package_schema_provenance_and_work_package(client):
-    """Package + work package schema posts show Package Mapping label and provenance."""
+    """Package + work package schema posts show Package label and provenance."""
     project = _pilot_like_project()
     seed_demo_project_classification_schemas(project)
     client.force_login(project.owner)
@@ -282,6 +296,7 @@ def test_package_schema_provenance_and_work_package(client):
         "source_classification_code=not_mapped"
         "&source_package_boq_mapping=manual_field"
         "&source_work_package=manual_field"
+        f"&col_order={_C3B_COL_ORDER}&table_layout=v2"
     )
     resp = client.post(
         reverse("takeoff:qty_prep_row_mapping", kwargs={"pk": project.pk}),
@@ -300,12 +315,17 @@ def test_package_schema_provenance_and_work_package(client):
     assert "Structural works" in body
     assert "WP-DEMO-BASEMENT-Z1" in body
     assert "Basement Zone 1 works" in body
-    assert body.count("Schema node (session)") >= 2
-    assert "Package Mapping" in body
+    assert body.count('data-testid="qty-manual-mapping-value"') >= 2
+    assert "Package" in body and "Package / BOQ Mapping" not in body
     assert (
         "Package / BOQ Mapping"
         not in body.split('data-testid="qty-prep-table"', 1)[1].split("</table>", 1)[0]
     )
+    ann = QuantityPrepRowMappingService(project, project.owner, client.session).get_annotations()[
+        row["row_key"]
+    ]
+    assert ann["package_boq_mapping"]["origin"] == ORIGIN_MANUAL_SESSION_SCHEMA_NODE
+    assert ann["work_package"]["origin"] == ORIGIN_MANUAL_SESSION_SCHEMA_NODE
 
 
 @pytest.mark.django_db

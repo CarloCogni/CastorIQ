@@ -33,10 +33,19 @@ def test_legacy_export_label_demoted_not_preparation_model(client):
     assert 'data-testid="qty-advanced-export"' in html
     assert 'data-testid="qty-advanced-legacy-export-copy"' in html
 
+    # Inline copy separates the legacy cache dump from the working-table export.
     copy = html.split('data-testid="qty-advanced-legacy-export-copy"', 1)[1][:900].lower()
-    # Current demoted one-liner (Export table is the prep export primary CTA).
     assert "legacy qto cache export is separate from export table" in copy
-    assert "export preparation data model" not in html.lower()
+    assert "preparation data model" not in copy
+
+    # The help modal carries the full exclusion detail for the legacy dump.
+    help_copy = html.lower()
+    assert "dumps the optional legacy qto cache only" in help_copy
+    assert "may include cost/cache fields if present" in help_copy
+    assert "it does not export the generated" in help_copy
+    for excluded in ("schema", "source intent", "row reviews", "manual mapping values"):
+        assert excluded in help_copy
+    assert "export preparation model (session)" in help_copy
 
     # Remains demoted under Advanced tools, not primary toolbar.
     assert html.index('data-testid="quantities-optional-estimate"') > html.index(

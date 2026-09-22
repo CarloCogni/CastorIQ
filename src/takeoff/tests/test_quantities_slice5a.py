@@ -18,7 +18,6 @@ from takeoff.services.quantity_prep_row_review import (
     apply_session_reviews_to_ui,
     build_row_key,
 )
-from takeoff.services.quantity_prep_runtime import build_qty_prep_session_ui
 from takeoff.services.quantity_preparation_ui import build_preparation_ui
 
 
@@ -71,7 +70,7 @@ def test_row_key_deterministic():
 
 @pytest.mark.django_db
 def test_apply_and_clear_session_review(client):
-    """Session stores review status + note on instance keys; clear removes overlay."""
+    """Session stores review status + note; clear restores computed display."""
     project = _pilot_like_project()
     client.force_login(project.owner)
     url = reverse("takeoff:qto", kwargs={"pk": project.pk})
@@ -81,15 +80,8 @@ def test_apply_and_clear_session_review(client):
     assert "Session review only" in html
 
     qty_prep = build_preparation_ui(ModelQuantitiesService(project).build())
-    runtime = build_qty_prep_session_ui(
-        project=project,
-        user=project.owner,
-        session=client.session,
-        query={},
-    )
-    export_rows = runtime["qty_prep"].get("prep_rows_export") or []
-    assert export_rows
-    row_key = next(r["row_key"] for r in export_rows if r.get("ifc_class") == "IfcBeam")
+    row = next(r for r in qty_prep["prep_rows"] if r["ifc_class"] == "IfcBeam")
+    row_key = row["row_key"]
     before_register = dict(qty_prep["unresolved_register"])
 
     review_url = reverse("takeoff:qty_prep_row_review", kwargs={"pk": project.pk})
@@ -104,22 +96,14 @@ def test_apply_and_clear_session_review(client):
         follow=True,
     )
     assert resp.status_code == 200
+    body = resp.content.decode()
+    assert 'data-testid="qty-session-review-badge"' in body
+    assert 'data-testid="qty-session-review-status"' in body
+    assert "Reviewed for preparation" in body
+    # The note rides on the Review row button as data, not as a table cell label.
+    assert 'data-qty-session-note="Checked for preparation"' in body
 
-    # HIERARCHY-09: default visible rows are class grain; assert overlay on export leaf.
-    runtime2 = build_qty_prep_session_ui(
-        project=project,
-        user=project.owner,
-        session=client.session,
-        query={},
-    )
-    hit = next(
-        r
-        for r in (runtime2["qty_prep"].get("prep_rows_export") or [])
-        if r.get("row_key") == row_key
-    )
-    assert hit.get("session_review_status") == "reviewed_for_preparation"
-    assert "Checked for preparation" in str(hit.get("session_review_note") or "")
-
+    # Register unchanged: recompute from same config and compare counts in HTML cards.
     qty_after = build_preparation_ui(ModelQuantitiesService(project).build())
     assert qty_after["unresolved_register"] == before_register
 
@@ -129,19 +113,11 @@ def test_apply_and_clear_session_review(client):
         follow=True,
     )
     assert clear.status_code == 200
-    runtime3 = build_qty_prep_session_ui(
-        project=project,
-        user=project.owner,
-        session=client.session,
-        query={},
+    cleared = clear.content.decode()
+    assert (
+        'data-qty-session-review="1"'
+        not in cleared.split('data-qty-row-key="' + row_key, 1)[1].split("</tr>", 1)[0]
     )
-    cleared_hit = next(
-        r
-        for r in (runtime3["qty_prep"].get("prep_rows_export") or [])
-        if r.get("row_key") == row_key
-    )
-    assert not cleared_hit.get("session_review_status")
-
 
 
 @pytest.mark.django_db
@@ -166,7 +142,17 @@ def test_invalid_status_rejected(client):
 def test_forbidden_labels_absent_and_quantities_not_editable(client):
     project = _pilot_like_project()
     client.force_login(project.owner)
-    html = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk})).content.decode()
+    # Opt the value columns in — TABLE-04 defaults to core columns only.
+    html = client.get(
+        reverse("takeoff:qto", kwargs={"pk": project.pk}),
+        {
+            "table_layout": "v2",
+            "col_order": (
+                "ifc_class,name,quantity,classification_code,"
+                "package_boq_mapping,work_package,status,actions"
+            ),
+        },
+    ).content.decode()
     page_l = html.split('data-testid="quantities-page"', 1)[1].lower()
     for phrase in (
         "certified takeoff",
@@ -181,25 +167,23 @@ def test_forbidden_labels_absent_and_quantities_not_editable(client):
     for bad in ("approved", "certified", "validated", "published", "accepted"):
         assert bad not in ALLOWED_REVIEW_STATUSES
         assert all(bad not in label.lower() for label in REVIEW_STATUS_LABELS.values())
-    # REVIEW-08: quantity column (and qty-prep-total-cell) are opt-in, not default.
-    assert 'data-testid="qty-prep-total-cell"' not in html
-    assert 'name="total"' not in html
-    # Assign-values drawer may expose mapping inputs; prep totals stay non-inputs.
-    # With quantity column enabled, totals remain non-editable display cells.
-    html_qty = client.get(
-        reverse("takeoff:qto", kwargs={"pk": project.pk}),
-        {
-            "table_layout": "v2",
-            "col_order": "ifc_class,name,quantity,status,actions",
-        },
-    ).content.decode()
-    assert 'data-testid="qty-prep-total-cell"' in html_qty
-    assert 'name="total"' not in html_qty
-    # TABLE-04 one-table UI: Modify handoff CTA lives in help copy, not main page.
-    assert 'data-testid="quantities-modify-handoff"' not in html
+    assert 'data-testid="qty-prep-total-cell"' in html
+    # Quantity and mapping cells are display-only in the table itself; edits go
+    # through the Review row drawer and the batch Assign metadata modal.
+    table = html.split('data-testid="qty-prep-table"', 1)[1].split("</table>", 1)[0]
+    assert 'name="total"' not in table
+    assert 'name="classification_code"' not in table
+    assert 'name="package_boq_mapping"' not in table
+    assert 'name="work_package"' not in table
+    # Row-selection checkboxes are the only inputs; no value editors.
+    assert '<input type="text"' not in table
+    assert '<input type="number"' not in table
+    assert "<select" not in table
+    assert 'data-testid="qty-review-row-btn"' in table
+    # No Modify handoff control on this screen at all.
     assert 'data-testid="qty-send-unresolved-to-modify"' not in html
-    assert "Send unresolved rows to Castor Modify is disabled" in html
-    assert "Raw Indexed Quantity Inventory" in html or 'data-testid="quantities-model-reference"' in html
+    assert "Send unresolved rows to Castor Modify" not in html
+    assert "Raw Indexed Quantity Inventory" in html
     assert "reference" in html.lower()
 
 

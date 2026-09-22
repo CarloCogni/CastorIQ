@@ -69,13 +69,16 @@
                     <textarea name="notes" class="form-control form-control-sm" rows="3">{{ asset.notes }}</textarea>
                 </div>
                 <div class="col-12 d-flex justify-content-end">
-                    <button type="submit" class="btn btn-sm" style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+                    <button type="submit" class="btn btn-sm" style="background-color: var(--castor-facilities, #3b82f6); color: white; border: none;">
                         <i class="bi bi-save"></i> Save
                     </button>
                 </div>
             </form>
         </div>
         {% endif %}
+
+        <!-- Document folders — user-named groupings linking uploaded project documents -->
+        {% include "facilities/components/_asset_documents.html" %}
     </div>
 
     {% include "facilities/components/_asset_detail_sidebar.html" %}

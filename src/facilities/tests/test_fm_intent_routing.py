@@ -42,12 +42,15 @@ class TestDetectIntent:
         """FM-leaning phrasing classifies as fm_asset_query."""
         assert service._detect_intent(query) == "fm_asset_query"
 
-    def test_fm_asset_wins_over_ifc_inventory_when_both_keywords_present(self, service):
-        """FM keywords are more specific than IFC inventory and take priority."""
-        # "list" is not in either set on its own, but "list assets" is an FM trigger
-        # while "list all" triggers ifc_inventory.
+    def test_fm_asset_keywords_still_route_after_inventory_retirement(self, service):
+        """FM triggers survive; inventory phrasing now falls to specific_qa.
+
+        The ifc_inventory keyword intent was retired — inventory/count
+        questions are handled upstream by the deterministic recipe table, and
+        listing questions ("list all walls") go to vector retrieval.
+        """
         assert service._detect_intent("list assets") == "fm_asset_query"
-        assert service._detect_intent("list all walls") == "ifc_inventory"
+        assert service._detect_intent("list all walls") == "specific_qa"
 
     def test_plain_question_still_falls_through_to_specific_qa(self, service):
         """Queries without any matching keyword fall back to specific_qa."""

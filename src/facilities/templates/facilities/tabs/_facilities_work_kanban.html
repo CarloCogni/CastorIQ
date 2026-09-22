@@ -3,7 +3,7 @@
 <div class="d-flex flex-column gap-3" id="facilities-work-kanban-body">
     <div class="d-flex align-items-center gap-3 flex-wrap">
         <div class="d-flex align-items-center gap-2">
-            <i class="bi bi-kanban fs-5" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <i class="bi bi-kanban fs-5" style="color: var(--castor-facilities, #3b82f6);"></i>
             <h5 class="m-0">Kanban</h5>
         </div>
         <div class="ms-auto d-flex gap-2 flex-wrap align-items-center">
@@ -21,7 +21,7 @@
                 <i class="bi bi-stars"></i> AI batch
             </button>
             <button class="btn btn-sm d-inline-flex align-items-center gap-2"
-                    style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;"
+                    style="background-color: var(--castor-facilities, #3b82f6); color: white; border: none;"
                     hx-get="{% url 'facilities:work_create' project.pk %}"
                     hx-target="#work-drawer-mount"
                     hx-swap="innerHTML">
@@ -184,8 +184,8 @@
     padding-bottom: 8px;
 }
 .kanban-column {
-    background-color: rgba(20, 184, 166, 0.04);
-    border: 1px solid rgba(20, 184, 166, 0.18);
+    background-color: rgba(59, 130, 246, 0.04);
+    border: 1px solid rgba(59, 130, 246, 0.18);
     border-radius: 8px;
     display: flex;
     flex-direction: column;
@@ -193,12 +193,12 @@
     transition: background-color 0.15s ease;
 }
 .kanban-column.drag-over {
-    background-color: rgba(20, 184, 166, 0.14);
-    border-color: rgba(20, 184, 166, 0.45);
+    background-color: rgba(59, 130, 246, 0.14);
+    border-color: rgba(59, 130, 246, 0.45);
 }
 .kanban-column-header {
     padding: 10px 12px;
-    border-bottom: 1px solid rgba(20, 184, 166, 0.18);
+    border-bottom: 1px solid rgba(59, 130, 246, 0.18);
     font-weight: 600;
     font-size: 0.8125rem;
 }

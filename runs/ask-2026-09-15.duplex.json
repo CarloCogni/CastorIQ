@@ -1,0 +1,113 @@
+{
+  "fixture": "duplex",
+  "model_label": "llama3.1:8b",
+  "started_at": "2026-09-16T00:45:15.027411+00:00",
+  "results": [
+    {
+      "case_id": "t1-count-doors",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "14",
+      "answer": "**Door Count in the Model**\nAccording to the verified computed fact, there are **14** doors in the model. This count was determined by a **COUNT** operation over the parsed entities of type **IfcDoor** in the IFC2X3 model database index.",
+      "latency_s": 1.346160144006717,
+      "notes": []
+    },
+    {
+      "case_id": "t1-count-windows",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "24",
+      "answer": "According to the database index of the IFC2X3 model, the building has **24** windows. This count was determined by a **COUNT** operation over the parsed entities of type `IfcWindow`.",
+      "latency_s": 0.9544416589924367,
+      "notes": []
+    },
+    {
+      "case_id": "t1-count-walls",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "57",
+      "answer": "**Entity Count Analysis**\n\nAccording to the verified computed facts, there are **57** walls in total in the duplex.ifc model. This count includes subtypes of `IfcWall`, such as `IfcWallStandardCase`.\n\n**Source:** Database index of IFC2X3 model, using the `COUNT` method over parsed entities of type `IfcWall`.",
+      "latency_s": 1.656553245993564,
+      "notes": []
+    },
+    {
+      "case_id": "t1-count-spaces",
+      "tier": 1,
+      "passed": false,
+      "skipped": false,
+      "expected": "21",
+      "answer": "According to the IFC model, there are 17 spaces defined in the model.\n\n| Space ID | Space Name | Type |\n| --- | --- | --- |\n| 3278 | A205 | Utility |\n| 3399 | B205 | Utility |\n| 3660 | B105 | Room |\n| 1880 | B103 | Kitchen |\n| 450 | A104 | Bathroom 1 |\n| 163 | A102 | Living Room |\n| 2044 | B104 | Bathroom 1 |\n| 3150 | B202 | Bedroom 1 |\n| 2286 | B101 | Foyer |\n| 693 | A101 | Foyer |\n| 2731 | B204 | Bathroom 2 |\n| 1160 | A204 | Bathroom 2 |\n| 308 | A103 | Kitchen |\n| 1012 | A201 | Hallway |\n| 1579 | A202 | Bedroom 1 |\n| 1734 | B102 | Living Room |\n| 1385 | A203 | Bedroom 2 |\n| 2956 | B203 | Bedroom 2 |\n| 2591 | B201 | Hallway |\n| 3530 | A105 | Stair |\n| 3743 | R301 | Roof |\n\nNote that the space types are not explicitly defined in the provided excerpts, but based on the names and properties, we can infer the types.",
+      "latency_s": 8.45945093499904,
+      "notes": []
+    },
+    {
+      "case_id": "t1-storeys",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "Level 1, Level 2, T/FDN, Roof",
+      "answer": "**Storey List**\n================\n\nThe IFC model contains 4 building storeys, as determined by a spatial tree walk of the IfcBuildingStorey nodes. Here is the list of storey names:\n\n* T/FDN\n* Level 1\n* Level 2\n* Roof\n\nThese storey names are directly extracted from the model database, and their elevations are provided as follows:\n\n| Storey Name | Elevation (m) |\n| --- | --- |\n| T/FDN | -1.25 |\n| Level 1 | 0.0 |\n| Level 2 | 3.1 |\n| Roof | 6.0 |\n\nSource: elevations in m, extracted from the IFC model using a spatial tree walk of the IfcBuildingStorey nodes.",
+      "latency_s": 3.8484798509889515,
+      "notes": [
+        "matched 4/4"
+      ]
+    },
+    {
+      "case_id": "t1-schema",
+      "tier": 1,
+      "passed": true,
+      "skipped": false,
+      "expected": "IFC2X3",
+      "answer": "**IFC Schema Version**\nAccording to the IFC file header in the duplex.ifc model, the IFC schema version is **IFC2X3**.\n\n**Source:** duplex.ifc (IFC file header)",
+      "latency_s": 1.1145804550033063,
+      "notes": []
+    },
+    {
+      "case_id": "t2-materials",
+      "tier": 2,
+      "passed": true,
+      "skipped": false,
+      "expected": "Masonry - Brick, Misc. Air Layers - Air Space, Insulation / Thermal Barriers - Rigid insulation, Masonry - Concrete Block, Metal - Stud Layer, Plasterboard, Concrete - Cast In Situ, Concrete, Wood - Sheathing - plywood, Wood - Dimensional Lumber",
+      "answer": "Based on the provided IFC data, the materials used in the building elements are:\n\n* Walls:\n\t+ Concrete - Cast In Situ\n\t+ Brick on Block\n\t+ Concrete Block\n* Slabs:\n\t+ Concrete - Cast In Situ\n\t+ Wood - Flooring\n\t+ Ceramic Tile\n\t+ Grout\n\nNote that some slabs also have insulation/thermal barriers, such as semi-rigid insulation, but these are not necessarily materials in the classical sense.",
+      "latency_s": 3.1855567270104075,
+      "notes": [
+        "matched 4 material name(s)"
+      ]
+    },
+    {
+      "case_id": "t2-spaces",
+      "tier": 2,
+      "passed": true,
+      "skipped": false,
+      "expected": "A101, A201, B104, B101, B201, A205, B205, A105, B105, R301",
+      "answer": "Based on the provided IFC model data, the following spaces or rooms exist in the building:\n\n* Hallway (B201)\n* Foyer (A101)\n* Kitchen (A103, B103)\n* Living Room (A102, B102)\n* Bedroom 1 (A202, B202)\n* Bedroom 2 (A203, B203)\n* Stair (A105)\n* Utility (A205, B205)\n* Roof (R301)\n\nNote that the IFC model data does not provide a comprehensive list of all spaces or rooms in the building. However, based on the available data, these are some of the spaces or rooms that can be identified.",
+      "latency_s": 5.187299126002472,
+      "notes": [
+        "matched 14 space name(s)"
+      ]
+    },
+    {
+      "case_id": "t2-fire-rating",
+      "tier": 2,
+      "passed": true,
+      "skipped": false,
+      "expected": "any of ('fire', 'rating'), non-refusal",
+      "answer": "Unfortunately, the provided IFC data does not contain any information about the fire rating of the doors and walls. The fire rating is mentioned in the Pset_WindowCommon for the window element, but it is not specified for the doors and walls.",
+      "latency_s": 2.266879169997992,
+      "notes": []
+    },
+    {
+      "case_id": "t2-external-walls",
+      "tier": 2,
+      "passed": true,
+      "skipped": false,
+      "expected": "any of ('external', 'exterior'), non-refusal",
+      "answer": "**Storey List Analysis**\n\nAccording to the provided excerpts, the project has 4 storeys, determined by a spatial tree walk of the IfcBuildingStorey nodes. The elevations of each storey are as follows:\n\n| Storey Name | Elevation (m) |\n| --- | --- |\n| T/FDN | -1.25 |\n| Level 1 | 0.0 |\n| Level 2 | 3.1 |\n| Roof | 6.0 |\n\nTo determine which walls are external walls and their locations, I would need more information about the walls in the IFC model. However, I can suggest that you check the IFC model for entities with the `IfcWall` type and their associated `GlobalId` or `IfcRelContainedInSpatialElement` relationships to identify external walls.\n\nIf you provide more information about the walls, I can help you identify which ones are external and their locations on the storeys.",
+      "latency_s": 4.338171531999251,
+      "notes": []
+    }
+  ]
+}

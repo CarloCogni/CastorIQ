@@ -16,25 +16,22 @@ class ModificationProposalAdmin(admin.ModelAdmin):
         "id_short",
         "request_excerpt",
         "ifc_file",
-        "tier",
-        "operation",
         "colored_status",
         "verification_status",
+        "guardian_skipped",
         "created_by",
         "affected_count",
-        "confidence",
         "created_at",
     )
     list_filter = (
         "status",
-        "tier",
         "verification_status",
-        "operation",
+        "guardian_skipped",
         "created_at",
         "ifc_file__project",
     )
-    search_fields = ("request_text", "explanation", "error_message", "ifc_file__name")
-    readonly_fields = ("id", "created_at", "updated_at", "applied_at", "diff_preview_formatted")
+    search_fields = ("request_text", "explanation", "error_message", "ifc_file__name", "code")
+    readonly_fields = ("id", "created_at", "updated_at", "applied_at", "diff_formatted")
     date_hierarchy = "created_at"
     list_select_related = ("ifc_file", "created_by", "reviewed_by")
     autocomplete_fields = ["message", "ifc_file", "created_by", "reviewed_by"]
@@ -54,15 +51,33 @@ class ModificationProposalAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Proposed Changes",
+            "Reviewed Change (V3)",
             {
-                "fields": ("changes", "diff_preview_formatted", "affected_count"),
+                "fields": (
+                    "code",
+                    "target_global_ids",
+                    "diff_formatted",
+                    "affected_count",
+                    "base_fingerprint",
+                    "scratch_path",
+                    "explainer_model",
+                    "flags_acknowledged_at",
+                ),
             },
         ),
         (
-            "RSAA Classification",
+            "V2 columns (history only)",
             {
-                "fields": ("tier", "operation", "intent_json", "filter_spec", "confidence"),
+                "fields": (
+                    "changes",
+                    "diff_preview",
+                    "tier",
+                    "operation",
+                    "intent_json",
+                    "filter_spec",
+                    "confidence",
+                ),
+                "classes": ("collapse",),
             },
         ),
         (
@@ -80,7 +95,12 @@ class ModificationProposalAdmin(admin.ModelAdmin):
         (
             "Guardian Verification",
             {
-                "fields": ("verification_status", "verification_result", "verification_source"),
+                "fields": (
+                    "guardian_skipped",
+                    "verification_status",
+                    "verification_result",
+                    "verification_source",
+                ),
             },
         ),
         (
@@ -128,15 +148,15 @@ class ModificationProposalAdmin(admin.ModelAdmin):
     colored_status.short_description = "Status"
     colored_status.admin_order_field = "status"
 
-    def diff_preview_formatted(self, obj):
-        if obj.diff_preview:
+    def diff_formatted(self, obj):
+        if obj.diff:
             return format_html(
                 '<pre style="margin:0; white-space:pre-wrap; font-size:12px;">{}</pre>',
-                obj.diff_preview,
+                json.dumps(obj.diff, indent=2),
             )
         return "-"
 
-    diff_preview_formatted.short_description = "Diff Preview"
+    diff_formatted.short_description = "Measured diff"
 
     @admin.action(description="✅ Approve selected proposals")
     def approve_proposals(self, request, queryset):

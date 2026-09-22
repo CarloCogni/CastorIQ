@@ -90,6 +90,12 @@ def test_hierarchy_separates_element_type_qto():
 
 @pytest.mark.django_db
 def test_columns_modal_search_empty_state_and_no_pooled_datalist(client):
+    """Add-column picker is a lazy shell on the page; search/options come from the catalogue.
+
+    PERF-15C1: the page must not inline the whole field catalogue, so the
+    page carries the shell + catalogue URL and the search / option / empty
+    markers live in the fragment served by ``takeoff:qty_field_catalogue``.
+    """
     project = _project()
     client.force_login(project.owner)
     url = reverse("takeoff:qto", kwargs={"pk": project.pk})
@@ -101,21 +107,23 @@ def test_columns_modal_search_empty_state_and_no_pooled_datalist(client):
             "col_order": "ifc_class,name,prop:Identity Data.Keynote,status,actions",
         },
     ).content.decode()
+    catalogue_url = reverse("takeoff:qty_field_catalogue", kwargs={"pk": project.pk})
+
+    # Lazy shell only — no inlined option list on first paint.
     assert 'data-testid="qty-column-field"' in html
-    # PERF-15C1: initial GET ships a lazy shell, not the full option tree.
-    assert 'data-catalogue-url="' in html
+    assert 'data-testid="qty-column-field-placeholder"' in html
+    assert 'data-testid="qty-column-field-loading"' in html
+    assert 'data-catalogue-state="idle"' in html
+    assert f'data-catalogue-url="{catalogue_url}"' in html
+    assert 'data-no-matches-testid="qty-column-field-empty"' in html
+    assert 'data-option-testid="qty-column-field-option"' in html
     assert 'data-testid="qty-column-field-option"' not in html
-    assert (
-        'data-testid="qty-column-field-placeholder"' in html
-        or "Open to load indexed fields" in html
-    )
     assert 'data-testid="qty-filter-focus"' not in html
     # No pooled datalist of all fields
     assert "<datalist" not in html
     assert 'data-testid="qty-semantic-value-suggestions"' in html
     # REVIEW-08C: suggestions load from field-values endpoint, not pooled samples JSON
     assert "/field-values/" in html
-    assert "/field-catalogue/" in html
     assert 'id="qty-field-samples-json"' not in html
     assert 'id="qty-field-meta-json"' in html
     m = re.search(
@@ -126,21 +134,33 @@ def test_columns_modal_search_empty_state_and_no_pooled_datalist(client):
     assert m
     meta = json.loads(m.group(1))
     assert isinstance(meta, dict)
-    # Bootstrap meta keeps prep-native *filterable* keys; IFC Class is owned by
-    # the dedicated class selector (not Field picker / field-meta JSON).
-    assert "ifc_class" not in meta
-    assert "type_name" in meta
-    assert "prop:Identity Data.4D status" not in meta
+    # First paint bootstraps only the stable native fields; discovered IFC
+    # property keys arrive with the lazy catalogue.
+    assert "ifc_quantity_source" in meta
+    status_key = "prop:Identity Data.4D status"
+    assert status_key not in meta
 
-    cat = client.get(
-        reverse("takeoff:qty_field_catalogue", kwargs={"pk": project.pk}),
-        {"mode": "column", "picker_id": "qty-column-field"},
+    # The catalogue fragment carries the search box, options and hidden empty state.
+    fragment = client.get(
+        catalogue_url, {"mode": "column", "picker_id": "qty-column-field"}
+    ).content.decode()
+    lazy = re.search(
+        r'<script type="application/json" data-qty-field-meta-lazy="1">(.*?)</script>',
+        fragment,
+        re.S,
     )
-    assert cat.status_code == 200
-    cat_html = cat.content.decode()
-    assert "Element properties" in cat_html or "Quantities" in cat_html
-    assert 'data-testid="qty-column-field-option"' in cat_html
-    assert 'data-testid="qty-column-field-empty"' in cat_html
+    assert lazy
+    assert status_key in json.loads(lazy.group(1))
+    assert 'data-testid="qty-column-field-search"' in fragment
+    assert 'data-testid="qty-column-field-option"' in fragment
+    assert "Element properties" in fragment or "Quantity sets" in fragment
+    assert 'data-testid="qty-column-field-empty"' in fragment
+    # Empty message starts hidden (class precedes data-testid)
+    assert re.search(
+        r'class="[^"]*\bd-none\b[^"]*"[^>]*data-testid="qty-column-field-empty"',
+        fragment,
+    )
+    assert "<datalist" not in fragment
 
 
 @pytest.mark.django_db

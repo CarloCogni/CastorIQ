@@ -1,0 +1,421 @@
+{
+  "kind": "rav-retrieval-coverage",
+  "key": "fixtures/benchmark/rav/key.json",
+  "settings": [
+    {
+      "setting": "embedding-only",
+      "entity_first": false,
+      "key_entities": 15,
+      "reached": 11,
+      "reached_by_every_constraining_document": 5,
+      "pairs_by_pass": {
+        "by_reference": 0,
+        "by_label": 0,
+        "by_embedding": 65
+      },
+      "non_key_reached": {
+        "IfcCovering": 3,
+        "IfcPlate": 1
+      },
+      "entities": [
+        {
+          "group": "external_walls",
+          "global_id": "3cUkl32yn9qRSPvBJVyWw5",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy"
+          ]
+        },
+        {
+          "group": "external_walls",
+          "global_id": "3cUkl32yn9qRSPvBJVyWx4",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": []
+        },
+        {
+          "group": "external_walls",
+          "global_id": "3cUkl32yn9qRSPvBJVyWy4",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy"
+          ]
+        },
+        {
+          "group": "partitions",
+          "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "partitions",
+          "global_id": "3cUkl32yn9qRSPvBJVyWY1",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes"
+          ]
+        },
+        {
+          "group": "external_door",
+          "global_id": "3cUkl32yn9qRSPvBJVyWYp",
+          "required_documents": [
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "fire-safety-strategy"
+          ]
+        },
+        {
+          "group": "internal_doors",
+          "global_id": "3cUkl32yn9qRSPvBJVyWaG",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "internal_doors",
+          "global_id": "3cUkl32yn9qRSPvBJVyWax",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "windows",
+          "global_id": "3cUkl32yn9qRSPvBJVyWcE",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes"
+          ]
+        },
+        {
+          "group": "windows",
+          "global_id": "3cUkl32yn9qRSPvBJVyWdx",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "thermal-specification"
+          ],
+          "reached_by": []
+        },
+        {
+          "group": "windows",
+          "global_id": "3cUkl32yn9qRSPvBJVyWe9",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "thermal-specification"
+          ],
+          "reached_by": []
+        },
+        {
+          "group": "windows",
+          "global_id": "3cUkl32yn9qRSPvBJVyZTO",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "thermal-specification"
+          ],
+          "reached_by": []
+        },
+        {
+          "group": "ground_slab",
+          "global_id": "3cUkl32yn9qRSPvBJVyWgQ",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy"
+          ]
+        },
+        {
+          "group": "roof_deck_slab",
+          "global_id": "3ntFzSulnDNeQ4nJrMgcOt",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "roof",
+          "global_id": "3cUkl32yn9qRSPvBJVyWh4",
+          "required_documents": [
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        }
+      ]
+    },
+    {
+      "setting": "entity-first",
+      "entity_first": true,
+      "key_entities": 15,
+      "reached": 15,
+      "reached_by_every_constraining_document": 15,
+      "pairs_by_pass": {
+        "by_reference": 56,
+        "by_label": 73,
+        "by_embedding": 27
+      },
+      "non_key_reached": {
+        "IfcCovering": 3,
+        "IfcPlate": 1
+      },
+      "entities": [
+        {
+          "group": "external_walls",
+          "global_id": "3cUkl32yn9qRSPvBJVyWw5",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "external_walls",
+          "global_id": "3cUkl32yn9qRSPvBJVyWx4",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "external_walls",
+          "global_id": "3cUkl32yn9qRSPvBJVyWy4",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "partitions",
+          "global_id": "3cUkl32yn9qRSPvBJVyWXt",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "partitions",
+          "global_id": "3cUkl32yn9qRSPvBJVyWY1",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "external_door",
+          "global_id": "3cUkl32yn9qRSPvBJVyWYp",
+          "required_documents": [
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "internal_doors",
+          "global_id": "3cUkl32yn9qRSPvBJVyWaG",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "internal_doors",
+          "global_id": "3cUkl32yn9qRSPvBJVyWax",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "windows",
+          "global_id": "3cUkl32yn9qRSPvBJVyWcE",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "windows",
+          "global_id": "3cUkl32yn9qRSPvBJVyWdx",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "windows",
+          "global_id": "3cUkl32yn9qRSPvBJVyWe9",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "windows",
+          "global_id": "3cUkl32yn9qRSPvBJVyZTO",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "ground_slab",
+          "global_id": "3cUkl32yn9qRSPvBJVyWgQ",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "roof_deck_slab",
+          "global_id": "3ntFzSulnDNeQ4nJrMgcOt",
+          "required_documents": [
+            "acoustic-and-structural-notes",
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        },
+        {
+          "group": "roof",
+          "global_id": "3cUkl32yn9qRSPvBJVyWh4",
+          "required_documents": [
+            "thermal-specification"
+          ],
+          "reached_by": [
+            "acoustic-and-structural-notes",
+            "fire-safety-strategy",
+            "thermal-specification"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 # takeoff/tests/test_model_workspace_grid_v1.py
-"""Legacy inventory URL still serves 4D Link Analysis (Hub Model is the 3D viewer — 20A)."""
+"""Model hub content is now 4D Link Analysis — layout markers updated."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ _FORBIDDEN_PRIMARY = (
 
 @pytest.mark.django_db
 def test_model_hub_serves_link_analysis_layout(client):
-    """Legacy inventory route still renders 4D Link Analysis chrome."""
+    """Model inventory route renders 4D Link Analysis chrome."""
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed", name="pilot.ifc")
     IFCEntityFactory(
@@ -45,8 +45,11 @@ def test_model_hub_serves_link_analysis_layout(client):
     assert 'data-testid="link-analysis-charts"' in html
     assert 'data-testid="link-analysis-table"' in html
     assert "NetVolume" not in html
-    assert "Model Readiness" not in html
     assert "Not BOQ" not in html
+    # Page body carries Link Analysis chrome only — Model Readiness survives
+    # solely as the project nav label for this route.
+    page = html.split('data-testid="link-analysis-page"', 1)[1]
+    assert "Model Readiness" not in page
 
 
 @pytest.mark.django_db

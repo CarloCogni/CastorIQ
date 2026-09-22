@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import datetime
-import re
 
 import pytest
 from django.urls import reverse
@@ -75,7 +74,10 @@ def test_link_analysis_page_identity_and_no_qto(client):
     assert "Task Review Breakdown" in html
     assert "Task Attention Distribution" not in html
     assert "linked total" not in html
-    assert "Unlinked/non-model tasks are shown for context in Schedule Coverage and Task Review Breakdown" in html
+    assert (
+        "Unlinked/non-model tasks are shown for context in Schedule Coverage and Task Review Breakdown"
+        in html
+    )
     assert "excluded from Actionable Link Review" in html
     assert "Pending review" in html
     assert "Have dates for playback review" in html
@@ -84,9 +86,12 @@ def test_link_analysis_page_identity_and_no_qto(client):
     assert ">Risk<" not in html
     assert "Link Review Table" in html
     assert "Unlink All" not in html
-    assert "Model Readiness" not in html
     for banned in ("BOQ", "NetVolume", "QS valuation", "company actual cost", "EAC", "VAC"):
         assert banned not in html
+    # Page identity is Link Analysis; Model Readiness remains only as the
+    # project nav label pointing at this route.
+    page = html.split('data-testid="link-analysis-page"', 1)[1]
+    assert "Model Readiness" not in page
 
 
 @pytest.mark.django_db
@@ -272,19 +277,12 @@ def test_refresh_endpoint_remains_readonly(client):
 
 
 @pytest.mark.django_db
-def test_hub_model_tab_points_at_viewer_route(client):
-    """4D/5D Model hub entry resolves to ifc_viewer:viewer (20A)."""
+def test_hub_model_tab_still_points_at_inventory_route(client):
+    """4D/5D Model hub entry still resolves to inventory URL (content replaced)."""
     project = ProjectFactory()
     client.force_login(project.owner)
     html = client.get(
         reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=data_sources"
     ).content.decode()
-    viewer = reverse("ifc_viewer:viewer", kwargs={"pk": project.pk})
+    assert reverse("takeoff:model_inventory", kwargs={"pk": project.pk}) in html
     assert 'data-testid="hub-model"' in html
-    model_tag = next(
-        t.group(0)
-        for t in re.finditer(r"<a\b[^>]*>", html)
-        if 'data-testid="hub-model"' in t.group(0)
-    )
-    assert viewer in model_tag
-    assert reverse("takeoff:model_inventory", kwargs={"pk": project.pk}) not in model_tag

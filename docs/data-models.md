@@ -240,7 +240,7 @@ User rating on an assistant message (thumbs up/down).
 
 #### ModificationProposal
 
-The central model for the Modify pipeline. Captures the full lifecycle from intent classification through approval and application.
+The central model for the Modify pipeline. The row **is** the journal (V3): it carries the generated code, the selection, the measured diff, the fingerprint of the file it was built against and the reviewed scratch copy, from proposal through approval.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -248,22 +248,25 @@ The central model for the Modify pipeline. Captures the full lifecycle from inte
 | `ifc_file` | FK → IFCFile | Target file |
 | `created_by` | FK → User | |
 | `request_text` | TextField | Original natural language request |
-| `explanation` | TextField | AI-generated change summary |
-| `changes` | JSONField | Structured list of entity modifications |
-| `diff_preview` | TextField | Human-readable diff |
-| `affected_count` | PositiveIntegerField | Number of entities impacted |
-| **Classification** | | |
-| `tier` | IntegerField (choices) | `1` GREEN · `2` ORANGE · `3` RED |
-| `operation` | CharField | e.g. `SET_PROPERTY`, `ADD_PROPERTY`, `SET_ATTRIBUTE` |
-| `intent_json` | JSONField | Full parsed intent from LLM |
-| `filter_spec` | JSONField | Entity filter used to resolve targets |
-| `confidence` | FloatField | LLM confidence score (0.0–1.0) |
+| `explanation` | TextField | The blind explanation, written from the code and the diff without the request; empty when the explainer failed |
+| `explainer_model` | CharField | The model that wrote it, named on the card |
+| **The journal (V3)** | | |
+| `code` | TextField | The `select()` / `modify()` block; runs once, at proposal time |
+| `target_global_ids` | JSONField | What `select()` returned; the only entities `modify()` may touch |
+| `diff` | JSONField | `IfcDiff.as_dict()`: what the code did to the scratch copy, measured by the harness |
+| `base_fingerprint` | CharField | SHA-256 of the original when proposed; approval refuses on mismatch |
+| `scratch_path` | CharField | The reviewed copy that replaces the original on approval; deleted on every terminal status |
+| `guardian_skipped` | BooleanField | The user switched the document check off for this request |
+| `flags_acknowledged_at` | DateTimeField | Stamped by the approval claim when every flagged row was ticked |
+| `affected_count` | PositiveIntegerField | Number of targets |
+| **V2 columns, nullable, history only** | | |
+| `changes`, `diff_preview`, `tier`, `operation`, `intent_json`, `filter_spec`, `confidence`, `code_review_acknowledged_*` | — | Kept so pre-V3 rows still render; null on every V3 row and never reused with a new meaning |
 | **Verification (RAV)** | | |
 | `verification_status` | CharField (choices) | `pending` · `verified` · `conflict` · `unknown` · `failed` |
 | `verification_result` | TextField | LLM explanation of the check |
 | `verification_source` | CharField | Citation (e.g. `Fire Strategy.pdf, p.14`) |
 | **Lifecycle** | | |
-| `status` | CharField (choices) | `pending` → `approved` · `rejected` · `applied` · `failed` |
+| `status` | CharField (choices) | `pending` → `approved` (the one-POST claim) → `applied`; or `rejected` · `superseded` · `failed` |
 | `reviewed_by` | FK → User | |
 | `reviewed_at` | DateTimeField | |
 | `rejection_reason` | TextField | |

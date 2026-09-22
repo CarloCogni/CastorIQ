@@ -11,7 +11,7 @@ here, so the modal stays open and only the rows refresh.
 {% for storey in explore_storeys %}
 <div class="mb-4">
     <div class="d-flex align-items-center gap-2 mb-2">
-        <i class="bi bi-building" style="color: var(--castor-facilities, #14b8a6);"></i>
+        <i class="bi bi-building" style="color: var(--castor-facilities, #3b82f6);"></i>
         <strong>{{ storey.name }}</strong>
         {% if storey.label and storey.label != storey.name %}
         <span class="text-secondary fs-8">· {{ storey.label }}</span>
@@ -46,7 +46,7 @@ here, so the modal stays open and only the rows refresh.
                 </a>
                 <div class="d-flex flex-column flex-grow-1 min-width-0">
                     <div class="d-flex align-items-center gap-2 mb-1">
-                        <i class="bi bi-upload" style="color: var(--castor-facilities, #14b8a6);"></i>
+                        <i class="bi bi-upload" style="color: var(--castor-facilities, #3b82f6);"></i>
                         <strong class="fs-7">Uploaded</strong>
                         {% if storey.image_source == "uploaded" %}
                         <span class="badge rounded-pill fs-8"
@@ -105,7 +105,7 @@ here, so the modal stays open and only the rows refresh.
                 </a>
                 <div class="d-flex flex-column flex-grow-1 min-width-0">
                     <div class="d-flex align-items-center gap-2 mb-1">
-                        <i class="bi bi-bounding-box" style="color: var(--castor-facilities, #14b8a6);"></i>
+                        <i class="bi bi-bounding-box" style="color: var(--castor-facilities, #3b82f6);"></i>
                         <strong class="fs-7">Generated from IFC</strong>
                         {% if storey.image_source == "generated" %}
                         <span class="badge rounded-pill fs-8"

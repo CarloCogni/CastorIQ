@@ -9,7 +9,7 @@
                 <div class="d-flex align-items-center gap-2 mb-1">
                     <a href="{% url 'facilities:permit_detail' project.pk permit.pk %}"
                        class="fs-7 fw-semibold text-decoration-none"
-                       style="color: var(--castor-facilities, #14b8a6);">{{ permit.permit_number }}</a>
+                       style="color: var(--castor-facilities, #3b82f6);">{{ permit.permit_number }}</a>
                     <span class="badge text-bg-light border fs-9">{{ permit.get_status_display }}</span>
                     {% if permit.is_expiring_soon %}<span class="badge text-bg-warning fs-9">Expiring soon</span>{% endif %}
                     {% if permit.is_expired %}<span class="badge text-bg-danger fs-9">Expired</span>{% endif %}

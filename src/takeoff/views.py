@@ -131,14 +131,13 @@ def _qty_prep_runtime_from_query(project, user, query):  # noqa: ANN001
 
 
 class ModelInventoryView(ProjectTabMixin, TemplateView):
-    """4D Link Analysis — schedule↔model link diagnostics (Links secondary, not Model hub)."""
+    """4D Link Analysis — schedule task ↔ model element link diagnostics (Model hub)."""
 
     active_tab = "castor"
 
     def get_context_data(self, **kwargs: object) -> dict:
         ctx = super().get_context_data(**kwargs)
-        # link_analysis: Marks Links hub context active; never Model (viewer).
-        ctx["castor_subtab"] = "link_analysis"
+        ctx["castor_subtab"] = "model_inventory"
         project = ctx["project"]
         last_run = self.request.session.get(_LINK_ANALYSIS_SESSION_KEY)
         try:
@@ -712,21 +711,21 @@ class QuantityPrepRowReviewView(ProjectAccessMixin, View):
         action = (request.POST.get("action") or "apply").strip().lower()
         row_key = (request.POST.get("row_key") or "").strip()
         return_query = (request.POST.get("return_query") or "").strip()
+        quantities = ModelQuantitiesService(project).build()
         effective = QueryDict(return_query, mutable=False) if return_query else request.GET
-        # HIERARCHY-09: accept instance keys from prep_rows_export, not only class rows.
-        runtime = build_qty_prep_session_ui(
-            project=project,
-            user=request.user,
-            session=request.session,
-            query=effective,
+        basis_overrides, schema_includes, source_mappings = _qty_prep_runtime_from_query(
+            project, request.user, effective
         )
-        qty_prep = runtime.get("qty_prep") or {}
+        qty_prep = build_preparation_ui(
+            quantities,
+            basis_overrides=basis_overrides,
+            schema_includes=schema_includes,
+            source_mappings=source_mappings,
+        )
         known_keys = {
             str(row.get("row_key") or "")
-            for row in (
-                list(qty_prep.get("prep_rows") or []) + list(qty_prep.get("prep_rows_export") or [])
-            )
-            if isinstance(row, dict) and row.get("row_key")
+            for row in (qty_prep.get("prep_rows") or [])
+            if row.get("row_key")
         }
 
         svc = QuantityPrepRowReviewService(project, request.user, request.session)
@@ -765,21 +764,21 @@ class QuantityPrepRowMappingView(ProjectAccessMixin, View):
         action = (request.POST.get("action") or "apply").strip().lower()
         row_key = (request.POST.get("row_key") or "").strip()
         return_query = (request.POST.get("return_query") or "").strip()
+        quantities = ModelQuantitiesService(project).build()
         effective = QueryDict(return_query, mutable=False) if return_query else request.GET
-        # HIERARCHY-09: known keys include instance export rows.
-        runtime = build_qty_prep_session_ui(
-            project=project,
-            user=request.user,
-            session=request.session,
-            query=effective,
+        basis_overrides, schema_includes, source_mappings = _qty_prep_runtime_from_query(
+            project, request.user, effective
         )
-        qty_prep = runtime.get("qty_prep") or {}
+        qty_prep = build_preparation_ui(
+            quantities,
+            basis_overrides=basis_overrides,
+            schema_includes=schema_includes,
+            source_mappings=source_mappings,
+        )
         known_keys = {
             str(row.get("row_key") or "")
-            for row in (
-                list(qty_prep.get("prep_rows") or []) + list(qty_prep.get("prep_rows_export") or [])
-            )
-            if isinstance(row, dict) and row.get("row_key")
+            for row in (qty_prep.get("prep_rows") or [])
+            if row.get("row_key")
         }
         eligible = {
             item["key"]
@@ -1094,111 +1093,6 @@ class QuantityFieldValuesView(ProjectAccessMixin, View):
         return JsonResponse(payload)
 
 
-class QuantityFieldCatalogueView(ProjectAccessMixin, View):
-    """GET — lazy HTML fragment for Add-column / Filter Field pickers (PERF-15C1)."""
-
-    def get(self, request, pk):  # noqa: ANN001
-        from takeoff.services.quantity_field_catalogue import build_lazy_field_catalogue_context
-
-        project = self.get_project()
-        pinned_ifc, source_error = _resolve_qto_ifc_file(project, request)
-        if source_error:
-            return HttpResponse(
-                '<div class="qty-field-catalogue-error small text-danger p-2" '
-                'data-testid="qty-field-catalogue-error">'
-                f"{source_error}</div>",
-                status=409,
-                content_type="text/html; charset=utf-8",
-            )
-
-        # Reject cross-project IFC id probes; only trust session-pinned or
-        # project-owned IFC ids when the client supplies one.
-        probe_ifc = (request.GET.get("ifc_file_id") or "").strip()
-        if probe_ifc:
-            from ifc_processor.models import IFCFile
-
-            owned = IFCFile.objects.filter(pk=probe_ifc, project=project).first()
-            if owned is None:
-                return HttpResponse(
-                    '<div class="qty-field-catalogue-error small text-danger p-2" '
-                    'data-testid="qty-field-catalogue-error">'
-                    "IFC source does not belong to this project.</div>",
-                    status=403,
-                    content_type="text/html; charset=utf-8",
-                )
-            if pinned_ifc is not None and str(pinned_ifc.pk) != probe_ifc:
-                return HttpResponse(
-                    '<div class="qty-field-catalogue-error small text-danger p-2" '
-                    'data-testid="qty-field-catalogue-error">'
-                    "IFC source does not match this project session.</div>",
-                    status=403,
-                    content_type="text/html; charset=utf-8",
-                )
-
-        mode = (request.GET.get("mode") or "filter").strip().lower()
-        if mode not in {"filter", "column"}:
-            mode = "filter"
-        picker_id = (request.GET.get("picker_id") or "").strip()
-        if mode == "column":
-            picker_id = picker_id or "qty-column-field"
-        else:
-            picker_id = picker_id or "qty-filter-field"
-
-        mark_raw = (request.GET.get("mark_added") or "").strip()
-        mark_added = [p.strip() for p in mark_raw.split(",") if p.strip()] if mark_raw else []
-
-        try:
-            ctx = build_lazy_field_catalogue_context(
-                project=project,
-                query=request.GET,
-                ifc_file=pinned_ifc,
-                mode=mode,
-                mark_added_keys=mark_added,
-            )
-        except Exception:
-            logger.exception(
-                "field catalogue lazy load failed project=%s", getattr(project, "pk", None)
-            )
-            return HttpResponse(
-                '<div class="qty-field-catalogue-error small text-danger p-2" '
-                'data-testid="qty-field-catalogue-error">'
-                "Could not load field catalogue. "
-                '<button type="button" class="btn btn-link btn-sm p-0 align-baseline '
-                'qty-field-catalogue-retry" data-testid="qty-field-catalogue-retry">'
-                "Retry</button></div>",
-                status=500,
-                content_type="text/html; charset=utf-8",
-            )
-
-        option_testid = "qty-column-field-option" if mode == "column" else "qty-filter-field-option"
-        tree_testid = "qty-column-field-list" if mode == "column" else f"{picker_id}-tree"
-        no_matches = "qty-column-field-empty" if mode == "column" else f"{picker_id}-no-matches"
-        return render(
-            request,
-            "takeoff/components/quantities_field_catalogue_fragment.html",
-            {
-                "project": project,
-                "picker_id": picker_id,
-                "hierarchy": ctx["hierarchy"],
-                "mode": mode,
-                "scope_label": ctx["scope_label"],
-                "option_testid": option_testid,
-                "tree_testid": tree_testid,
-                "no_matches_testid": no_matches,
-                "mark_added_keys": ctx["mark_added_keys"],
-                "field_meta_json": ctx["field_meta_json"],
-                # Add Column never restores a pressed option from the query string
-                # (Filter selection must stay independent).
-                "selected_key": (
-                    ""
-                    if mode == "column"
-                    else (request.GET.get("selected_key") or "").strip()
-                ),
-                "catalogue_empty": ctx["catalogue_empty"],
-            },
-        )
-
-
 class QuantityPrepRowMappingBatchView(ProjectAccessMixin, View):
     """POST — preview or apply batch session schema mapping (MAP-BIG-1).
 
@@ -1481,3 +1375,106 @@ class QTOExportView(ProjectAccessMixin, View):
         )
         response["Content-Disposition"] = f'attachment; filename="qto_{safe_name}.xlsx"'
         return response
+
+
+class QuantityFieldCatalogueView(ProjectAccessMixin, View):
+    """GET — lazy HTML fragment for Add-column / Filter Field pickers (PERF-15C1)."""
+
+    def get(self, request, pk):  # noqa: ANN001
+        from takeoff.services.quantity_field_catalogue import build_lazy_field_catalogue_context
+
+        project = self.get_project()
+        pinned_ifc, source_error = _resolve_qto_ifc_file(project, request)
+        if source_error:
+            return HttpResponse(
+                '<div class="qty-field-catalogue-error small text-danger p-2" '
+                'data-testid="qty-field-catalogue-error">'
+                f"{source_error}</div>",
+                status=409,
+                content_type="text/html; charset=utf-8",
+            )
+
+        # Reject cross-project IFC id probes; only trust session-pinned or
+        # project-owned IFC ids when the client supplies one.
+        probe_ifc = (request.GET.get("ifc_file_id") or "").strip()
+        if probe_ifc:
+            from ifc_processor.models import IFCFile
+
+            owned = IFCFile.objects.filter(pk=probe_ifc, project=project).first()
+            if owned is None:
+                return HttpResponse(
+                    '<div class="qty-field-catalogue-error small text-danger p-2" '
+                    'data-testid="qty-field-catalogue-error">'
+                    "IFC source does not belong to this project.</div>",
+                    status=403,
+                    content_type="text/html; charset=utf-8",
+                )
+            if pinned_ifc is not None and str(pinned_ifc.pk) != probe_ifc:
+                return HttpResponse(
+                    '<div class="qty-field-catalogue-error small text-danger p-2" '
+                    'data-testid="qty-field-catalogue-error">'
+                    "IFC source does not match this project session.</div>",
+                    status=403,
+                    content_type="text/html; charset=utf-8",
+                )
+
+        mode = (request.GET.get("mode") or "filter").strip().lower()
+        if mode not in {"filter", "column"}:
+            mode = "filter"
+        picker_id = (request.GET.get("picker_id") or "").strip()
+        if mode == "column":
+            picker_id = picker_id or "qty-column-field"
+        else:
+            picker_id = picker_id or "qty-filter-field"
+
+        mark_raw = (request.GET.get("mark_added") or "").strip()
+        mark_added = [p.strip() for p in mark_raw.split(",") if p.strip()] if mark_raw else []
+
+        try:
+            ctx = build_lazy_field_catalogue_context(
+                project=project,
+                query=request.GET,
+                ifc_file=pinned_ifc,
+                mode=mode,
+                mark_added_keys=mark_added,
+            )
+        except Exception:
+            logger.exception(
+                "field catalogue lazy load failed project=%s", getattr(project, "pk", None)
+            )
+            return HttpResponse(
+                '<div class="qty-field-catalogue-error small text-danger p-2" '
+                'data-testid="qty-field-catalogue-error">'
+                "Could not load field catalogue. "
+                '<button type="button" class="btn btn-link btn-sm p-0 align-baseline '
+                'qty-field-catalogue-retry" data-testid="qty-field-catalogue-retry">'
+                "Retry</button></div>",
+                status=500,
+                content_type="text/html; charset=utf-8",
+            )
+
+        option_testid = "qty-column-field-option" if mode == "column" else "qty-filter-field-option"
+        tree_testid = "qty-column-field-list" if mode == "column" else f"{picker_id}-tree"
+        no_matches = "qty-column-field-empty" if mode == "column" else f"{picker_id}-no-matches"
+        return render(
+            request,
+            "takeoff/components/quantities_field_catalogue_fragment.html",
+            {
+                "project": project,
+                "picker_id": picker_id,
+                "hierarchy": ctx["hierarchy"],
+                "mode": mode,
+                "scope_label": ctx["scope_label"],
+                "option_testid": option_testid,
+                "tree_testid": tree_testid,
+                "no_matches_testid": no_matches,
+                "mark_added_keys": ctx["mark_added_keys"],
+                "field_meta_json": ctx["field_meta_json"],
+                # Add Column never restores a pressed option from the query string
+                # (Filter selection must stay independent).
+                "selected_key": (
+                    "" if mode == "column" else (request.GET.get("selected_key") or "").strip()
+                ),
+                "catalogue_empty": ctx["catalogue_empty"],
+            },
+        )

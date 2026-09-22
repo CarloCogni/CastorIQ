@@ -7,7 +7,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title d-flex align-items-center gap-2">
-                    <i class="bi bi-stars" style="color: var(--castor-facilities, #14b8a6);"></i>
+                    <i class="bi bi-stars" style="color: var(--castor-facilities, #3b82f6);"></i>
                     Review proposed work orders
                 </h5>
                 <button type="button" class="btn-close" onclick="this.closest('.modal').remove()"></button>
@@ -85,6 +85,9 @@
                                             <option value="corrective" {% if draft.category == 'corrective' %}selected{% endif %}>Corrective</option>
                                             <option value="preventive" {% if draft.category == 'preventive' %}selected{% endif %}>Preventive</option>
                                             <option value="inspection" {% if draft.category == 'inspection' %}selected{% endif %}>Inspection</option>
+                                            <option value="safety" {% if draft.category == 'safety' %}selected{% endif %}>Safety</option>
+                                            <option value="cleaning" {% if draft.category == 'cleaning' %}selected{% endif %}>Cleaning</option>
+                                            <option value="modification" {% if draft.category == 'modification' %}selected{% endif %}>Modification</option>
                                             <option value="installation" {% if draft.category == 'installation' %}selected{% endif %}>Installation</option>
                                             <option value="decommission" {% if draft.category == 'decommission' %}selected{% endif %}>Decommission</option>
                                         </select>
@@ -118,7 +121,7 @@
                         <button class="btn btn-sm btn-outline-danger" type="submit">Discard batch</button>
                     </form>
                     <button class="btn btn-sm" type="submit"
-                            style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+                            style="background-color: var(--castor-facilities, #3b82f6); color: white; border: none;">
                         <i class="bi bi-check2-circle"></i> Confirm &amp; create {{ drafts|length }} WO{{ drafts|length|pluralize }}
                     </button>
                 </div>

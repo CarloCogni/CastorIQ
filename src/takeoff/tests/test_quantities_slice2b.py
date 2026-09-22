@@ -90,7 +90,7 @@ def test_preparation_insights_are_deterministic_counts():
 
 @pytest.mark.django_db
 def test_slice2b_page_section_order_and_honesty(client):
-    """Visual Summary + Insights exist between register and Modify handoff."""
+    """TABLE-04 order: prep table → Unresolved Data Register → raw inventory."""
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed")
     IFCEntityFactory(
@@ -102,19 +102,19 @@ def test_slice2b_page_section_order_and_honesty(client):
     client.force_login(project.owner)
     html = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk})).content.decode()
 
-    assert "Preparation Data Model Visual Summary" in html
-    assert "Quantity Preparation Insights" in html
-    assert 'data-testid="qty-viz-rows-by-status"' in html
-    assert 'data-testid="qty-viz-basis-distribution"' in html
-    assert 'data-testid="qty-insight-measurement_rules_needed"' in html
-    assert 'data-testid="qty-insight-raw_quantity_warning"' in html
+    # The standalone Visual Summary / Insights sections are gone from the page;
+    # the derived signals they summarised live in the Unresolved Data Register.
+    assert "Preparation Data Model Visual Summary" not in html
+    assert "Quantity Preparation Insights" not in html
+    assert 'data-testid="quantities-visual-summary"' not in html
+    assert 'data-testid="quantities-preparation-insights"' not in html
+    assert 'data-testid="qty-viz-rows-by-status"' not in html
+    assert 'data-testid="qty-insight-measurement_rules_needed"' not in html
 
+    table = html.index('data-testid="quantities-prep-table"')
     reg = html.index('data-testid="quantities-unresolved-register"')
-    viz = html.index('data-testid="quantities-visual-summary"')
-    insights = html.index('data-testid="quantities-preparation-insights"')
-    handoff = html.index('data-testid="quantities-modify-handoff"')
     raw = html.index('data-testid="quantities-model-reference"')
-    assert reg < viz < insights < handoff < raw
+    assert table < reg < raw
 
     page = html.split('data-testid="quantities-page"', 1)[1].split(
         'data-testid="quantities-not-claims"', 1
@@ -126,10 +126,11 @@ def test_slice2b_page_section_order_and_honesty(client):
         "Model Quantity Readiness",
     ):
         assert phrase not in page, phrase
-    page_l = page.lower()
-    assert "not boq readiness" in page_l
-    assert "not 5d readiness" in page_l
-    assert "not qs readiness" in page_l
+    # Boundary copy states what this screen is not, without readiness claims.
+    assert "Not Ask, not Modify, not BOQ, not cost" in page
+    assert "not rates/pricing" in page
+    assert "not Quantity → Cost → Schedule integration" in page
+    assert "Not BOQ. Not QS valuation. Not ERP." in html
 
     assert "Ask chat" not in page
     assert "machine learning" not in page.lower()
@@ -149,6 +150,7 @@ def test_slice2b_page_section_order_and_honesty(client):
     assert 'data-testid="qty-generate-prep-model"' in html
     assert "Generate Preparation Data Model" in html
     assert "not editable in this slice" not in html
-    assert "Quantity and mapping cells are review-only here" in html
-    assert "Use Review row to adjust session mapping" in html
+    # Row-level session edits go through the Review row drawer, not table cells.
+    assert 'data-testid="qty-review-row-btn"' in html
+    assert 'data-testid="qty-row-review-drawer"' in html
     assert 'data-qty-basis-unresolved="1"' in html

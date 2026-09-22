@@ -6,8 +6,8 @@
             <i class="bi bi-arrow-left"></i> Back
         </a>
         <h5 class="m-0 d-flex align-items-center gap-2">
-            <i class="bi bi-shield-check" style="color: var(--castor-facilities, #14b8a6);"></i>
-            <span style="color: var(--castor-facilities, #14b8a6);">{{ permit.permit_number }}</span>
+            <i class="bi bi-shield-check" style="color: var(--castor-facilities, #3b82f6);"></i>
+            <span style="color: var(--castor-facilities, #3b82f6);">{{ permit.permit_number }}</span>
             <span class="text-secondary fw-normal">{{ permit.title }}</span>
         </h5>
         <div class="ms-auto d-flex gap-2">
@@ -77,7 +77,7 @@
                         </div>
                         {% if user_permission == "owner" or user_permission == "editor" %}
                         <button class="btn btn-sm mt-3" type="submit"
-                                style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;">
+                                style="background-color: var(--castor-facilities, #3b82f6); color: white; border: none;">
                             <i class="bi bi-check-lg"></i> Save
                         </button>
                         {% endif %}
@@ -86,7 +86,7 @@
             </div>
         </div>
 
-        <div class="col-12 col-lg-4">
+        <div class="col-12 col-lg-4 d-flex flex-column gap-3">
             <div class="card border-0 shadow-sm">
                 <div class="card-header py-2 fs-8 fw-semibold">Linked work orders</div>
                 <div class="card-body p-3">
@@ -103,6 +103,60 @@
                     </ul>
                     {% else %}
                     <div class="text-muted fs-8">No linked work orders.</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Assets this permit covers — linked here, surfaced on the asset page -->
+            <div class="card border-0 shadow-sm">
+                <div class="card-header py-2 fs-8 fw-semibold">Linked assets</div>
+                <div class="card-body p-3">
+                    {% if permit.assets.all %}
+                    <ul class="list-unstyled mb-0">
+                        {% for asset in permit.assets.all %}
+                        <li class="py-1 {% if not forloop.last %}border-bottom{% endif %} d-flex align-items-center gap-2">
+                            <a href="{% url 'facilities:assets_detail' project.pk asset.pk %}"
+                               class="text-decoration-none text-truncate">
+                                <span class="fw-semibold">{{ asset.asset_tag|default:asset.display_name|default:"(asset)" }}</span>
+                                <span class="text-secondary fs-8">{{ asset.display_ifc_type|truncatechars:24 }}</span>
+                            </a>
+                            {% if user_permission == "owner" or user_permission == "editor" %}
+                            <form method="post"
+                                  action="{% url 'facilities:permit_asset_unlink' project.pk permit.pk %}"
+                                  class="ms-auto m-0">
+                                {% csrf_token %}
+                                <input type="hidden" name="asset_id" value="{{ asset.pk }}">
+                                <button type="submit" class="btn btn-sm btn-link text-secondary p-0"
+                                        title="Unlink this asset">
+                                    <i class="bi bi-x-lg" style="font-size: 0.7rem;"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="text-muted fs-8 mb-0">No linked assets.</div>
+                    {% endif %}
+
+                    {% if user_permission == "owner" or user_permission == "editor" %}
+                    {% if linkable_assets %}
+                    <form method="post"
+                          action="{% url 'facilities:permit_asset_link' project.pk permit.pk %}"
+                          class="d-flex gap-2 mt-2 m-0">
+                        {% csrf_token %}
+                        <select name="asset_id" class="form-select form-select-sm" required>
+                            <option value="">Link an asset…</option>
+                            {% for a in linkable_assets %}
+                            <option value="{{ a.pk }}">{{ a.asset_tag|default:a.display_name|truncatechars:48 }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-sm text-nowrap"
+                                style="background-color: var(--castor-facilities, #3b82f6); color: white; border: none;">
+                            <i class="bi bi-link-45deg"></i> Link
+                        </button>
+                    </form>
+                    {% endif %}
                     {% endif %}
                 </div>
             </div>

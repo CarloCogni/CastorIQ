@@ -1530,9 +1530,10 @@ def filter_prep_rows_by_semantic(
         return [dict(r) for r in prep_rows]
     if op_key not in {"is_missing", "is_present"} and not target and value_type != "boolean":
         return [dict(r) for r in prep_rows]
-    allowed = {f["key"] for f in PREP_NATIVE_FIELDS if f["is_filterable"]} | {
-        f["key"] for f in ENTITY_HINT_FIELDS
-    }
+    # ``is_filterable`` governs Field-picker visibility (TABLE-04), not what the
+    # engine may evaluate: IFC Class is filtered by the dedicated class selector
+    # and by legacy Field-only URLs, so every prep-native key stays evaluable.
+    allowed = {f["key"] for f in PREP_NATIVE_FIELDS} | {f["key"] for f in ENTITY_HINT_FIELDS}
     for extra in allowed_extra_keys or []:
         if _str_val(extra):
             allowed.add(_str_val(extra))

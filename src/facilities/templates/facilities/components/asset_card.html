@@ -38,7 +38,7 @@
 
         <!-- Identifier block (pe-5 leaves room for the QR thumb on the right) -->
         <div class="d-flex align-items-start gap-2" style="padding-right: 78px;">
-            <i class="bi bi-box-seam fs-4" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <i class="bi bi-box-seam fs-4" style="color: var(--castor-facilities, #3b82f6);"></i>
             <div class="flex-grow-1 min-width-0">
                 <div class="fw-semibold text-truncate">
                     <a href="{% url 'facilities:assets_detail' project.pk asset.pk %}"
@@ -115,16 +115,22 @@
         {% if asset.classifications.all %}
         <div class="d-flex flex-wrap gap-1">
             {% for reference in asset.classifications.all %}
-            <span class="badge rounded-pill fs-8" style="background-color: rgba(20,184,166,0.10); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.30);">
+            <span class="badge rounded-pill fs-8" style="background-color: rgba(59, 130, 246,0.10); color: var(--castor-facilities, #3b82f6); border: 1px solid rgba(59, 130, 246,0.30);">
                 {{ reference.classification.name }}:{{ reference.code }}
             </span>
             {% endfor %}
         </div>
         {% endif %}
 
-        <!-- Placeholder for live WO / PM counts — filled in M3 / M5 -->
+        <!-- Live open-WO count (links into Work); next PM stays a stub until M5 -->
         <div class="mt-auto pt-2 fs-8 text-secondary d-flex gap-3 border-top">
-            <span title="Open work orders — M3"><i class="bi bi-clipboard2-check"></i> 0 WOs</span>
+            <a href="{% url 'facilities:work_list' project.pk %}?asset_id={{ asset.pk }}"
+               class="text-decoration-none {% if asset.open_wo_count %}fw-semibold{% endif %}"
+               style="color: {% if asset.open_wo_count %}var(--castor-facilities, #3b82f6){% else %}inherit{% endif %};"
+               title="Open work orders for this asset">
+                <i class="bi bi-clipboard2-check"></i>
+                {{ asset.open_wo_count|default:0 }} WO{{ asset.open_wo_count|default:0|pluralize }}
+            </a>
             <span title="Next PM — M5"><i class="bi bi-calendar-event"></i> next PM: —</span>
         </div>
     </div>

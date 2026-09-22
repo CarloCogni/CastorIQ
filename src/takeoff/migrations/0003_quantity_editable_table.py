@@ -7,38 +7,128 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('environments', '0008_alter_project_owner'),
-        # Packaging leaf (main used 0012 HNSW which is not on this branch).
-        ('ifc_processor', '0011_ifcentity_ifc_description_ifcentity_tag'),
-        ('takeoff', '0002_quantity_preparation_config'),
+        ("environments", "0008_alter_project_owner"),
+        ("ifc_processor", "0012_ifcentity_ifcentity_embedding_hnsw"),
+        ("takeoff", "0002_quantity_preparation_config"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='QuantityEditableTable',
+            name="QuantityEditableTable",
             fields=[
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True, verbose_name='Created At')),
-                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='Updated At')),
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(max_length=120, verbose_name='Name')),
-                ('contract_version', models.CharField(default='qty-editable-table-v1', max_length=64, verbose_name='Contract version')),
-                ('ifc_file_hash', models.CharField(help_text='SHA-256 of the IFC at save time; reopen refuses silent rebinding.', max_length=64, verbose_name='Source IFC file hash')),
-                ('ifc_file_name', models.CharField(blank=True, default='', max_length=255, verbose_name='Source IFC file name')),
-                ('revision', models.PositiveIntegerField(default=1, help_text='Optimistic concurrency token; incremented on each successful save.', verbose_name='Revision')),
-                ('state', models.JSONField(default=dict, help_text='Contract payload: query, units, measurements, assignments, reviews.', verbose_name='Saved working state')),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='quantity_editable_tables_created', to=settings.AUTH_USER_MODEL, verbose_name='Created by')),
-                ('ifc_file', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='quantity_editable_tables', to='ifc_processor.ifcfile', verbose_name='Source IFC file')),
-                ('project', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='quantity_editable_tables', to='environments.project', verbose_name='Project')),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='quantity_editable_tables_updated', to=settings.AUTH_USER_MODEL, verbose_name='Updated by')),
+                (
+                    "created_at",
+                    models.DateTimeField(
+                        auto_now_add=True, db_index=True, verbose_name="Created At"
+                    ),
+                ),
+                ("updated_at", models.DateTimeField(auto_now=True, verbose_name="Updated At")),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("name", models.CharField(max_length=120, verbose_name="Name")),
+                (
+                    "contract_version",
+                    models.CharField(
+                        default="qty-editable-table-v1",
+                        max_length=64,
+                        verbose_name="Contract version",
+                    ),
+                ),
+                (
+                    "ifc_file_hash",
+                    models.CharField(
+                        help_text="SHA-256 of the IFC at save time; reopen refuses silent rebinding.",
+                        max_length=64,
+                        verbose_name="Source IFC file hash",
+                    ),
+                ),
+                (
+                    "ifc_file_name",
+                    models.CharField(
+                        blank=True, default="", max_length=255, verbose_name="Source IFC file name"
+                    ),
+                ),
+                (
+                    "revision",
+                    models.PositiveIntegerField(
+                        default=1,
+                        help_text="Optimistic concurrency token; incremented on each successful save.",
+                        verbose_name="Revision",
+                    ),
+                ),
+                (
+                    "state",
+                    models.JSONField(
+                        default=dict,
+                        help_text="Contract payload: query, units, measurements, assignments, reviews.",
+                        verbose_name="Saved working state",
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="quantity_editable_tables_created",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Created by",
+                    ),
+                ),
+                (
+                    "ifc_file",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="quantity_editable_tables",
+                        to="ifc_processor.ifcfile",
+                        verbose_name="Source IFC file",
+                    ),
+                ),
+                (
+                    "project",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="quantity_editable_tables",
+                        to="environments.project",
+                        verbose_name="Project",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="quantity_editable_tables_updated",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Updated by",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Quantity Editable Table',
-                'verbose_name_plural': 'Quantity Editable Tables',
-                'ordering': ['-updated_at'],
-                'indexes': [models.Index(fields=['project', '-updated_at'], name='takeoff_qua_project_69c9b4_idx'), models.Index(fields=['project', 'created_by', '-updated_at'], name='takeoff_qua_project_0bfbaa_idx'), models.Index(fields=['ifc_file'], name='takeoff_qua_ifc_fil_a85a67_idx')],
+                "verbose_name": "Quantity Editable Table",
+                "verbose_name_plural": "Quantity Editable Tables",
+                "ordering": ["-updated_at"],
+                "indexes": [
+                    models.Index(
+                        fields=["project", "-updated_at"], name="takeoff_qua_project_69c9b4_idx"
+                    ),
+                    models.Index(
+                        fields=["project", "created_by", "-updated_at"],
+                        name="takeoff_qua_project_0bfbaa_idx",
+                    ),
+                    models.Index(fields=["ifc_file"], name="takeoff_qua_ifc_fil_a85a67_idx"),
+                ],
             },
         ),
     ]

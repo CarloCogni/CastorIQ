@@ -142,24 +142,61 @@ class PermitService:
         return permit
 
     def revoke_permit(self, permit: Permit, *, note: str = "") -> Permit:
-        """Mark a permit as revoked. Idempotent."""
+        """Mark a permit as revoked. Idempotent.
+
+        Safety consequence: any linked work order currently IN_PROGRESS is
+        returned to hold (ASSIGNED) in the same transaction — work must not
+        continue under a revoked permit. This is a system-triggered status
+        change, not a user transition, so it bypasses the role gate but
+        still writes a :class:`WorkOrderStatusEvent` for the audit trail.
+        """
+        # Local import — permit_service is imported by workorder_service, so a
+        # top-level import back the other way would be circular.
+        from django.db import transaction  # noqa: PLC0415
+
+        from facilities.models.work import (  # noqa: PLC0415
+            WorkOrderStatus,
+            WorkOrderStatusEvent,
+        )
+
         if permit.project_id != self.project.id:
             raise PermitValidationError("Permit does not belong to this project.")
         if permit.status == Permit.Status.REVOKED:
             return permit
-        permit.status = Permit.Status.REVOKED
-        if note:
-            permit.notes = (
-                f"{permit.notes}\n[Revoked {timezone.now():%Y-%m-%d}] {note}"
-                if permit.notes
-                else f"[Revoked {timezone.now():%Y-%m-%d}] {note}"
-            )
-        permit.save()
+
+        with transaction.atomic():
+            permit.status = Permit.Status.REVOKED
+            if note:
+                permit.notes = (
+                    f"{permit.notes}\n[Revoked {timezone.now():%Y-%m-%d}] {note}"
+                    if permit.notes
+                    else f"[Revoked {timezone.now():%Y-%m-%d}] {note}"
+                )
+            permit.save()
+
+            held = 0
+            for wo in permit.work_orders.filter(status=WorkOrderStatus.IN_PROGRESS):
+                previous = wo.status
+                wo.status = WorkOrderStatus.ASSIGNED
+                wo.save(update_fields=["status", "updated_at"])
+                WorkOrderStatusEvent.objects.create(
+                    work_order=wo,
+                    from_status=previous,
+                    to_status=WorkOrderStatus.ASSIGNED,
+                    actor=self.user if getattr(self.user, "is_authenticated", False) else None,
+                    note=(
+                        f"Returned to hold — permit {permit.permit_number} revoked."
+                        + (f" {note}" if note else "")
+                    ),
+                )
+                held += 1
+
         logger.info(
-            "Permit revoked: project=%s permit=%s by=%s",
+            "Permit revoked: project=%s permit=%s by=%s (WOs returned to hold: %d)",
             self.project.pk,
             permit.permit_number,
             getattr(self.user, "pk", None),
+            held,
         )
         return permit
 

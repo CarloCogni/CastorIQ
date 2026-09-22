@@ -89,8 +89,14 @@ def test_executive_evm_defers_scurve_and_periods(client):
         0
     ]
     assert 'hx-trigger="load"' not in periods_block
-    assert "Company actual cost" not in html
-    assert "Schedule / assignment cost indicators only" in html
+    # Controls honesty: schedule/progress indicators only, company cost gated off.
+    assert "Schedule and progress indicators only — not financial Cost EVM." in html
+    assert 'data-testid="exec-company-cost-unavailable"' in html
+    assert (
+        "Unavailable — requires a company cost source (ERP / invoice / QS / payroll / procurement)."
+        in html
+    )
+    assert "ResourceAssignment.actual_cost is not company spend." in html
 
 
 @pytest.mark.django_db

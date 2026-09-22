@@ -16,6 +16,12 @@
     <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0 flex-wrap gap-2"
          style="font-size:0.82rem;">
 
+        {% if back_url %}
+        <a href="{{ back_url }}" class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1 me-1"
+           title="Back to {{ back_label }}">
+            <i class="bi bi-arrow-left"></i> Back to {{ back_label }}
+        </a>
+        {% endif %}
         <span class="fw-semibold me-1">Castor Viewer</span>
         <span class="text-secondary text-truncate" style="font-size:0.78rem; max-width:200px;">{{ viewer_ifc_file.name }}</span>
 

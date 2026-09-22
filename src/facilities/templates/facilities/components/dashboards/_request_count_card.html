@@ -1,0 +1,36 @@
+<!-- facilities/components/dashboards/_request_count_card.html — live open-requests count linking to the Requests sub-tab -->
+
+<div class="col-12 col-md-6 col-lg-4">
+    <a href="{% url 'facilities:ar_list' project.pk %}"
+       class="text-decoration-none h-100 d-block"
+       style="color: inherit;">
+        <div class="p-3 rounded border d-flex flex-column gap-2 h-100"
+             style="background-color: var(--bs-body-bg); border-color: var(--castor-facilities, #3b82f6) !important;">
+
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-megaphone fs-5" style="color: var(--castor-facilities, #3b82f6);"></i>
+                <span class="fw-semibold"
+                      title="Open (awaiting triage) plus triaged-but-unresolved requests. Escalated and dismissed ones are handled.">
+                    Occupant requests
+                </span>
+                {% if facilities_requests_open_count %}
+                <span class="badge rounded-pill ms-auto"
+                      style="background-color: rgba(124,58,237,0.15); color: #7c3aed; border: 1px solid rgba(124,58,237,0.35);">
+                    awaiting action
+                </span>
+                {% endif %}
+            </div>
+
+            <div class="flex-grow-1 d-flex align-items-center justify-content-center py-2">
+                <span class="display-6 m-0" style="color: var(--castor-facilities, #3b82f6);">
+                    {{ facilities_requests_open_count|default:0 }}
+                </span>
+            </div>
+
+            <div class="fs-8 text-secondary border-top pt-2 d-flex align-items-center gap-1">
+                <i class="bi bi-arrow-right"></i>
+                <span>Open the request queue</span>
+            </div>
+        </div>
+    </a>
+</div>

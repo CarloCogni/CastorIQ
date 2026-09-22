@@ -79,16 +79,17 @@ def test_quantities_entry_uses_quantity_review_copy(client):
 
 @pytest.mark.django_db
 def test_quantities_prep_table_hides_model_volume_units(client):
-    """Prep Unit column never dumps raw model-unit phrases (REVIEW-08 + DYNAMIC-07)."""
+    """Prep table shows product unit labels; raw model-unit strings stay off main table."""
     project = _project_with_volume_rows()
     client.force_login(project.owner)
-    # REVIEW-08 default layout omits Unit — request it explicitly with NetVolume.
+    # Select NetVolume and opt the Unit/Quantity columns in (TABLE-04 defaults
+    # to core columns only) so unit cells render for beams.
     html = client.get(
         reverse("takeoff:qto", kwargs={"pk": project.pk}),
         {
             "basis_IfcBeam": "NetVolume",
             "table_layout": "v2",
-            "col_order": "ifc_class,name,quantity,unit,status,actions",
+            "col_order": "ifc_class,name,quantity,measurement,unit,status,actions",
         },
     ).content.decode()
     table = _prep_table_html(html)
@@ -97,13 +98,11 @@ def test_quantities_prep_table_hides_model_volume_units(client):
     assert "model length units" not in table
     assert "blank basis" not in table
     assert "blank unit" not in table
-    # Fixture has no IFC project_units → Unknown source unit / em dash, never invented m³.
-    assert (
-        ("Unknown source unit" in table)
-        or ("—" in table)
-        or ("m³" in table)
-        or ("Unit not resolved" in table)
-    )
+    # UNIT-03 / TABLE-04: the Unit cell shows a real unit symbol or an honest
+    # unresolved label — never the raw "model <family> units" dump phrase.
+    assert 'data-testid="qty-prep-model-unit-cell"' in table
+    assert "m³" in table or "Unit not resolved" in table or "Unknown source unit" in table
+
 
 @pytest.mark.django_db
 def test_unresolved_register_copy_is_product_tone(client):

@@ -427,6 +427,8 @@ def test_ambiguous_unmatched_targets_not_silently_attached():
     session2: dict = {}
     out = svc.restore_into_session(table=table, session=session2)
     assert out["error"] is None
+    # PERF-15B: rematch is deferred to the first GET rebuild.
+    assert out["restore_report"].get("deferred") is True
     runtime = build_qty_prep_session_ui(
         project=project, user=user, session=session2, query={}, ifc_file=ifc
     )

@@ -1,6 +1,6 @@
 # Explore — IFC Spatial Browser
 
-The **Explore** tab is a structured viewer for the IFC model: a spatial hierarchy on the left, a filtered entity table on the right. It is the answer to *"what is actually in this model?"* — a direct, lossless view that does not depend on the LLM or the RAG pipeline.
+The **Explore** tab is a structured viewer for the IFC model: a spatial hierarchy on the left, a filtered entity table in the middle, and an optional collapsible 3D viewer pane on the right. It is the answer to *"what is actually in this model?"* — a direct, lossless view that does not depend on the LLM or the RAG pipeline.
 
 Not to be confused with the **Facilities → Explore** sub-tab, which is a 2D floorplan workspace for facility management (points, photos, 360° panoramas). Those are different features; see [facilities.md](facilities.md).
 
@@ -44,11 +44,20 @@ Explore is also the fastest way to discover **what is missing** from a model —
 ## What Explore does *not* do
 
 - It does not modify the IFC. That is the Modify tab.
-- It does not render 3D geometry. The 3D viewer is a separate surface that is not in the main nav for v1.0.0.
 - It does not surface conflicts between IFC and documents. That is the Conflicts tab.
+
+## 3D viewer pane
+
+The right-hand pane lazily embeds the general-purpose viewer (`ifc_viewer` `viewer_embed`
+in `?mode=inspect`) in an iframe — it loads only when first opened, so leaving it closed
+keeps the tab fast. Selecting a tree node or searching highlights the matching elements;
+each entity row offers a *Focus* deep link, and `projects:explore?focus=<GlobalId>` deep
+links arrive from Ask citations, Modify diff rows, and Model Quality issues. The parent
+page always sends `castor:highlight` before `castor:focus-element` (highlight-before-focus
+protocol).
 
 ## Reference
 
-- View: `src/ifc_processor/views.py` (the `explore_*` views)
+- Views: `src/environments/views.py` — `ExploreView` plus the `Explore*Partial` HTMX views
 - Template: `src/ifc_processor/templates/ifc_processor/tabs/_explore.html`
 - Tree partial: `src/ifc_processor/templates/ifc_processor/explore/_tree_nodes.html`

@@ -245,7 +245,7 @@ def test_evm_availability_prefers_canonical_ac_row_count():
 
 @pytest.mark.django_db
 def test_methodology_and_help_no_longer_p6_only():
-    """Manhour methodology sources mention canonical preference."""
+    """Manhour metrics read the canonical assignment model, and help says so honestly."""
     for mid in ("e8.planned_manhours", "e8.actual_manhours", "e8.remaining_manhours"):
         src = E8_METRIC_REGISTRY[mid].primary_source
         assert "ResourceAssignment" in src
@@ -257,6 +257,16 @@ def test_methodology_and_help_no_longer_p6_only():
         "templates/scheduling/components/evm_help_modal.html"
     )
     text = help_html.read_text(encoding="utf-8")
-    assert "canonical" in text.lower()
+
+    # P6ResourceAssignment is never presented as the cost authority.
     assert "P6ResourceAssignment.actual_cost</code></strong>" not in text
-    assert "legacy" in text.lower() or "fallback" in text.lower()
+    assert "P6ResourceAssignment" not in text
+    # The canonical schedule model is named, and scoped to assignment diagnostics.
+    assert "<code>ResourceAssignment.actual_cost</code> is assignment diagnostic data only" in text
+    assert "Company cost ledgers are not available in Castor." in text
+    assert "not ERP, invoice, QS, payroll, procurement, or company spend." in text
+    # Every company-cost metric stays Unavailable on the product Controls surface.
+    assert "CPI / AC / EAC / ETC / VAC / TCPI remain" in text
+    for metric in ("CPI", "EAC", "VAC", "TCPI"):
+        assert f"<strong>{metric}</strong></td>" in text
+    assert text.count("Unavailable — requires a company cost source") >= 5

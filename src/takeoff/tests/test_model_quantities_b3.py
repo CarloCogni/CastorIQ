@@ -153,7 +153,11 @@ def test_quantities_page_sections_and_honesty(client):
     )
     client.force_login(project.owner)
 
-    response = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk}))
+    response = client.get(
+        reverse("takeoff:qto", kwargs={"pk": project.pk}),
+        # TABLE-04 defaults to core columns; opt the Unit column in.
+        {"table_layout": "v2", "col_order": "ifc_class,name,unit,status,actions"},
+    )
     html = response.content.decode()
 
     assert response.status_code == 200
@@ -167,6 +171,8 @@ def test_quantities_page_sections_and_honesty(client):
     assert "Length (model length units)" in html
     assert "model volume units" in html.lower() or "model area units" in html.lower()
     assert "model length units" in html.lower()
+    # MEASURE-02: the Unit column shows IFC project unit family labels (not conversion).
+    assert 'data-testid="qty-prep-col-unit"' in html
     assert "Inspect IFC Elements" in html
     assert "has_qto=no" in html
     assert "GID-C1" not in html
@@ -226,9 +232,26 @@ def test_quantities_page_sections_and_honesty(client):
     ):
         assert phrase not in cleaned, phrase
 
-    # Quantities grew intentionally with prep builder + schema mapping + 5D Review entry.
-    # Keep a hard ceiling against accidental payload dumps, but do not punish approved UX.
-    assert len(response.content) < 600_000
+    # Quantities grew intentionally with the TABLE-04 one-table workspace (column
+    # modal, measurement settings, lazy field picker). A fixed byte ceiling only
+    # tracks chrome, so the real guard is that the payload does not scale with
+    # entity count — that is what an accidental data dump would look like.
+    baseline = len(response.content)
+    assert baseline < 600_000
+
+    for i in range(40):
+        IFCEntityFactory(
+            ifc_file=ifc,
+            ifc_type="IfcColumn",
+            global_id=f"GID-C-BULK-{i}",
+            properties={"Qto_ColumnBaseQuantities.NetVolume": 1.0 + i},
+        )
+    bulk = client.get(
+        reverse("takeoff:qto", kwargs={"pk": project.pk}),
+        {"table_layout": "v2", "col_order": "ifc_class,name,unit,status,actions"},
+    )
+    assert len(bulk.content) < baseline + 20_000
+    assert b"GID-C-BULK-0" not in bulk.content
 
 
 @pytest.mark.django_db

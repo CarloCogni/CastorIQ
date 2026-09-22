@@ -399,3 +399,94 @@ class TestSerializeContext:
         assert result["source_count"] == 1
         assert result["sources"][0]["type"] == "doc"
         assert result["sources"][0]["source"] == "Fire Safety Report.pdf"
+
+
+class _Hit:
+    """Bare stand-in for an annotated retrieval hit."""
+
+    def __init__(self, distance, ifc_type="IfcWall", element_type_id=1, container_id=1):
+        self.distance = distance
+        self.ifc_type = ifc_type
+        self.element_type_id = element_type_id
+        self.spatial_container_id = container_id
+
+
+class TestRetrievalThreshold:
+    """Soft distance-ceiling behaviour (pure logic, no DB)."""
+
+    def test_far_candidates_are_dropped(self, rag_service):
+        """Anything beyond the ceiling is noise and must not reach the prompt."""
+        hits = [_Hit(0.30), _Hit(0.40), _Hit(0.50), _Hit(0.90), _Hit(0.95)]
+        kept = rag_service._apply_threshold(hits)
+        assert [h.distance for h in kept] == [0.30, 0.40, 0.50]
+
+    def test_minimum_head_survives_a_bad_day(self, rag_service):
+        """When everything scores badly the top-3 still flow through."""
+        hits = [_Hit(0.80), _Hit(0.85), _Hit(0.90), _Hit(0.95)]
+        kept = rag_service._apply_threshold(hits)
+        assert [h.distance for h in kept] == [0.80, 0.85, 0.90]
+
+
+class TestNearDuplicateCollapse:
+    """Same-family entity hits collapse onto one representative."""
+
+    def test_same_family_collapses_with_count(self, rag_service):
+        """40 identical walls become one entry carrying similar_count=39."""
+        hits = [_Hit(0.30 + i * 0.001) for i in range(40)]
+        collapsed = rag_service._collapse_near_duplicates(hits)
+        assert len(collapsed) == 1
+        assert collapsed[0].distance == 0.30
+        assert collapsed[0].similar_count == 39
+
+    def test_different_families_survive_independently(self, rag_service):
+        """Different type/container combinations are not merged."""
+        hits = [
+            _Hit(0.30, ifc_type="IfcWall", container_id=1),
+            _Hit(0.31, ifc_type="IfcWall", container_id=2),
+            _Hit(0.32, ifc_type="IfcDoor", container_id=1),
+        ]
+        collapsed = rag_service._collapse_near_duplicates(hits)
+        assert len(collapsed) == 3
+        assert all(h.similar_count == 0 for h in collapsed)
+
+    def test_hits_without_discriminators_never_collapse(self, rag_service):
+        """Exports without type objects/containment must keep every candidate.
+
+        With both FKs NULL the key would degenerate to ifc_type alone and 30
+        distinct walls — including the one holding the answer — would collapse
+        into a single arbitrary representative.
+        """
+        hits = [_Hit(0.30 + i * 0.001, element_type_id=None, container_id=None) for i in range(30)]
+        collapsed = rag_service._collapse_near_duplicates(hits)
+        assert len(collapsed) == 30
+        assert [h.distance for h in collapsed] == sorted(h.distance for h in collapsed)
+
+
+class TestQuotaPacking:
+    """Per-source budget split with top-up pass."""
+
+    def test_docs_cannot_crowd_out_ifc(self, rag_service):
+        """A doc-heavy candidate pool leaves the IFC quota untouched."""
+        ifc = [_Hit(0.50), _Hit(0.51)]
+        docs = [_Hit(0.10 + i * 0.01) for i in range(20)]
+        with patch.object(RAGService, "_format_single_item", staticmethod(lambda item: "x" * 400)):
+            selected, _used = rag_service._pack_with_quota(ifc, docs, budget_tokens=1000)
+        assert all(h.distance >= 0.50 for h in selected if h in ifc)
+        assert any(h in ifc for h in selected)
+
+    def test_one_sided_pool_uses_full_budget(self, rag_service):
+        """With no docs at all, IFC hits may consume the whole budget."""
+        ifc = [_Hit(0.30 + i * 0.01) for i in range(10)]
+        with patch.object(RAGService, "_format_single_item", staticmethod(lambda item: "x" * 400)):
+            selected, used = rag_service._pack_with_quota(ifc, [], budget_tokens=1000)
+        assert len(selected) == 10
+        assert used <= 1000
+
+    def test_leftover_budget_tops_up_from_either_source(self, rag_service):
+        """Phase 2 spends unused quota on the best remaining candidates."""
+        ifc = [_Hit(0.30)]
+        docs = [_Hit(0.20 + i * 0.01) for i in range(10)]
+        with patch.object(RAGService, "_format_single_item", staticmethod(lambda item: "x" * 400)):
+            selected, _used = rag_service._pack_with_quota(ifc, docs, budget_tokens=1100)
+        # 1 ifc hit (~100 tok) + docs fill their 330 quota then top-up the rest
+        assert len(selected) > 4

@@ -13,6 +13,7 @@ from django.core.exceptions import ValidationError
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.template.loader import render_to_string
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
 from django.views.generic import TemplateView
 
@@ -99,6 +100,24 @@ class ViewerView(ProjectTabMixin, TemplateView):
         ifc_file = _resolve_ifc_file(project, self.request)
         ctx["viewer_ifc_file"] = ifc_file
         ctx["ifc_file_url"] = ifc_file.file.url if ifc_file else None
+
+        # Deep-link "Back" affordance: callers pass ?return=<same-site path>&from=<label>.
+        # Validate against the current host to avoid an open redirect; ignore anything else.
+        back = (self.request.GET.get("return") or "").strip()
+        if back and url_has_allowed_host_and_scheme(
+            back,
+            allowed_hosts={self.request.get_host()},
+            require_https=self.request.is_secure(),
+        ):
+            frm = (self.request.GET.get("from") or "").strip().lower()
+            ctx["back_url"] = back
+            ctx["back_label"] = {
+                "asset": "Asset",
+                "spaces": "Spaces",
+                "work": "Work order",
+                "permit": "Permit",
+                "request": "Request",
+            }.get(frm, "Facilities")
         return ctx
 
 
@@ -395,15 +414,16 @@ class ViewerEmbedView(ProjectAccessMixin, View):
     Returns X-Frame-Options: SAMEORIGIN so browsers allow it to be framed
     from the same origin.  Has no page chrome — just the WebGL canvas,
     a loading overlay, and a postMessage API for the parent tab.
+
+    ``?ifc=<pk>`` pins a specific completed IFC file (defaults to latest).
+    The template forwards the same pk to the fragments and colormap
+    endpoints, so the geometry, the .frag cache and the paint must all
+    resolve to one file.
     """
 
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
-        ifc_file = (
-            IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-            .order_by("-created_at")
-            .first()
-        )
+        ifc_file = _resolve_ifc_file(project, request)
         ctx = {
             "project": project,
             "viewer_ifc_file": ifc_file,
@@ -415,17 +435,17 @@ class ViewerEmbedView(ProjectAccessMixin, View):
 
 
 class ElementPropertiesView(ProjectAccessMixin, View):
-    """JSON — IFC entity properties for a GlobalId clicked in the 3D viewer."""
+    """JSON — IFC entity properties for a GlobalId clicked in the 3D viewer.
+
+    ``?ifc=<pk>`` scopes the lookup to the same file the embed is showing;
+    a GlobalId is only unique within one IFC file.
+    """
 
     def get(self, request, global_id: str, **kwargs: object) -> HttpResponse:
-        from ifc_processor.models import IFCEntity, IFCFile
+        from ifc_processor.models import IFCEntity
 
         project = self.get_project()
-        ifc_file = (
-            IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-            .order_by("-created_at")
-            .first()
-        )
+        ifc_file = _resolve_ifc_file(project, request)
         if not ifc_file:
             return JsonResponse({"found": False, "global_id": global_id})
 

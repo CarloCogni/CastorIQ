@@ -64,10 +64,13 @@ def test_quantities_shows_empty_state_without_fived_version(client):
     assert 'data-testid="qty-schema-insight-empty"' in entry
     assert 'data-testid="qty-schema-insight-disabled"' in entry
     assert 'data-testid="qty-schema-insight-open"' not in entry
-    assert "No frozen 5D snapshot" in entry
-    assert "Prepare mappings" in entry
-    assert "freeze a snapshot" in entry
+    assert 'data-testid="qty-schema-insight-empty-lead"' in entry
+    assert "No saved version is available yet." in entry
+    assert "Prepare the table and use Save version to open" in entry
+    assert 'data-testid="qty-schema-insight-empty-semantic"' in entry
+    assert "Complete preparation and Save version to review semantic readiness." in entry
     assert 'data-testid="qty-schema-insight-why-snapshot"' in entry
+    assert "A saved version freezes rows and mapping provenance for Review." in entry
     assert "View schema-based quantity rollups" not in entry
     assert "Review IFC quantities grouped by the latest frozen 5D snapshot." in entry
     assert "5D Quantity Review" in entry

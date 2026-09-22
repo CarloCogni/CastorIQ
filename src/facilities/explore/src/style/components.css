@@ -38,16 +38,20 @@ body.castor-embedded .mh-build { display: none !important; }
 /* Crosshair while placing a point */
 .exp-app.placing .exp-viewer{cursor:crosshair;}
 
-/* ── Pins (points on the plan) ── */
+/* ── Pins (points on the plan) ──
+   All pin dimensions are driven by --pin-scale (set on the pin layer by
+   main.js from state.pinScale, bands 1–5 → 0.55–1.6). Band 3 = 1.0 = the
+   original 20 px look; smaller bands keep pins from covering partition
+   walls on dense plans. */
 .pin{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;cursor:pointer;}
-.pin-dot{min-width:20px;height:20px;border-radius:10px;padding:0 5px;border:2px solid rgba(255,255,255,.85);background:rgba(79,196,207,.45);display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.5);transition:transform .13s,background .13s;box-sizing:border-box;}
+.pin-dot{min-width:calc(20px * var(--pin-scale,1));height:calc(20px * var(--pin-scale,1));border-radius:calc(10px * var(--pin-scale,1));padding:0 calc(5px * var(--pin-scale,1));border:2px solid rgba(255,255,255,.85);background:rgba(79,196,207,.45);display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.5);transition:transform .13s,background .13s;box-sizing:border-box;}
 .pin:hover .pin-dot{transform:scale(1.25);background:rgba(79,196,207,.8);}
 .pin.sel .pin-dot{background:var(--acc);border-color:#fff;box-shadow:0 0 0 3px rgba(79,196,207,.3);}
 /* Pins not in the active numbering set (e.g. other phases) are dimmed + shrunk */
 .pin.dim{opacity:.4;}
-.pin.dim .pin-dot{min-width:13px;width:13px;height:13px;padding:0;border-radius:50%;}
+.pin.dim .pin-dot{min-width:calc(13px * var(--pin-scale,1));width:calc(13px * var(--pin-scale,1));height:calc(13px * var(--pin-scale,1));padding:0;border-radius:50%;}
 .pin.dim:hover{opacity:1;}
-.pin-num{font-family:var(--font-mono);font-size:9px;font-weight:600;color:#fff;line-height:1;}
+.pin-num{font-family:var(--font-mono);font-size:max(6px, calc(9px * var(--pin-scale,1)));font-weight:600;color:#fff;line-height:1;}
 .pin-label{position:absolute;top:-22px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.78);border:1px solid rgba(255,255,255,.2);border-radius:3px;padding:2px 6px;font-family:var(--font-mono);font-size:8px;color:#fff;white-space:nowrap;opacity:0;transition:opacity .12s;pointer-events:none;}
 .pin:hover .pin-label,.pin.sel .pin-label{opacity:1;}
 
@@ -257,6 +261,25 @@ body.castor-embedded .mh-build { display: none !important; }
 .ptl-sym{font-size:12px;line-height:1;flex-shrink:0;width:15px;height:15px;text-align:center;display:inline-flex;align-items:center;justify-content:center;color:var(--t1);}
 .ptl-sym svg{width:14px;height:14px;display:block;}
 
+/* Element-table ⚙ property picker (native <details> dropdown) */
+.dp-elprops{position:relative;flex-shrink:0;}
+.dp-elprops summary{list-style:none;cursor:pointer;color:var(--t3);font-size:11px;padding:0 3px;line-height:1;}
+.dp-elprops summary::-webkit-details-marker{display:none;}
+.dp-elprops summary:hover{color:var(--acc);}
+.dp-elprops[open] summary{color:var(--acc);}
+.dp-elprops-list{
+  position:absolute;right:0;top:18px;z-index:20;
+  background:var(--p1);border:1px solid var(--b2);border-radius:5px;
+  box-shadow:0 4px 16px rgba(0,0,0,.4);
+  padding:6px 8px;max-height:180px;overflow-y:auto;
+  display:flex;flex-direction:column;gap:3px;min-width:180px;
+}
+.dp-elprops-list label{
+  display:flex;align-items:center;gap:6px;
+  font-size:10.5px;color:var(--t2);cursor:pointer;white-space:nowrap;
+}
+.dp-elprops-list input[type=checkbox]{accent-color:var(--acc);margin:0;}
+
 /* ── Point kinds (photo / camera / sensor / custom) ── */
 .kindfilter{display:flex;align-items:center;gap:6px;}
 .dp-kinds{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 12px;border-bottom:1px solid var(--b1);flex-shrink:0;}
@@ -265,10 +288,11 @@ body.castor-embedded .mh-build { display: none !important; }
 .dp-sym{width:26px;height:24px;border:1px solid var(--b2);border-radius:4px;background:var(--p2);color:var(--t1);cursor:pointer;font-size:13px;line-height:1;}
 .dp-sym:hover{border-color:var(--acc-b);}
 .dp-sym.on{border-color:var(--acc);color:var(--acc);}
-.pin-num.pin-sym{font-size:11px;color:#fff;display:inline-flex;align-items:center;justify-content:center;line-height:1;}
+.pin-num.pin-sym{font-size:max(7px, calc(11px * var(--pin-scale,1)));color:#fff;display:inline-flex;align-items:center;justify-content:center;line-height:1;}
 /* Inline SVG glyphs (camera, sensor) inherit currentColor from .pin-num so
-   they match the pin text colour; sized to fit the 20 px pin nicely. */
-.pin-num.pin-sym svg{width:13px;height:13px;display:block;}
+   they match the pin text colour; sized to fit the pin at any scale band.
+   max() floors keep glyphs recognisable at the XS band. */
+.pin-num.pin-sym svg{width:max(8px, calc(13px * var(--pin-scale,1)));height:max(8px, calc(13px * var(--pin-scale,1)));display:block;}
 
 /* ── Phase manager (numbering ⚙) ── */
 .num-cfg{background:transparent;border:1px solid var(--b2);color:var(--t2);border-radius:4px;width:22px;height:22px;line-height:1;cursor:pointer;flex-shrink:0;}
@@ -282,3 +306,15 @@ body.castor-embedded .mh-build { display: none !important; }
 
 /* Reset-to-demo button in the floor manager */
 .fm-reset{margin-top:14px;width:100%;}
+
+/* Floor-plan empty state — no plan generated/uploaded for the active storey yet.
+   Replaces the broken <img> with a guided call-to-action to generate from IFC. */
+.plan-empty{
+  position:absolute; inset:0; z-index:4;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:9px; text-align:center; padding:24px; pointer-events:auto;
+}
+.plan-empty .pe-ico{ color:var(--acc); opacity:.85; }
+.plan-empty .pe-title{ font-size:15px; font-weight:600; color:var(--t1); }
+.plan-empty .pe-sub{ font-size:12.5px; color:var(--t2); max-width:300px; line-height:1.45; }
+.plan-empty .pe-btn{ margin-top:6px; }

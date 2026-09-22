@@ -71,6 +71,11 @@ services:
   nginx:
     image: nginx:alpine
     container_name: castor-nginx
+    # Without a restart policy, an nginx crash (bad upstream DNS at boot,
+    # cert reload failure) leaves the public ingress dark until manual SSH
+    # intervention. Mirror the `web` service so the container self-heals
+    # across crashes and host reboots.
+    restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"

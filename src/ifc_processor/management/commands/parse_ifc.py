@@ -25,9 +25,24 @@ class Command(BaseCommand):
             action="store_true",
             help="Reprocess files even if already completed",
         )
+        parser.add_argument(
+            "--all-completed",
+            action="store_true",
+            help=(
+                "Re-parse every completed file WITHOUT re-embedding (debug tool). "
+                "For a full fleet rollout (parse + embeddings in one), use "
+                "`manage.py reprocess_all` instead."
+            ),
+        )
 
     def handle(self, *args, **options):
-        if options["all_pending"]:
+        if options["all_completed"]:
+            files = IFCFile.objects.filter(status=IFCFile.Status.COMPLETED)
+            self.stdout.write(f"Re-parsing {files.count()} completed file(s)")
+            for ifc_file in files:
+                self._parse_file(ifc_file)
+
+        elif options["all_pending"]:
             files = IFCFile.objects.filter(status=IFCFile.Status.PENDING)
             self.stdout.write(f"Found {files.count()} pending files")
 

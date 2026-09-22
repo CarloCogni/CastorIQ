@@ -227,3 +227,18 @@ The `chunk_source` field is available to RAV (Retrieval-Augmented Verification) 
 | Handwriting recognition | Excluded | GLM-OCR accuracy unreliable on handwriting |
 | Cloud OCR fallback | Excluded | Violates local-first constraint |
 | Celery task queue | Future | `analyze_document()` is the single swap point — replace call with `.delay()` |
+
+## Accuracy and user guidance
+
+GLM-OCR is a convenience: free, open source, local, and one click away. Its
+accuracy on Castor's documents has not been measured, and OCR accuracy is out
+of scope for the project's evaluation. A model of about 0.9B parameters is not
+expected to match frontier multimodal models on dense drawings, tables or poor
+scans.
+
+When precision matters, extract the text by hand with a frontier model: upload
+the scan to Gemini (or Claude), copy the text it returns into a document, save
+that as a PDF, and upload the text PDF to Castor, which then takes the standard
+text path. This is a step the user takes outside Castor, so it does not
+contradict the "Cloud OCR fallback: excluded" row above: Castor itself never
+sends a document to a cloud service for OCR.

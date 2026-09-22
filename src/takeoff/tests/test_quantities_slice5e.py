@@ -106,9 +106,6 @@ def test_export_reflects_basis_schema_source_and_sessions(client):
         "field_package_boq_mapping": "0",
         "source_classification_code": "manual_field",
         "source_work_package": "not_mapped",
-        # REVIEW-08: mapping fields export only when present in col_order.
-        "table_layout": "v2",
-        "col_order": "ifc_class,name,type_name,classification_code,status,actions",
     }
     assert client.get(reverse("takeoff:qto", kwargs={"pk": project.pk}), params).status_code == 200
     runtime = build_qty_prep_session_ui(
@@ -117,10 +114,10 @@ def test_export_reflects_basis_schema_source_and_sessions(client):
         session=client.session,
         query=params,
     )
-    # HIERARCHY-09: export/freeze use instance keys from prep_rows_export.
-    export_rows = runtime["qty_prep"].get("prep_rows_export") or []
-    assert export_rows, "expected instance export rows"
-    row_key = export_rows[0]["row_key"]
+    # Visible hierarchy rows are class-grain; export rows are instance-grain.
+    class_row = runtime["qty_prep"]["prep_rows"][0]
+    row_key = class_row["row_key"]
+    target_class = str(class_row.get("ifc_class") or "")
     rq = "&".join(f"{k}={v}" for k, v in params.items())
 
     client.post(
@@ -156,7 +153,12 @@ def test_export_reflects_basis_schema_source_and_sessions(client):
     assert doc["settings"]["schema_includes"].get("classification_code") is True
     assert doc["settings"]["source_mappings"]["classification_code"] == "manual_field"
 
-    exported = next(r for r in doc["rows"] if r["row_key"] == row_key)
+    # Class/type session overrides propagate onto instance export rows.
+    exported = next(
+        r
+        for r in doc["rows"]
+        if r.get("ifc_class") == target_class and r.get("classification_code") == "CL-5E-EXPORT"
+    )
     assert exported["session_review_status"] == "reviewing"
     assert "5e review note" in exported["session_review_note"]
     assert exported["classification_code"] == "CL-5E-EXPORT"
@@ -167,6 +169,7 @@ def test_export_reflects_basis_schema_source_and_sessions(client):
     assert "classification_code" in headers
     assert "classification_code_origin" in headers
     assert "package_boq_mapping" not in headers
+    assert "zone" not in headers
     assert "CL-5E-EXPORT" in csv_text
 
 
@@ -184,8 +187,6 @@ def test_export_excludes_ineligible_manual_mapping_and_includes_draft(client):
             "source_classification_code": "future_modify_handoff",
             "source_package_boq_mapping": "not_mapped",
             "source_work_package": "not_mapped",
-            "table_layout": "v2",
-            "col_order": "ifc_class,name,classification_code,status,actions",
         },
     )
     assert saved.get("error") is None
@@ -194,8 +195,6 @@ def test_export_excludes_ineligible_manual_mapping_and_includes_draft(client):
     params_manual = {
         "basis_IfcWall": "NetVolume",
         "source_classification_code": "manual_field",
-        "table_layout": "v2",
-        "col_order": "ifc_class,name,classification_code,status,actions",
     }
     client.get(reverse("takeoff:qto", kwargs={"pk": project.pk}), params_manual)
     runtime = build_qty_prep_session_ui(
@@ -204,20 +203,16 @@ def test_export_excludes_ineligible_manual_mapping_and_includes_draft(client):
         session=client.session,
         query=params_manual,
     )
-    export_rows = runtime["qty_prep"].get("prep_rows_export") or []
-    assert export_rows, "expected instance export rows"
-    row_key = export_rows[0]["row_key"]
+    class_row = runtime["qty_prep"]["prep_rows"][0]
+    row_key = class_row["row_key"]
+    target_class = str(class_row.get("ifc_class") or "")
     client.post(
         reverse("takeoff:qty_prep_row_mapping", kwargs={"pk": project.pk}),
         {
             "action": "apply",
             "row_key": row_key,
-            "return_query": (
-                "source_classification_code=manual_field"
-                "&table_layout=v2"
-                "&col_order=ifc_class,name,classification_code,status,actions"
-            ),
-            "classification_code": "SESSION-ASSIGN-VALUE",
+            "return_query": "source_classification_code=manual_field",
+            "classification_code": "SHOULD-NOT-EXPORT",
         },
         follow=True,
     )
@@ -232,14 +227,16 @@ def test_export_excludes_ineligible_manual_mapping_and_includes_draft(client):
     assert doc["settings"]["prep_config"] is not None
     assert doc["settings"]["prep_config"]["name"] == "5e-export-draft"
     assert doc["settings"]["source_mappings"]["classification_code"] == "future_modify_handoff"
-    exported = next(r for r in doc["rows"] if r["row_key"] == row_key)
-    # TABLE-04B: future_modify no longer blocks working Assign values on export rows;
-    # provenance still reports the draft source intent.
-    assert exported.get("classification_code_origin") == "deferred_modify"
-    assert exported.get("classification_code_source_intent") == "future_modify_handoff"
-    # Session overlay may be present; it does not rewrite settings.source_mappings.
-    assert exported.get("classification_code") in ("", None, "SESSION-ASSIGN-VALUE")
-    assert doc["settings"]["source_mappings"]["classification_code"] != "manual_field"
+    exported = next(r for r in doc["rows"] if r.get("ifc_class") == target_class)
+    # TABLE-04B: schema inclusion (not source intent) gates Assign values.
+    # Session override remains visible; origin honesty still reflects deferred intent.
+    assert exported.get("classification_code") == "SHOULD-NOT-EXPORT"
+    assert exported.get("classification_code_origin") in {
+        "manual_session",
+        "deferred_modify",
+        "manual_session_schema_node",
+    }
+    assert "SHOULD-NOT-EXPORT" in json.dumps(doc)
 
 
 @pytest.mark.django_db
@@ -250,12 +247,7 @@ def test_csv_injection_protection_and_legacy_separation(client):
 
     project = _project_with_ifc()
     client.force_login(project.owner)
-    params = {
-        "source_classification_code": "manual_field",
-        "basis_IfcWall": "NetVolume",
-        "table_layout": "v2",
-        "col_order": "ifc_class,name,classification_code,status,actions",
-    }
+    params = {"source_classification_code": "manual_field", "basis_IfcWall": "NetVolume"}
     client.get(reverse("takeoff:qto", kwargs={"pk": project.pk}), params)
     runtime = build_qty_prep_session_ui(
         project=project,
@@ -263,19 +255,15 @@ def test_csv_injection_protection_and_legacy_separation(client):
         session=client.session,
         query=params,
     )
-    export_rows = runtime["qty_prep"].get("prep_rows_export") or []
-    assert export_rows
-    row_key = export_rows[0]["row_key"]
-    rq = (
-        "source_classification_code=manual_field&basis_IfcWall=NetVolume"
-        "&table_layout=v2&col_order=ifc_class,name,classification_code,status,actions"
-    )
+    class_row = runtime["qty_prep"]["prep_rows"][0]
+    row_key = class_row["row_key"]
+    target_class = str(class_row.get("ifc_class") or "")
     client.post(
         reverse("takeoff:qty_prep_row_mapping", kwargs={"pk": project.pk}),
         {
             "action": "apply",
             "row_key": row_key,
-            "return_query": rq,
+            "return_query": "source_classification_code=manual_field&basis_IfcWall=NetVolume",
             "classification_code": "=CMD",
         },
         follow=True,
@@ -285,7 +273,11 @@ def test_csv_injection_protection_and_legacy_separation(client):
     with _open_zip(resp) as zf:
         csv_text = zf.read("rows.csv").decode("utf-8")
         doc = json.loads(zf.read("preparation_export.json").decode("utf-8"))
-    exported = next(r for r in doc["rows"] if r["row_key"] == row_key)
+    exported = next(
+        r
+        for r in doc["rows"]
+        if r.get("ifc_class") == target_class and r.get("classification_code") == "=CMD"
+    )
     assert exported["classification_code"] == "=CMD"
     assert "'=CMD" in csv_text
 
@@ -294,7 +286,7 @@ def test_csv_injection_protection_and_legacy_separation(client):
     assert "qto_export" in names
 
     page = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk}), params).content.decode()
-    assert "Export table" in page
+    assert "Export preparation model (session)" in page
     assert 'data-testid="qty-prep-export"' in page
     assert "Export legacy QTO cache" in page
     assert "Export preparation data model" not in page

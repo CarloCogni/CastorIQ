@@ -42,7 +42,7 @@ Model weights are downloaded to the browser and inference runs *inside the brows
 
 **What it buys:** genuinely zero-install LLM. The user opens Castor, waits for a one-time 2–4 GB model download, and inference runs on their GPU/CPU from then on.
 
-**What it costs:** model size ceiling. Practical browser-deployable models today are 3–8B parameters quantized to 4 bits. That is fine for intent classification and light Q&A but visibly weaker than Llama 70B or Claude for the Tier 3 code-generation path in writeback. Also: first-load UX is a cliff (2+ GB download blocks first use), and browser GPU memory is fragile — tab backgrounding can kill the runtime.
+**What it costs:** model size ceiling. Practical browser-deployable models today are 3–8B parameters quantized to 4 bits. That is fine for intent classification and light Q&A but visibly weaker than Llama 70B or Claude for the Modify code call in writeback. Also: first-load UX is a cliff (2+ GB download blocks first use), and browser GPU memory is fragile — tab backgrounding can kill the runtime.
 
 ### 2.3 BYOK cloud (Claude / Groq / OpenAI)
 
@@ -99,7 +99,7 @@ This means "offload the LLM to the user" is one toggle, not a strategy. The full
 
 ### 3.4 "BYOK is a clean escape hatch" — legal question before technical
 
-The content Castor sends to an LLM in Ask mode includes retrieved IFC entity descriptions and document chunks. In Modify mode (Tier 3), it includes executable IfcOpenShell code generated against real building data. In both modes, the LLM prompt contains building-identifying information.
+The content Castor sends to an LLM in Ask mode includes retrieved IFC entity descriptions and document chunks. In Modify mode, it includes executable IfcOpenShell code generated against real building data. In both modes, the LLM prompt contains building-identifying information.
 
 Standard AEC engagement contracts restrict this data to the named recipients. Cloud LLM providers typically disclaim retention for API calls, but "we don't store it" is not the same as "the client's contract permits it to touch your infrastructure." This is a question for each firm's legal review, not a technical toggle.
 
@@ -164,7 +164,7 @@ If and only if Castor reaches a scale where a managed tier makes business sense,
 
 The model selection per call should consider:
 
-1. **Privacy sensitivity of the payload** (writeback Tier 3 code gen against entity data = high; intent classification = lower).
+1. **Privacy sensitivity of the payload** (the Modify code call against entity data = high; the Ask answer = lower).
 2. **User preference** (explicit per-project choice of which tier to use).
 3. **Availability** (local Ollama unreachable → fall back to configured Tier B if the user has opted in; otherwise surface a clear error — never silently escalate to cloud).
 

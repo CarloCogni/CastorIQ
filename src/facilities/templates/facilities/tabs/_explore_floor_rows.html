@@ -65,7 +65,7 @@ delegated listener in the host page (survives these swaps).
         </div>
         {% elif storey.has_generated %}
         <span class="badge rounded-pill"
-              style="background-color: rgba(20,184,166,0.15); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.3);"
+              style="background-color: rgba(59, 130, 246,0.15); color: var(--castor-facilities, #3b82f6); border: 1px solid rgba(59, 130, 246,0.3);"
               title="Plan rendered from the IFC model">
             <i class="bi bi-bounding-box"></i> Generated from IFC
         </span>
@@ -156,7 +156,7 @@ delegated listener in the host page (survives these swaps).
               hx-indicator="#gen-spin-{{ storey.pk }}"
               hx-on::after-request="if (event.detail.successful) window.__exploreFloorsDirty = true;"
               class="d-flex flex-column gap-2 mt-2 p-2 rounded w-100"
-              style="background-color: rgba(20,184,166,0.06); border: 1px dashed rgba(20,184,166,0.3);">
+              style="background-color: rgba(59, 130, 246,0.06); border: 1px dashed rgba(59, 130, 246,0.3);">
             {% csrf_token %}
             <div class="d-flex align-items-center gap-2 flex-wrap">
                 <label class="m-0 fs-8 text-secondary text-nowrap">Cut height (m):</label>

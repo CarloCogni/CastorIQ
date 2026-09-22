@@ -373,6 +373,7 @@ class AskView(ProjectTabMixin, TemplateView):
                     "compacted_history": compacted_history,
                     "can_compact": can_compact,
                     "user": request.user,
+                    "project": project,
                     "utilization_pct": utilization_pct,
                     "context_window_label": _fmt_ctx(get_context_window(model_name)),
                 },
@@ -431,6 +432,7 @@ class AskMessagesView(ProjectTabMixin, View):
                 "compacted_history": list(compacted_qs),
                 "can_compact": can_compact,
                 "user": request.user,
+                "project": project,
                 "utilization_pct": budget.utilization_pct,
                 "context_window_label": _fmt_ctx(budget.model_context_window),
             },
@@ -1002,6 +1004,18 @@ class ExploreView(ProjectTabMixin, TemplateView):
         else:
             selected_ifc = completed_ifc_files.first()
 
+        # Deep-link focus (?focus=<global_id>): prefer the file containing the
+        # entity so the 3D pane and entity table stay coherent across files.
+        focus_gid = self.request.GET.get("focus", "").strip()
+        if focus_gid and not ifc_id:
+            focused_entity = (
+                IFCEntity.objects.filter(ifc_file__in=completed_ifc_files, global_id=focus_gid)
+                .select_related("ifc_file")
+                .first()
+            )
+            if focused_entity:
+                selected_ifc = focused_entity.ifc_file
+
         root_nodes = []
         if selected_ifc:
             root_nodes = list(
@@ -1017,6 +1031,7 @@ class ExploreView(ProjectTabMixin, TemplateView):
         context["completed_ifc_files"] = completed_ifc_files
         context["selected_ifc"] = selected_ifc
         context["root_nodes"] = root_nodes
+        context["focus_gid"] = focus_gid
         return context
 
 
@@ -1131,6 +1146,11 @@ class ExploreEntitiesPartial(ProjectAccessMixin, View):
                 | Q(ifc_description__icontains=q)
             )
 
+        # JSON mode for the 3D pane: GlobalIds of the current filter set,
+        # capped for postMessage payload safety.
+        if request.GET.get("gids"):
+            return JsonResponse({"global_ids": list(qs.values_list("global_id", flat=True)[:2000])})
+
         paginator = Paginator(qs, self.PAGE_SIZE)
         page_obj = paginator.get_page(page_num)
 
@@ -1184,15 +1204,27 @@ def _build_spatial_breadcrumb(spatial_id: str) -> list[dict]:
 
 
 class ExploreEntityDetailPartial(ProjectAccessMixin, View):
-    """HTMX partial: property inspector for a single IFC entity."""
+    """HTMX partial: property inspector for a single IFC entity.
 
-    def get(self, request, pk: str, ifc_id: str, entity_id: str) -> object:
+    Addressable by entity UUID (table rows) or by IFC GlobalId (selections
+    reported by the 3D viewer iframe, which only knows GlobalIds).
+    """
+
+    def get(
+        self,
+        request,
+        pk: str,
+        ifc_id: str,
+        entity_id: str | None = None,
+        global_id: str | None = None,
+    ) -> object:
         project = self.get_project()
         ifc_file = get_object_or_404(IFCFile, pk=ifc_id, project=project)
+        lookup = {"global_id": global_id} if global_id else {"pk": entity_id}
         entity = get_object_or_404(
             IFCEntity.objects.select_related("spatial_container__entity"),
-            pk=entity_id,
             ifc_file=ifc_file,
+            **lookup,
         )
 
         property_sets: dict = {}

@@ -42,7 +42,7 @@ CLOUD_MODELS: tuple[CloudModel, ...] = (
     CloudModel(
         "groq",
         "openai/gpt-oss-120b",
-        "GPT-OSS 120B (production — frontier reach for Tier 3 code-gen, $0.15/$0.60 per Mtok)",
+        "GPT-OSS 120B (production — frontier reach for the Modify code call, $0.15/$0.60 per Mtok)",
     ),
     CloudModel(
         "groq",

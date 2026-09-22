@@ -111,7 +111,16 @@ class ScheduleView(ProjectTabMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         project = ctx["project"]
         ctx["castor_subtab"] = "schedule"
-        ctx["schedule_tab"] = self.request.GET.get("tab", "data_sources")
+        # Normalize dead deep-links used by older bookmarks/harnesses.
+        # Product hub pills use data_sources / fourD_link; gantt lives inside Schedule.
+        _tab_aliases = {
+            "gantt": "data_sources",
+            "links": "fourD_link",
+            "link": "fourD_link",
+            "4d_link": "fourD_link",
+        }
+        raw_tab = self.request.GET.get("tab", "data_sources") or "data_sources"
+        ctx["schedule_tab"] = _tab_aliases.get(raw_tab, raw_tab)
 
         tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
         ctx["tasks"] = tasks

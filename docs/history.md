@@ -1,6 +1,6 @@
 # History — IFC Modification Log
 
-The **History** tab is Castor's commit log for IFC files. Every accepted modification (Tier 1, 2, or 3) becomes a Git commit on the project's per-project IFC repository. The History view lists them, grouped by file, with rollback support.
+The **History** tab is Castor's commit log for IFC files. Every approved modification becomes a Git commit on the project's per-project IFC repository. The History view lists them, grouped by file, with rollback support.
 
 ## What you see
 
@@ -9,7 +9,6 @@ For each IFC file in the project:
 - A **per-file header** — file name, IFC schema version, entity count, total commits
 - A vertical **commit list**, newest first, with for each commit:
   - Short hash (first 8 characters)
-  - Tier badge — T1 GREEN / T2 ORANGE / T3 RED (the same colour system as Modify)
   - **CURRENT HEAD** badge on the newest live commit
   - **RESTORE POINT** badge on any rollback commit
   - Timestamp and the user who authored it

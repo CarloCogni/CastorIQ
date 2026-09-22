@@ -1,0 +1,33 @@
+<!-- facilities/components/dashboards/_wo_count_card.html — live open-WO count linking to the Work sub-tab -->
+
+<div class="col-12 col-md-6 col-lg-4">
+    <a href="{% url 'facilities:work_list' project.pk %}"
+       class="text-decoration-none h-100 d-block"
+       style="color: inherit;">
+        <div class="p-3 rounded border d-flex flex-column gap-2 h-100"
+             style="background-color: var(--bs-body-bg); border-color: var(--castor-facilities, #3b82f6) !important;">
+
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-clipboard2-check fs-5" style="color: var(--castor-facilities, #3b82f6);"></i>
+                <span class="fw-semibold">Open work orders</span>
+                {% if facilities_critical_wo_count %}
+                <span class="badge rounded-pill ms-auto"
+                      style="background-color: rgba(239,68,68,0.15); color: #dc2626; border: 1px solid rgba(239,68,68,0.35);">
+                    {{ facilities_critical_wo_count }} critical
+                </span>
+                {% endif %}
+            </div>
+
+            <div class="flex-grow-1 d-flex align-items-center justify-content-center py-2">
+                <span class="display-6 m-0" style="color: var(--castor-facilities, #3b82f6);">
+                    {{ facilities_open_wo_count|default:0 }}
+                </span>
+            </div>
+
+            <div class="fs-8 text-secondary border-top pt-2 d-flex align-items-center gap-1">
+                <i class="bi bi-arrow-right"></i>
+                <span>Open the work order list</span>
+            </div>
+        </div>
+    </a>
+</div>

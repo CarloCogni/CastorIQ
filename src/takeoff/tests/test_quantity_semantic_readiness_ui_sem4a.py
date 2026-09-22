@@ -27,6 +27,9 @@ def test_quantities_page_omits_live_readiness_panel(client):
     assert 'data-testid="qty-semantic-source-readiness"' not in html
     assert "5D semantic source readiness" not in html
     assert 'data-testid="qty-schema-insight-entry"' in html
-    assert "Complete preparation and freeze a snapshot to review semantic readiness." in html or (
+    # Readiness is reviewed against a saved version, never claimed live on the rail.
+    assert "Complete preparation and Save version to review semantic readiness." in html or (
         'data-testid="qty-schema-insight-open"' in html
     )
+    assert 'data-testid="qty-schema-insight-disabled"' in html
+    assert 'data-testid="qty-schema-insight-open"' not in html

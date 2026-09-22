@@ -14,6 +14,7 @@ from ifc_processor.tests.factories import (
 )
 from takeoff.services.ifc_semantic_fields import (
     SPATIAL_STOREY_KEY,
+    apply_semantic_filters_to_qty_prep,
     enrich_prep_rows_with_entity_semantics,
     filter_prep_rows_by_semantic,
     parse_sem_cols,
@@ -112,29 +113,42 @@ def test_enrich_project_level_column_and_filter():
 
 @pytest.mark.django_db
 def test_quantities_page_shows_structure_and_unavailable_helpers(client):
-    """Quantities UI keeps zone truth; structure catalogue loads lazily (PERF-15C1)."""
+    """Quantities UI exposes model structure group and honest unavailable states."""
     project = _project_with_structure()
     client.force_login(project.owner)
     url = reverse("takeoff:qto", kwargs={"pk": project.pk})
-    html = client.get(url, {"basis_IfcBeam": "NetVolume"}).content.decode()
-    assert 'data-testid="qty-zone-unavailable"' in html
-    assert 'data-catalogue-url="' in html
-    assert "/field-catalogue/" in html
-    assert 'data-testid="qty-table-filter-bar"' in html or 'data-testid="qty-filter-field"' in html
+    html = client.get(
+        url,
+        {
+            "basis_IfcBeam": "NetVolume",
+            "table_layout": "v2",
+            "col_order": "ifc_class,name,quantity,measurement,unit,status,actions",
+        },
+    ).content.decode()
 
-    cat = client.get(
+    # Honest unavailable states still live on the Quantities page.
+    assert 'data-testid="qty-zone-unavailable"' in html
+    assert 'data-testid="qty-classref-unavailable"' in html
+    assert "Castor schema mapping" in html
+
+    # TABLE-04: quantity / measurement / unit are opt-in columns, not fixed chrome.
+    assert 'data-testid="qty-prep-col-quantity"' in html
+    assert 'data-testid="qty-prep-col-measurement"' in html
+    assert 'data-testid="qty-prep-col-unit"' in html
+
+    # Model-structure fields are offered through the Add-column catalogue,
+    # not a separate page panel.
+    assert 'data-testid="qty-columns-open"' in html
+    fragment = client.get(
         reverse("takeoff:qty_field_catalogue", kwargs={"pk": project.pk}),
-        {"mode": "filter"},
-    )
-    assert cat.status_code == 200
-    cat_html = cat.content.decode()
-    assert "Level / Storey" in cat_html or "Project Level" in cat_html
-    assert "Spatial" in cat_html or "Element properties" in cat_html
+        {"mode": "column", "picker_id": "qty-column-field"},
+    ).content.decode()
+    assert "Level / Storey" in fragment or "Project Level" in fragment
 
 
 @pytest.mark.django_db
 def test_structure_filter_keeps_sem2_and_batch_toolbar(client):
-    """Adding Project Level column keeps Add-column path and batch toolbar."""
+    """Adding Project Level column keeps SEM-2 picker and batch toolbar."""
     project = _project_with_structure()
     client.force_login(project.owner)
     url = reverse("takeoff:qto", kwargs={"pk": project.pk})
@@ -151,9 +165,14 @@ def test_structure_filter_keeps_sem2_and_batch_toolbar(client):
             "semantic_value": "L07",
         },
     ).content.decode()
-    assert 'data-testid="qty-columns-modal"' in html or 'data-testid="qty-column-field"' in html
+    # Add-column entry point + batch toolbar survive a semantic column selection.
+    assert 'data-testid="qty-columns-open"' in html
+    assert 'data-testid="qty-columns-modal"' in html
+    assert 'data-testid="qty-property-columns-add-form"' in html
     assert 'data-testid="qty-batch-map-selected"' in html
-    assert "L07" in html or "Project Level" in html
+    # The selected structure column is rendered as a real table column.
+    assert 'data-testid="qty-prep-col-prop:Identity Data.Project Level"' in html
+    assert "L07" in html
 
 
 @pytest.mark.django_db
@@ -178,7 +197,7 @@ def test_discover_sem3_does_not_write_db():
 
 @pytest.mark.django_db
 def test_session_ui_includes_structure_panel_keys():
-    """Runtime keeps zone unavailable; selected structure column restores without catalogue."""
+    """Runtime panel exposes structure/classification lists for templates."""
     project = _project_with_structure()
     ui = build_qty_prep_session_ui(
         project=project,
@@ -190,11 +209,19 @@ def test_session_ui_includes_structure_panel_keys():
         },
     )
     sem = (ui.get("qty_prep") or {}).get("semantic_filters") or {}
+    # PERF-15C1: the session UI defers catalogue discovery, so the structure
+    # list is empty on first paint while the honest unavailable states are not.
     assert sem.get("field_catalogue_lazy") is True
+    assert sem.get("structure_columns_available") == []
     assert sem.get("unavailable", {}).get("zone", {}).get("available") is False
-    meta = sem.get("selected_prop_column_meta") or []
-    assert any(
-        str(d.get("key")) == "prop:Identity Data.Project Level"
-        or "Project Level" in str(d.get("label") or "")
-        for d in meta
+
+    quantities = ModelQuantitiesService(project).build()
+    eager = dict(build_preparation_ui(quantities))
+    panel = apply_semantic_filters_to_qty_prep(
+        eager,
+        project=project,
+        query={"sem_cols": "prop:Identity Data.Project Level"},
+        defer_field_catalogue=False,
     )
+    assert panel["structure_columns_available"]
+    assert panel["unavailable"]["zone"]["available"] is False

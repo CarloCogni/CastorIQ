@@ -1,0 +1,192 @@
+<!-- facilities/tabs/_facilities_documents.html — Documents tab body.
+     Central management of the project's document folders: every folder is
+     attached to exactly one Facilities card (asset / work order / permit /
+     request), clearly labelled and linked, plus the full document library. -->
+
+<div class="p-4">
+    <!-- Header -->
+    <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+        <i class="bi bi-folder2-open fs-4" style="color: var(--castor-facilities, #3b82f6);"></i>
+        <h4 class="m-0">Documents</h4>
+        <span class="badge rounded-pill fs-8"
+              style="background-color: rgba(59,130,246,0.12); color: var(--castor-facilities, #3b82f6); border: 1px solid rgba(59,130,246,0.30);">
+            {{ doc_count }} document{{ doc_count|pluralize }}
+        </span>
+        <span class="badge rounded-pill fs-8"
+              style="background-color: rgba(139,92,246,0.12); color:#a78bfa; border:1px solid rgba(139,92,246,0.30);">
+            {{ folder_count }} folder{{ folder_count|pluralize }}
+        </span>
+        <span class="ms-auto text-secondary fs-8">
+            <i class="bi bi-info-circle"></i> Folders live here and belong to one card each; upload files from the left panel.
+        </span>
+    </div>
+
+    <!-- ── Folders (central management) ─────────────────────────────────── -->
+    <div class="mb-4">
+        <div class="fs-8 text-secondary text-uppercase fw-semibold mb-2">Folders</div>
+
+        <!-- New folder: attach to any card -->
+        <form method="post" action="{% url 'facilities:documents_folder_create' project.pk %}"
+              class="d-flex flex-wrap align-items-end gap-2 mb-3 p-3 rounded border"
+              style="border-color: var(--bs-border-color) !important; background: var(--bs-tertiary-bg);">
+            {% csrf_token %}
+            <div>
+                <label class="form-label fs-8 text-secondary mb-1">Belongs to</label>
+                <select name="card_kind" id="folderKind" class="form-select form-select-sm" style="max-width:150px;"
+                        onchange="folderKindChange()">
+                    <option value="asset">Asset</option>
+                    <option value="work">Work order</option>
+                    <option value="permit">Permit</option>
+                    <option value="request">Request</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label fs-8 text-secondary mb-1">Card</label>
+                <select name="card_id" data-kind="asset" class="form-select form-select-sm folder-card-select" style="max-width:260px;">
+                    {% for a in pick_assets %}<option value="{{ a.pk }}">{{ a.asset_tag|default:a.display_name|truncatechars:40 }}</option>{% endfor %}
+                </select>
+                <select name="card_id" data-kind="work" class="form-select form-select-sm folder-card-select" style="max-width:260px;" disabled hidden>
+                    {% for w in pick_work_orders %}<option value="{{ w.pk }}">{{ w.wo_number }} · {{ w.title|truncatechars:30 }}</option>{% endfor %}
+                </select>
+                <select name="card_id" data-kind="permit" class="form-select form-select-sm folder-card-select" style="max-width:260px;" disabled hidden>
+                    {% for p in pick_permits %}<option value="{{ p.pk }}">{{ p.permit_number }} · {{ p.title|truncatechars:30 }}</option>{% endfor %}
+                </select>
+                <select name="card_id" data-kind="request" class="form-select form-select-sm folder-card-select" style="max-width:260px;" disabled hidden>
+                    {% for r in pick_requests %}<option value="{{ r.pk }}">{{ r.title|truncatechars:40 }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="flex-grow-1" style="max-width:220px;">
+                <label class="form-label fs-8 text-secondary mb-1">Folder name</label>
+                <input type="text" name="name" required maxlength="120" class="form-control form-control-sm"
+                       placeholder="e.g. Certificates">
+            </div>
+            <button type="submit" class="btn btn-sm" style="background-color: var(--castor-facilities, #3b82f6); color:#fff; border:none;">
+                <i class="bi bi-folder-plus"></i> Create folder
+            </button>
+        </form>
+
+        <!-- Folder cards -->
+        {% for folder in folders %}
+        <div class="rounded border p-3 mb-2" style="border-color: var(--bs-border-color) !important;">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <i class="bi bi-folder-fill" style="color: var(--castor-facilities, #3b82f6);"></i>
+                <span class="fw-semibold">{{ folder.name }}</span>
+                <!-- which card it belongs to (clear + linked) -->
+                <span class="badge rounded-pill fs-8" style="background-color: rgba(148,163,184,0.15); color: var(--bs-secondary-color);">
+                    {{ folder.card_kind_label }}
+                </span>
+                {% if folder.card_url %}
+                <a href="{{ folder.card_url }}" class="badge rounded-pill fs-8 text-decoration-none"
+                   style="background-color: rgba(59,130,246,0.10); color: var(--castor-facilities, #3b82f6); border:1px solid rgba(59,130,246,0.3);"
+                   title="Open the card this folder belongs to">
+                    {{ folder.card_label|truncatechars:44 }} <i class="bi bi-box-arrow-up-right"></i>
+                </a>
+                {% endif %}
+                <span class="text-secondary fs-8">· {{ folder.documents.count }} doc{{ folder.documents.count|pluralize }}</span>
+                <form method="post" action="{% url 'facilities:documents_folder_delete' project.pk folder.pk %}"
+                      class="ms-auto" onsubmit="return confirm('Delete folder “{{ folder.name|escapejs }}”? Documents stay in the project.');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete folder"><i class="bi bi-trash"></i></button>
+                </form>
+            </div>
+
+            <!-- documents in this folder -->
+            <div class="mt-2 d-flex flex-wrap gap-1">
+                {% for doc in folder.documents.all %}
+                <span class="badge rounded-pill fs-8 d-inline-flex align-items-center gap-1"
+                      style="background-color: var(--bs-tertiary-bg); color: var(--bs-body-color); border:1px solid var(--bs-border-color);">
+                    <i class="bi bi-file-earmark-text" style="color: var(--castor-facilities, #3b82f6);"></i>
+                    {{ doc.name|truncatechars:40 }}
+                    <form method="post" action="{% url 'facilities:documents_folder_doc_unlink' project.pk folder.pk %}" class="d-inline">
+                        {% csrf_token %}<input type="hidden" name="document_id" value="{{ doc.pk }}">
+                        <button type="submit" class="btn-close" style="font-size:.5rem;" title="Remove from folder"></button>
+                    </form>
+                </span>
+                {% empty %}
+                <span class="fs-8 text-muted">Empty — add a document below.</span>
+                {% endfor %}
+            </div>
+
+            <!-- add a document to this folder -->
+            {% if all_documents %}
+            <form method="post" action="{% url 'facilities:documents_folder_doc_link' project.pk folder.pk %}"
+                  class="d-flex align-items-center gap-2 mt-2">
+                {% csrf_token %}
+                <select name="document_id" class="form-select form-select-sm" style="max-width:320px;">
+                    {% for d in all_documents %}<option value="{{ d.pk }}">{{ d.name|truncatechars:44 }}</option>{% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-plus-lg"></i> Add document</button>
+            </form>
+            {% endif %}
+        </div>
+        {% empty %}
+        <div class="text-secondary fs-8 py-2">No folders yet — create one above and it will be filed under its card.</div>
+        {% endfor %}
+    </div>
+
+    <!-- ── All documents ────────────────────────────────────────────────── -->
+    <div class="fs-8 text-secondary text-uppercase fw-semibold mb-2">All documents</div>
+    <form method="get" action="{% url 'facilities:documents_list' project.pk %}"
+          class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <div class="position-relative flex-grow-1" style="max-width: 380px;">
+            <i class="bi bi-search position-absolute" style="top:50%; left:12px; transform:translateY(-50%); opacity:.55;"></i>
+            <input type="search" name="q" value="{{ active_q|default:'' }}" class="form-control form-control-sm ps-5"
+                   placeholder="Search document name…" onchange="this.form.submit()">
+        </div>
+        <select name="doc_type" class="form-select form-select-sm" style="max-width: 200px;" onchange="this.form.submit()">
+            <option value="">All types</option>
+            {% for value, label in document_types %}
+            <option value="{{ value }}" {% if value == active_doc_type %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        {% if active_q or active_doc_type %}<a href="{% url 'facilities:documents_list' project.pk %}" class="btn btn-sm btn-outline-secondary">Clear</a>{% endif %}
+    </form>
+
+    {% if documents %}
+    <div class="rounded border overflow-hidden" style="border-color: var(--bs-border-color) !important;">
+        <table class="table table-sm table-hover align-middle m-0">
+            <thead><tr class="fs-8 text-secondary text-uppercase">
+                <th class="ps-3">Document</th><th>Type</th><th class="text-center">Pages</th>
+                <th>Status</th><th>In asset folders</th><th class="text-end pe-3">Uploaded</th>
+            </tr></thead>
+            <tbody>
+                {% for doc in documents %}
+                <tr>
+                    <td class="ps-3"><div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-file-earmark-text" style="color: var(--castor-facilities, #3b82f6);"></i>
+                        <span class="fw-semibold">{{ doc.name|truncatechars:60 }}</span>
+                    </div></td>
+                    <td><span class="fs-8">{{ doc.get_document_type_display }}</span></td>
+                    <td class="text-center fs-8 text-secondary">{{ doc.page_count|default:"—" }}</td>
+                    <td>{% if doc.status == 'completed' %}<span class="badge rounded-pill fs-8" style="background-color:#d1fae5;color:#065f46;">Ready</span>
+                        {% elif doc.status == 'failed' %}<span class="badge rounded-pill fs-8" style="background-color:#fee2e2;color:#991b1b;">Failed</span>
+                        {% else %}<span class="badge rounded-pill fs-8" style="background-color:#fef3c7;color:#92400e;">{{ doc.get_status_display }}</span>{% endif %}</td>
+                    <td>{% for asset in doc.linked_assets %}
+                        <a href="{% url 'facilities:assets_detail' project.pk asset.pk %}"
+                           class="badge rounded-pill fs-8 text-decoration-none me-1"
+                           style="background-color: rgba(59,130,246,0.10); color: var(--castor-facilities, #3b82f6); border:1px solid rgba(59,130,246,0.3);">
+                            <i class="bi bi-box"></i> {{ asset.asset_tag|default:asset.display_name|truncatechars:22 }}</a>
+                        {% empty %}<span class="fs-8 text-muted">—</span>{% endfor %}</td>
+                    <td class="text-end pe-3 fs-8 text-secondary">{{ doc.created_at|date:"Y-m-d" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center text-secondary py-4 border rounded" style="border-color: var(--bs-border-color) !important;">
+        <i class="bi bi-folder2-open fs-2 d-block mb-2" style="opacity:.4;"></i>
+        {% if active_q or active_doc_type %}No documents match your filter.{% else %}No documents yet — upload from the left panel.{% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function folderKindChange() {
+    var k = document.getElementById('folderKind').value;
+    document.querySelectorAll('.folder-card-select').forEach(function (s) {
+        var on = s.getAttribute('data-kind') === k;
+        s.disabled = !on; s.hidden = !on;
+    });
+}
+</script>

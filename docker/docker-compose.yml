@@ -4,12 +4,20 @@ services:
   db:
     image: pgvector/pgvector:pg16
     container_name: castor-dev-db
+    # Survive host reboots so the dev DB is up whenever the IDE run
+    # configuration starts Django. Without this the container stays down
+    # after a restart and Django fails with connection refused.
+    restart: unless-stopped
     environment:
       POSTGRES_USER: castor
       POSTGRES_PASSWORD: castor
       POSTGRES_DB: castor
+    # Bind to the loopback interface only. A bare "5432:5432" publishes on
+    # 0.0.0.0, which Docker punches straight through the host firewall and
+    # exposes the dev database to the network. Localhost binding still serves
+    # local dev, PyCharm's DB tools, and SSH tunnels.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
@@ -22,12 +30,15 @@ services:
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: castor-dev-pgadmin
+    restart: unless-stopped
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@castor.com
       PGADMIN_DEFAULT_PASSWORD: admin
       PGADMIN_CONFIG_SERVER_MODE: "False"
+    # Loopback-only for the same reason as db: pgAdmin ships with a known
+    # default login and must never be reachable off-host.
     ports:
-      - "5050:80"
+      - "127.0.0.1:5050:80"
     depends_on:
       - db
 

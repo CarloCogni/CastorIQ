@@ -5,10 +5,10 @@
     <!-- Top bar: title + view toggle + primary actions -->
     <div class="d-flex align-items-center gap-3 flex-wrap">
         <div class="d-flex align-items-center gap-2">
-            <i class="bi bi-clipboard2-check fs-5" style="color: var(--castor-facilities, #14b8a6);"></i>
+            <i class="bi bi-clipboard2-check fs-5" style="color: var(--castor-facilities, #3b82f6);"></i>
             <h5 class="m-0">Work Orders</h5>
             {% if page_obj %}
-            <span class="badge rounded-pill" style="background-color: rgba(20,184,166,0.15); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.35);">
+            <span class="badge rounded-pill" style="background-color: rgba(59, 130, 246,0.15); color: var(--castor-facilities, #3b82f6); border: 1px solid rgba(59, 130, 246,0.35);">
                 {{ page_obj.paginator.count }} order{{ page_obj.paginator.count|pluralize }}
             </span>
             {% endif %}
@@ -37,7 +37,7 @@
 
             {% if user_permission == "owner" or user_permission == "editor" %}
             <button class="btn btn-sm d-inline-flex align-items-center gap-2"
-                    style="background-color: var(--castor-facilities, #14b8a6); color: white; border: none;"
+                    style="background-color: var(--castor-facilities, #3b82f6); color: white; border: none;"
                     hx-get="{% url 'facilities:work_create' project.pk %}"
                     hx-target="#work-drawer-mount"
                     hx-swap="innerHTML"
@@ -69,16 +69,16 @@
 <style>
     .wo-help-btn {
         background: transparent;
-        border: 1px dashed rgba(20, 184, 166, 0.35);
-        color: var(--castor-facilities, #14b8a6);
+        border: 1px dashed rgba(59, 130, 246, 0.35);
+        color: var(--castor-facilities, #3b82f6);
         font-size: 0.8125rem;
         transition: all 0.15s ease;
         opacity: 0.85;
     }
     .wo-help-btn:hover {
-        background-color: rgba(20, 184, 166, 0.08);
+        background-color: rgba(59, 130, 246, 0.08);
         border-style: solid;
-        color: var(--castor-facilities, #14b8a6);
+        color: var(--castor-facilities, #3b82f6);
         opacity: 1;
     }
 </style>

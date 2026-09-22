@@ -346,15 +346,50 @@ class LLMCallLogAdmin(admin.ModelAdmin):
         return request.user.is_superuser
 
 
-def _build_cloud_model_choices(current_value: str) -> list:
-    """Grouped <optgroup> choices for the model dropdown.
+def _installed_ollama_tags() -> list[str]:
+    """Tags pulled on the configured Ollama host (embedding models excluded).
 
-    Includes a leading blank option (required when provider is Ollama) and
-    appends a synthetic "Unknown" group containing ``current_value`` if the
-    saved value isn't in the registry — otherwise Django's ChoiceField would
-    refuse to render a saved value set via shell.
+    Empty when Ollama is unreachable: the form then still renders the cloud
+    registry and the .env defaults, so an outage never locks the operator out
+    of the page.
     """
-    grouped: list = [("", "(use .env default — required for Ollama)")]
+    host = getattr(settings, "OLLAMA_HOST", "")
+    if not host:
+        return []
+    try:
+        resp = http_requests.get(f"{host}/api/tags", timeout=2)
+        resp.raise_for_status()
+        models = resp.json().get("models", [])
+    except (http_requests.RequestException, ValueError) as exc:
+        logger.warning("Admin model dropdown: Ollama at %s unreachable: %s", host, exc)
+        return []
+    tags = {m.get("name", "") for m in models}
+    return sorted(t for t in tags if t and "embed" not in t.lower())
+
+
+def _ollama_choice_tags(installed: list[str]) -> list[str]:
+    """Installed tags plus the .env defaults, so the defaults are always selectable."""
+    tags = list(installed)
+    for default in (settings.OLLAMA_MODEL, settings.MODIFY_MODEL):
+        if default and default not in tags:
+            tags.append(default)
+    return tags
+
+
+def _build_model_choices(current_value: str, installed: list[str]) -> list:
+    """Grouped <optgroup> choices for the Ask / Modify model dropdowns.
+
+    A leading blank option (the .env default for that purpose), an "Ollama
+    (installed)" group from ``/api/tags``, one group per cloud provider, and a
+    synthetic "Unknown" group holding ``current_value`` if it is in none of
+    them — otherwise Django's ChoiceField would refuse to render a value saved
+    via shell or pulled after page load.
+    """
+    grouped: list = [("", "(use .env default: OLLAMA_MODEL for Ask, MODIFY_MODEL for Modify)")]
+    ollama_tags = _ollama_choice_tags(installed)
+    if ollama_tags:
+        grouped.append(("Ollama (installed)", tuple((t, t) for t in ollama_tags)))
+
     by_provider: dict[str, list] = {}
     for m in CLOUD_MODELS:
         by_provider.setdefault(m.provider, []).append((m.model_id, m.label))
@@ -362,7 +397,11 @@ def _build_cloud_model_choices(current_value: str) -> list:
         if provider_key in by_provider:
             grouped.append((label, tuple(by_provider[provider_key])))
 
-    if current_value and not is_valid_model_anywhere(current_value):
+    if (
+        current_value
+        and not is_valid_model_anywhere(current_value)
+        and current_value not in ollama_tags
+    ):
         grouped.append(
             ("Unknown (saved value)", ((current_value, f"{current_value} (not in registry)"),))
         )
@@ -370,7 +409,7 @@ def _build_cloud_model_choices(current_value: str) -> list:
 
 
 def is_valid_model_anywhere(model_id: str) -> bool:
-    """True if the model_id appears under any provider in the registry."""
+    """True if the model_id is a cloud model under any provider in the registry."""
     return any(m.model_id == model_id for m in CLOUD_MODELS)
 
 
@@ -387,24 +426,27 @@ class SiteLLMConfigForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         ask_value = (self.instance.ask_model or "") if self.instance else ""
         modify_value = (self.instance.modify_model or "") if self.instance else ""
+        installed = _installed_ollama_tags()
 
         self.fields["ask_model"] = forms.ChoiceField(
-            choices=_build_cloud_model_choices(ask_value),
+            choices=_build_model_choices(ask_value, installed),
             required=False,
             label="Ask Model",
             help_text=(
-                "Cloud model for the Ask (RAG) pipeline. Must be blank when provider "
-                "is Ollama — the Ollama model is set via OLLAMA_MODEL plus per-user override."
+                "Model for the Ask (RAG) pipeline. On Ollama, pick a tag from the "
+                "'Ollama (installed)' group or leave blank for OLLAMA_MODEL from .env "
+                "(staff can still override their own Ask model in Settings)."
             ),
             initial=ask_value,
         )
         self.fields["modify_model"] = forms.ChoiceField(
-            choices=_build_cloud_model_choices(modify_value),
+            choices=_build_model_choices(modify_value, installed),
             required=False,
             label="Modify Model",
             help_text=(
-                "Cloud model for the Modify (writeback) pipeline. Must be blank when "
-                "provider is Ollama."
+                "Model for the Modify (writeback) pipeline, site-wide. On Ollama, pick a "
+                "code-tuned tag from the 'Ollama (installed)' group or leave blank for "
+                "MODIFY_MODEL from .env."
             ),
             initial=modify_value,
         )
@@ -419,11 +461,13 @@ class SiteLLMConfigForm(forms.ModelForm):
             model = (cleaned.get(model_field) or "").strip()
 
             if provider == "ollama":
-                if model:
+                # Any Ollama tag is allowed (the operator may have pulled it after
+                # page load); blank falls back to the .env default for that purpose.
+                # Only a cloud model id is refused: Ollama cannot serve it.
+                if model and is_valid_model_anywhere(model):
                     self.add_error(
                         model_field,
-                        "Leave blank when provider is Ollama. The Ollama model is "
-                        "configured via the OLLAMA_MODEL env var (and per-user override).",
+                        f"{model!r} is a cloud model id. Pick an Ollama tag or leave blank.",
                     )
                 continue
 
@@ -446,22 +490,12 @@ class SiteLLMConfigForm(forms.ModelForm):
 def _ping_target(obj: SiteLLMConfig, purpose: str) -> tuple[str, str]:
     """(provider, model) the test ping should hit.
 
-    Mirrors ``SiteLLMConfig.resolve()`` but deliberately ignores
-    ``force_local_ollama``: the operator clicked "Test Ask connection"
-    specifically to verify the configured Ask provider, not the panic switch.
+    ``SiteLLMConfig.resolve_configured`` deliberately ignores
+    ``force_local_ollama``: the operator clicked "Test Modify connection"
+    specifically to verify the configured Modify provider and model (the coder
+    tag, not the Ask prose model), not the panic switch.
     """
-    if purpose == "ask":
-        provider = obj.ask_provider
-        model = obj.ask_model
-        cloud_default = settings.ASK_MODEL
-    else:
-        provider = obj.modify_provider
-        model = obj.modify_model
-        cloud_default = settings.MODIFY_MODEL
-    provider = str(provider)
-    if provider == "ollama":
-        return ("ollama", model or settings.OLLAMA_MODEL)
-    return (provider, model or cloud_default)
+    return obj.resolve_configured(purpose)
 
 
 def _run_admin_ping(obj: SiteLLMConfig, purpose: str) -> tuple[bool, str, int]:
@@ -542,11 +576,13 @@ class SiteLLMConfigAdmin(SingletonModelAdmin):
             {"fields": ("modify_provider", "modify_model")},
         ),
         (
-            "Emergency override",
+            "Ollama exposure and emergency override",
             {
-                "fields": ("force_local_ollama",),
+                "fields": ("expose_ollama_to_users", "force_local_ollama"),
                 "description": (
-                    "When enabled, every LLM call routes to local Ollama regardless "
+                    "Expose Ollama to users lets end users pick 'Local Ollama' in "
+                    "Settings → Bring Your Own Key (self-hosted installs only). "
+                    "Force Local Ollama routes every LLM call to local Ollama regardless "
                     "of the per-purpose settings above. Use for cost-free testing or "
                     "provider-outage failover. (The Test buttons below ignore this "
                     "switch — they always probe the configured provider.)"

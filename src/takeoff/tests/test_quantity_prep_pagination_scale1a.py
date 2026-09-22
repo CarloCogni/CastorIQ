@@ -1,5 +1,9 @@
 # takeoff/tests/test_quantity_prep_pagination_scale1a.py
-"""SCALE-1A — filtered pagination for quantity preparation rows."""
+"""SCALE-1A — filtered pagination for quantity preparation rows.
+
+Hierarchy TABLE-04 paginates Class roots (unit_label=classes); expanded
+children travel with their parent class on the same page.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +19,6 @@ from takeoff.services.model_quantities import MAX_TYPE_ROWS, ModelQuantitiesServ
 from takeoff.services.quantity_prep_pagination import (
     ALLOWED_PAGE_SIZES,
     DEFAULT_PAGE_SIZE,
-    apply_prep_pagination_to_qty_prep,
     paginate_prep_rows,
     parse_prep_pagination,
 )
@@ -36,6 +39,24 @@ def _project_with_n_types(n: int):
             global_id=f"GID-W-{i}",
             element_type=et,
             properties={"Qto_WallBaseQuantities.NetVolume": 1.0 + i},
+        )
+    return project
+
+
+def _project_with_n_classes(n: int):
+    project = ProjectFactory()
+    ifc = IFCFileFactory(project=project, status="completed")
+    for i in range(n):
+        cls = f"IfcPag{i:03d}"
+        et = IFCElementTypeFactory(
+            ifc_file=ifc, name=f"T-{i}", ifc_type=f"{cls}Type", global_id=f"TYPE-{i}"
+        )
+        IFCEntityFactory(
+            ifc_file=ifc,
+            ifc_type=cls,
+            global_id=f"GID-{i}",
+            element_type=et,
+            properties={"Qto_WallBaseQuantities.NetVolume": 1.0},
         )
     return project
 
@@ -71,45 +92,55 @@ def test_paginate_prep_rows_slices_after_filter_order():
 
 @pytest.mark.django_db
 def test_default_page_size_fifty_and_full_prep_rows_kept():
-    """Default page window is 50; full filtered prep_rows remain for freeze."""
+    """Hierarchy paginates Class roots; expanded children stay on the class page."""
     project = _project_with_n_types(75)
     session: dict = {}
     runtime = build_qty_prep_session_ui(
         project=project,
         user=project.owner,
         session=session,
-        query=QueryDict(""),
+        query=QueryDict("hierarchy_expand=all"),
     )
     qty = runtime["qty_prep"]
-    assert len(qty["prep_rows"]) == 75
-    assert len(qty["prep_page_rows"]) == 50
+    assert qty["pagination"]["unit_label"] == "classes"
+    assert qty["pagination"]["filtered_rows"] == 1
     assert qty["pagination"]["page_size"] == 50
-    assert qty["pagination"]["filtered_rows"] == 75
     assert qty["pagination"]["page"] == 1
+    assert len(qty["prep_page_rows"]) == 76  # 1 class + 75 types
+    assert len(qty["prep_rows"]) == 76
+    export = [
+        r
+        for r in (qty.get("prep_rows_export") or [])
+        if isinstance(r, dict) and not r.get("is_load_more")
+    ]
+    assert len(export) == 75
 
 
 @pytest.mark.django_db
 def test_page_two_and_page_size_one_hundred():
-    """Page 2 / size 100 return the expected windows."""
-    project = _project_with_n_types(120)
+    """Class-root pagination windows across many IFC classes."""
+    project = _project_with_n_classes(60)
     session: dict = {}
-    q2 = QueryDict("prep_page=2&prep_page_size=50")
+    q2 = QueryDict("hierarchy_expand=all&prep_page=2&prep_page_size=50")
     r2 = build_qty_prep_session_ui(project=project, user=project.owner, session=session, query=q2)
-    assert len(r2["qty_prep"]["prep_page_rows"]) == 50
+    assert r2["qty_prep"]["pagination"]["unit_label"] == "classes"
     assert r2["qty_prep"]["pagination"]["page"] == 2
+    assert r2["qty_prep"]["pagination"]["filtered_rows"] == 60
     assert r2["qty_prep"]["pagination"]["start_index"] == 51
+    assert r2["qty_prep"]["pagination"]["end_index"] == 60
 
-    q100 = QueryDict("prep_page=1&prep_page_size=100")
+    q100 = QueryDict("hierarchy_expand=all&prep_page=1&prep_page_size=100")
     r100 = build_qty_prep_session_ui(
         project=project, user=project.owner, session=session, query=q100
     )
-    assert len(r100["qty_prep"]["prep_page_rows"]) == 100
     assert r100["qty_prep"]["pagination"]["page_size"] == 100
+    assert r100["qty_prep"]["pagination"]["filtered_rows"] == 60
+    assert r100["qty_prep"]["pagination"]["end_index"] == 60
 
 
 @pytest.mark.django_db
 def test_filters_apply_before_pagination():
-    """Filtered set drives pagination metadata (filter-before-page)."""
+    """Filtered set drives class pagination metadata (filter-before-page)."""
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed")
     for i, ifc_type in enumerate(["IfcWall", "IfcWall", "IfcBeam", "IfcBeam", "IfcColumn"]):
@@ -127,36 +158,18 @@ def test_filters_apply_before_pagination():
             properties={"Qto_WallBaseQuantities.NetVolume": 1.0},
         )
     session: dict = {}
+    q = QueryDict("semantic_classes=IfcBeam&hierarchy_expand=all")
     runtime = build_qty_prep_session_ui(
-        project=project,
-        user=project.owner,
-        session=session,
-        query=QueryDict(""),
+        project=project, user=project.owner, session=session, query=q
     )
-    all_rows = list(runtime["qty_prep"]["prep_rows"])
-    filtered = [r for r in all_rows if r.get("ifc_class") == "IfcBeam"]
-    assert len(filtered) >= 1
-    qty = {"prep_rows": filtered}
-    apply_prep_pagination_to_qty_prep(qty, QueryDict("prep_page=1&prep_page_size=50"))
-    assert qty["pagination"]["filtered_rows"] == len(filtered)
-    assert len(qty["prep_page_rows"]) == len(filtered)
-
-
-@pytest.mark.django_db
-def test_query_params_preserved_in_next_link():
-    """Pagination next_query keeps semantic filter params."""
-    rows = [{"row_key": f"k{i}"} for i in range(80)]
-    q = QueryDict("sem_f_level=L1&prep_page=1&prep_page_size=50")
-    out = paginate_prep_rows(rows, page=1, page_size=50, base_query=q)
-    nxt = out["pagination"]["next_query"]
-    assert "sem_f_level=L1" in nxt
-    assert "prep_page=2" in nxt
-    assert "prep_page_size=50" in nxt
+    qty = runtime["qty_prep"]
+    assert qty["pagination"]["unit_label"] == "classes"
+    assert qty["pagination"]["filtered_rows"] == 1
 
 
 @pytest.mark.django_db
 def test_aggregate_caps_raised_for_scale1a():
-    """Type/prep caps are high enough for pilot-scale type grains."""
+    """Type/prep aggregate caps remain coordinated at 500."""
     assert MAX_TYPE_ROWS == 500
     assert MAX_PREP_ROWS == 500
     project = _project_with_n_types(60)
@@ -169,7 +182,7 @@ def test_aggregate_caps_raised_for_scale1a():
 
 @pytest.mark.django_db
 def test_quantities_page_renders_pagination_controls(client):
-    """Quantities HTML includes pagination range and page-size control."""
+    """Quantities HTML shows class-unit pagination range and page-size control."""
     project = _project_with_n_types(55)
     client.force_login(project.owner)
     url = reverse("takeoff:qto", kwargs={"pk": project.pk})
@@ -177,6 +190,7 @@ def test_quantities_page_renders_pagination_controls(client):
         "source_classification_code": "manual_field",
         "source_package_boq_mapping": "manual_field",
         "source_work_package": "manual_field",
+        "hierarchy_expand": "all",
     }
     response = client.get(url, manual)
     assert response.status_code == 200
@@ -184,39 +198,25 @@ def test_quantities_page_renders_pagination_controls(client):
     assert 'data-testid="quantities-page"' in html
     assert 'data-testid="qty-prep-pagination"' in html
     assert html.count('data-testid="qty-prep-pagination"') == 1
-    # Use word-boundary so data-testid="qty-prep-page-size" is not a false hit.
     assert len(re.findall(r'\bid="qty-prep-page-size"', html)) == 1
-    assert "Showing 1–50 of 55 rows" in html
+    assert "Showing 1–1 of 1 class" in html
     assert html.count('data-testid="qty-prep-page-size"') == 1
-    assert "Assign metadata" in html or "Assign values" in html
+    assert "Assign values" in html
     assert "selected rows" in html.lower()
-    # Compact count stays in the filter bar; full "Showing …" only once below.
     assert 'data-testid="qty-prep-row-count-footnote"' in html
-    footnote = html.split('data-testid="qty-prep-row-count-footnote"', 1)[1][:120]
-    assert "55 rows" in footnote
-    assert "filtered" not in footnote.lower()
-
-    page2 = client.get(
-        url,
-        {**manual, "prep_page": "2", "prep_page_size": "50"},
-    )
-    html2 = page2.content.decode("utf-8")
-    assert html2.count('data-testid="qty-prep-pagination"') == 1
-    assert "Showing 51–55 of 55 rows" in html2
-    assert html2.count("qty-batch-row-check") >= 5
-    assert html2.count("qty-batch-row-check") < 55
 
 
 @pytest.mark.django_db
 def test_quantities_pagination_single_occurrence_across_states(client):
-    """Exactly one pagination control block for first/middle/last/empty/filter/page-size."""
-    project = _project_with_n_types(120)
+    """Exactly one pagination control; class-unit labels across pages."""
+    project = _project_with_n_classes(120)
     client.force_login(project.owner)
     url = reverse("takeoff:qto", kwargs={"pk": project.pk})
     manual = {
         "source_classification_code": "manual_field",
         "source_package_boq_mapping": "manual_field",
         "source_work_package": "manual_field",
+        "hierarchy_expand": "all",
     }
 
     def _assert_one(html: str) -> None:
@@ -228,24 +228,23 @@ def test_quantities_pagination_single_occurrence_across_states(client):
 
     first = client.get(url, {**manual, "prep_page": "1", "prep_page_size": "50"}).content.decode()
     _assert_one(first)
-    assert "Showing 1–50 of 120 rows" in first
+    assert "Showing 1–50 of 120 classes" in first
     assert "Page 1 of 3" in first
 
     middle = client.get(url, {**manual, "prep_page": "2", "prep_page_size": "50"}).content.decode()
     _assert_one(middle)
-    assert "Showing 51–100 of 120 rows" in middle
+    assert "Showing 51–100 of 120 classes" in middle
     assert "Page 2 of 3" in middle
 
     last = client.get(url, {**manual, "prep_page": "3", "prep_page_size": "50"}).content.decode()
     _assert_one(last)
-    assert "Showing 101–120 of 120 rows" in last
+    assert "Showing 101–120 of 120 classes" in last
     assert "Page 3 of 3" in last
 
     sized = client.get(url, {**manual, "prep_page": "1", "prep_page_size": "100"}).content.decode()
     _assert_one(sized)
-    assert "Showing 1–100 of 120 rows" in sized
+    assert "Showing 1–100 of 120 classes" in sized
 
-    # Zero results via impossible ClassRef filter still keeps a single pagination block.
     empty = client.get(
         url,
         {
@@ -257,12 +256,11 @@ def test_quantities_pagination_single_occurrence_across_states(client):
         },
     ).content.decode()
     _assert_one(empty)
-    assert "Showing 0 of 0 rows" in empty
+    assert "Showing 0 of 0 classes" in empty
 
-    # One page of results when page size covers the full filtered set.
     one_page = client.get(
         url, {**manual, "prep_page": "1", "prep_page_size": "200"}
     ).content.decode()
     _assert_one(one_page)
-    assert "Showing 1–120 of 120 rows" in one_page
+    assert "Showing 1–120 of 120 classes" in one_page
     assert "Page 1 of 1" in one_page

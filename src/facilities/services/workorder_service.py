@@ -506,10 +506,40 @@ class WorkOrderService:
         )
 
     def start(self, wo: WorkOrder, *, note: str = "") -> WorkOrder:
-        """Stamp ``actual_start`` and move {ASSIGNED, SCHEDULED} → IN_PROGRESS."""
+        """Stamp ``actual_start`` and move {ASSIGNED, SCHEDULED} → IN_PROGRESS.
+
+        Permit-gated: when the WO carries linked permits, every one of them
+        must be ACTIVE and inside its validity window before work may begin.
+        A revoked, expired, or still-draft permit blocks the start with an
+        error naming the offending permit(s) — the transition is the last
+        line of defence, so the check lives here rather than only in the UI.
+        """
+        blocking = self._blocking_permits(wo)
+        if blocking:
+            names = ", ".join(p.permit_number for p in blocking)
+            raise WorkOrderValidationError(
+                f"Cannot start: linked permit(s) not active — {names}. "
+                "Renew or re-issue the permit(s) before starting work."
+            )
         return self._apply_transition(
             wo, "start", note=note, field_updates={"actual_start": timezone.now()}
         )
+
+    @staticmethod
+    def _blocking_permits(wo: WorkOrder) -> list[Permit]:
+        """Linked permits that gate a start: anything not ACTIVE-and-in-window."""
+        now = timezone.now()
+        blocking: list[Permit] = []
+        for permit in wo.permits.all():
+            if permit.status != Permit.Status.ACTIVE:
+                blocking.append(permit)
+                continue
+            if permit.valid_from and permit.valid_from > now:
+                blocking.append(permit)
+                continue
+            if permit.valid_until and permit.valid_until < now:
+                blocking.append(permit)
+        return blocking
 
     def pause(self, wo: WorkOrder, *, note: str = "") -> WorkOrder:
         """Move IN_PROGRESS → ASSIGNED (status-only "parking lot")."""

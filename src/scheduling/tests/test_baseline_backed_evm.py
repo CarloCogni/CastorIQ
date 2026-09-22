@@ -31,6 +31,7 @@ from scheduling.services.executive_controls.current_evm_analytics import Current
 from scheduling.services.executive_controls.derived_asof_scurve import DerivedAsOfSCurveService
 from scheduling.services.executive_controls.enums import FeatureId
 from scheduling.services.executive_controls.evm_filters import EVMFilters
+from scheduling.services.executive_controls.product_surface_gate import PRODUCT_MODE_LABEL
 from scheduling.tests.factories import TaskFactory
 
 User = get_user_model()
@@ -291,7 +292,15 @@ class TestCurveAndE8:
         )
         payload = CurrentEVMAnalyticsService(project).build()
         assert "baseline_evm" in payload["coverage"]
-        assert "Approved baseline" in payload["mode_label"]
+        # Baseline provenance is reported inside coverage, not promoted into the
+        # product mode label — the Controls surface never claims Cost EVM.
+        assert (
+            payload["coverage"]["baseline_evm"]["methodology_mode"]
+            == EVMMethodologyMode.APPROVED_BASELINE_COST_EVM
+        )
+        assert payload["mode"] == "schedule_performance"
+        assert payload["mode_label"] == PRODUCT_MODE_LABEL
+        assert "Cost EVM" not in payload["mode_label"]
 
     def test_historical_remains_unavailable(self):
         project = ProjectFactory()

@@ -8,7 +8,6 @@ Page identity assertions live in test_link_analysis.py.
 from __future__ import annotations
 
 import datetime
-import re
 
 import pytest
 from django.urls import reverse
@@ -32,7 +31,7 @@ def _trusted(task, gid: str) -> TaskEntityBinding:
 
 @pytest.mark.django_db
 def test_inventory_route_serves_link_analysis(client):
-    """Legacy inventory URL still serves 4D Link Analysis (not Model hub)."""
+    """Model hub inventory URL now serves 4D Link Analysis content."""
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed", name="pilot.ifc")
     IFCEntityFactory(ifc_file=ifc, ifc_type="IfcWall", global_id="GID-R1")
@@ -43,14 +42,10 @@ def test_inventory_route_serves_link_analysis(client):
     assert response.status_code == 200
     assert "4D Link Analysis" in html
     assert 'data-testid="link-analysis-page"' in html
-    assert "Model Readiness" not in html
-    # 20A: inventory is Links diagnostic context, not Model.
-    assert 'data-testid="hub-model"' in html
-    model_active = False
-    for tag in re.finditer(r"<a\b[^>]*>", html):
-        if 'data-testid="hub-model"' in tag.group(0) and "active" in tag.group(0):
-            model_active = True
-    assert not model_active
+    # The page body no longer claims Model Readiness; the only remaining
+    # occurrence is the project nav link that routes here.
+    page = html.split('data-testid="link-analysis-page"', 1)[1]
+    assert "Model Readiness" not in page
 
 
 @pytest.mark.django_db

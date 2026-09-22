@@ -2044,7 +2044,7 @@
   }
 
   async function _doUnlinkElement(globalId) {
-    const url = `/castor/projects/{{ project.pk }}/elements/unlink-all/`;
+    const url = "{% url 'scheduling:unlink_all_element' project.pk %}";
     try {
       const resp = await fetch(url, {
         method: "POST",

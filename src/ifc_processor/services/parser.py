@@ -2,7 +2,6 @@
 """IFC file parsing service using IfcOpenShell."""
 
 import logging
-import re
 from dataclasses import dataclass, field
 
 import ifcopenshell
@@ -19,6 +18,7 @@ from ifc_processor.models import (
     IFCFile,
     IFCSpatialElement,
 )
+from ifc_processor.services.description_builder import DescriptionBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -289,6 +289,14 @@ class IFCParser:
                 # Phase B: Build the spatial tree (IFCSpatialElement records)
                 spatial_cache = self._build_spatial_tree()
 
+                # Phase B.5: Refine containers via space boundaries. Doors,
+                # windows and walls are usually *contained* in a storey, but
+                # IfcRelSpaceBoundary ties them to the IfcSpace (room) they
+                # bound — a far more useful container for FM (asset pages
+                # show the room, Explore's elements-in-room table picks them
+                # up). Only overlays entries whose space exists in the tree.
+                self._overlay_space_boundaries(container_map, spatial_cache)
+
                 # Phase C: Assign spatial_container FK on entities
                 self._assign_spatial_containers(container_map, spatial_cache)
 
@@ -347,6 +355,8 @@ class IFCParser:
         seen_type_guids: dict[str, IFCElementType] = {}
         container_map: dict[str, str] = {}
         total_processed = 0
+        # Metadata extraction has already run, so project_units is populated.
+        description_builder = DescriptionBuilder(self.ifc_file.project_units)
 
         for ifc_type in self.RELEVANT_TYPES:
             try:
@@ -434,7 +444,12 @@ class IFCParser:
                         except Exception as e:
                             logger.debug("Could not create element type for %s: %s", gid, e)
 
-                    description = self._generate_description(element, properties)
+                    description = description_builder.build(
+                        element,
+                        properties,
+                        type_name=(element_type_record.name if element_type_record else ""),
+                        location_text=self._get_location_text(element),
+                    )
                     entity = IFCEntity(
                         ifc_file=self.ifc_file,
                         global_id=gid,
@@ -643,6 +658,47 @@ class IFCParser:
     # ------------------------------------------------------------------
     # Phase C: Assign spatial containers
     # ------------------------------------------------------------------
+
+    def _overlay_space_boundaries(
+        self,
+        container_map: dict[str, str],
+        spatial_cache: dict[str, IFCSpatialElement],
+    ) -> None:
+        """Map boundary elements (doors, windows, walls…) to their IfcSpace.
+
+        ``IfcRelSpaceBoundary`` links a space to each element on its
+        boundary. When present, the space is a more precise container than
+        the storey the element is *contained* in, so it wins in
+        ``container_map``. An element bounding several spaces keeps the
+        first one seen — good enough for "which room is this door in".
+        """
+        try:
+            boundaries = self.ifc_model.by_type("IfcRelSpaceBoundary")
+        except Exception:  # noqa: BLE001 — schema without the type
+            return
+        overlaid = 0
+        for rel in boundaries:
+            space = getattr(rel, "RelatingSpace", None)
+            element = getattr(rel, "RelatedBuildingElement", None)
+            if space is None or element is None:
+                continue
+            space_gid = getattr(space, "GlobalId", None)
+            element_gid = getattr(element, "GlobalId", None)
+            if not space_gid or not element_gid:
+                continue
+            if space_gid not in spatial_cache:
+                continue
+            current = container_map.get(element_gid)
+            # Overlay only when the current container is not already a space
+            # (keeps authoring-tool space containment intact).
+            if current and spatial_cache.get(current) is not None:
+                current_node = spatial_cache[current]
+                if current_node.spatial_type == IFCSpatialElement.SpatialType.SPACE:
+                    continue
+            container_map[element_gid] = space_gid
+            overlaid += 1
+        if overlaid:
+            logger.info("Space boundaries refined %d element containers to rooms", overlaid)
 
     def _assign_spatial_containers(
         self,
@@ -876,6 +932,13 @@ class IFCParser:
                     if val is not None:
                         properties[attr] = round(float(val), 4)
 
+            # SEM-4A: denormalize IfcRelAssociatesClassification → ClassRef.*
+            from ifc_processor.services.classification_ref_index import (
+                merge_classref_properties,
+            )
+
+            properties = merge_classref_properties(element, properties, element_type=element_type)
+
         except Exception as e:
             logger.debug("Could not get properties: %s", e)
 
@@ -892,52 +955,6 @@ class IFCParser:
         if isinstance(value, dict):
             return {k: self._serialize_value(v) for k, v in value.items()}
         return str(value)
-
-    def _generate_description(self, element, properties: dict) -> str:
-        """Generate a rich semantic description for RAG indexing."""
-        raw_type = element.is_a()
-        clean_type = raw_type.replace("Ifc", "")
-        human_type = re.sub(r"(?<!^)(?=[A-Z])", " ", clean_type)
-
-        name = element.Name or "Unnamed"
-        parts = [f"This is a {clean_type}. It is a {human_type} element named '{name}'"]
-
-        # Location from walking the IFC hierarchy
-        location_text = self._get_location_text(element)
-        if location_text:
-            parts.append(f"Location: {location_text}")
-
-        # Key properties for RAG
-        key_props = []
-        target_keys = [
-            "firerating",
-            "fire_rating",
-            "fire rating",
-            "material",
-            "loadbearing",
-            "load_bearing",
-            "height",
-            "width",
-            "length",
-            "thickness",
-            "area",
-            "volume",
-            "u_value",
-            "u-value",
-            "acoustic",
-            "thermal",
-            "resistance",
-        ]
-
-        for key, value in properties.items():
-            if any(t in key.lower() for t in target_keys):
-                simple_key = key.split(".")[-1]
-                key_props.append(f"{simple_key}: {value}")
-
-        if key_props:
-            parts.append(f"Properties: {', '.join(key_props)}")
-
-        return ". ".join(parts) + "."
 
 
 def parse_ifc_file(ifc_file_id: str) -> bool:

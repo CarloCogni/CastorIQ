@@ -74,8 +74,8 @@ class TestGetLog:
 
 
 class TestCommitModification:
-    def test_tier1_commit_message_contains_green_label(self, git_service, tmp_path):
-        """Tier 1 commit message includes '[TIER-1 GREEN]'."""
+    def test_commit_message_carries_the_modify_label_subject_and_body(self, git_service, tmp_path):
+        """The commit subject is '[MODIFY] <subject>' and the body carries the generated code."""
         mock_commit = MagicMock()
         mock_commit.hexsha = "deadbeef" * 5
 
@@ -93,14 +93,17 @@ class TestCommitModification:
         with patch("writeback.services.git_service.shutil.copy2"):
             result = git_service.commit_modification(
                 ifc_file=mock_ifc,
-                message="Set fire rating",
-                tier=1,
+                subject="Set fire rating",
+                body="def select(model):\n    return []",
                 diff_data={"affected_entities": 5},
                 author_name="testuser",
             )
 
         commit_msg = mock_repo.index.commit.call_args[0][0]
-        assert "[TIER-1 GREEN]" in commit_msg
+        assert commit_msg.startswith("[MODIFY] Set fire rating\n")
+        assert "Approved by: testuser" in commit_msg
+        assert "Affected entities: 5" in commit_msg
+        assert "def select(model):" in commit_msg
         assert result == mock_commit.hexsha
 
 

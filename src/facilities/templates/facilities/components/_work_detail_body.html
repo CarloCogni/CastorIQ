@@ -152,7 +152,7 @@
                 <form method="post" action="{% url 'facilities:work_transition' project.pk wo.pk t.name %}">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm w-100 d-flex align-items-center justify-content-between"
-                            style="background-color: rgba(20,184,166,0.08); color: var(--castor-facilities, #14b8a6); border: 1px solid rgba(20,184,166,0.35);">
+                            style="background-color: rgba(59, 130, 246,0.08); color: var(--castor-facilities, #3b82f6); border: 1px solid rgba(59, 130, 246,0.35);">
                         <span><i class="bi bi-arrow-right-circle"></i> {{ t.label }}</span>
                         <span class="fs-9">→ {{ t.target_status_label }}</span>
                     </button>

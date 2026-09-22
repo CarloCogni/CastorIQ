@@ -130,9 +130,7 @@ def test_none_all_missing_not_multiple():
 def test_zero_preserved_in_sum():
     zero = compute_parent_calc([Decimal("0"), Decimal("0")], op="sum", total_leaves=2)
     assert zero["display"] in {"0", "0.0", "0.00"}
-    partial = compute_parent_calc(
-        [Decimal("0"), None, Decimal("5")], op="sum", total_leaves=3
-    )
+    partial = compute_parent_calc([Decimal("0"), None, Decimal("5")], op="sum", total_leaves=3)
     assert partial["display"].startswith("5")
     assert "2 of 3" in partial["display"]
 
