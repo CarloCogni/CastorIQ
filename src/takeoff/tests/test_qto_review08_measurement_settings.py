@@ -17,8 +17,8 @@ from takeoff.services.quantity_measurement_settings import (
     apply_class_settings,
     build_class_settings_rows,
 )
-from takeoff.services.quantity_prep_runtime import build_qty_prep_session_ui
 from takeoff.services.quantity_prep_row_measurement import QuantityPrepRowMeasurementService
+from takeoff.services.quantity_prep_runtime import build_qty_prep_session_ui
 
 
 def _project_with_beam():

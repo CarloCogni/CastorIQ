@@ -65,6 +65,7 @@ def test_demo17c_toolbar_hierarchy_zero_selection(client):
     assert "dropdown-item" in file_grp
     assert "dropdown-toggle" in file_grp
 
+
 @pytest.mark.django_db
 def test_demo17c_zone_notice_under_advanced_not_primary_filter(client):
     """Zone unavailable truth lives under Advanced; not persistent above the table."""
@@ -107,6 +108,7 @@ def test_demo17c_measurement_modal_default_vs_how_units(client):
     assert 'data-testid="qty-measurement-class-output-unit"' in modal or (
         'data-testid="qty-measurement-class-output-unit-locked"' in modal
     )
+
 
 @pytest.mark.django_db
 def test_demo17c_boundary_copy_rejects_cost_claims(client):

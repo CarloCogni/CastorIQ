@@ -247,7 +247,11 @@ class TestCostSection:
         payload = ExecutiveControlsOverviewService(project).build_cost_section(OverviewFilters())
         assert payload["cost_evm_available"] is False
         assert "Schedule Performance" in payload["performance_mode_label"]
-        assert any("Schedule Performance" in w or "company actual" in w.lower() for w in payload.get("warnings", []))
+        assert any(
+            "Schedule Performance" in w or "company actual" in w.lower()
+            for w in payload.get("warnings", [])
+        )
+
     def test_coverage_visible(self):
         """Cost cards include coverage metadata when available."""
         project = ProjectFactory()

@@ -15,8 +15,8 @@ from takeoff.services.quantity_measurement_settings import (
     build_class_settings_rows,
     discover_class_source_coverage,
 )
-from takeoff.services.quantity_prep_runtime import build_qty_prep_session_ui
 from takeoff.services.quantity_prep_row_measurement import QuantityPrepRowMeasurementService
+from takeoff.services.quantity_prep_runtime import build_qty_prep_session_ui
 
 
 def _slab_project(*, with_volume: bool = True, unloaded_extra: bool = False, tag: str = "a"):

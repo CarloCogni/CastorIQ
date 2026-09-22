@@ -11,9 +11,9 @@ from django.urls import reverse
 
 from scheduling.services.executive_controls.context import AnalyticalContextService
 from scheduling.services.executive_controls.dimension_mode import (
-    DimensionModeService,
     MODE_GOVERNED,
     MODE_GOVERNED_PARTIAL,
+    DimensionModeService,
 )
 from scheduling.services.executive_controls.dimension_registry import (
     UNKNOWN_KEY,

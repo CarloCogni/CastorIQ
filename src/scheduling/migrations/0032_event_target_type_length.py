@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('castor_scheduling', '0031_mapping_schedule_activity_target'),
+        ("castor_scheduling", "0031_mapping_schedule_activity_target"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='mappinggovernanceevent',
-            name='target_type',
+            model_name="mappinggovernanceevent",
+            name="target_type",
             field=models.CharField(blank=True, max_length=20),
         ),
     ]

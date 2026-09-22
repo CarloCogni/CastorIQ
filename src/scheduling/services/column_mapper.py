@@ -406,8 +406,8 @@ def suggest_mapping(headers: list[str]) -> dict[str, str]:
     mapping: dict[str, str] = {}
     used_headers: set[str] = set()
 
-    for field in CANONICAL_FIELDS:
-        syns = normed_syns.get(field)
+    for canonical_field in CANONICAL_FIELDS:
+        syns = normed_syns.get(canonical_field)
         if not syns:
             continue
 
@@ -434,7 +434,7 @@ def suggest_mapping(headers: list[str]) -> dict[str, str]:
                 best_orig = orig_h
 
         if best_orig:
-            mapping[field] = best_orig
+            mapping[canonical_field] = best_orig
             used_headers.add(best_orig)
 
     return mapping
@@ -448,8 +448,8 @@ def default_visible_columns(headers: list[str], mapping: dict[str, str], cap: in
     """
     mapped_headers = {v for v in mapping.values()}
     priority = []
-    for field in _DEFAULT_VISIBLE_ORDER:
-        h = mapping.get(field)
+    for canonical_field in _DEFAULT_VISIBLE_ORDER:
+        h = mapping.get(canonical_field)
         if h and h in headers:
             priority.append(h)
 

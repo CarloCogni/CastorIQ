@@ -1364,14 +1364,10 @@ def attach_hierarchy_to_qty_prep(
     def _stamp_mapping_sources(row: dict[str, Any]) -> None:
         """Copy table-level source intents onto hierarchy rows for export provenance."""
         row["classification_source"] = (
-            str(intents.get("classification_code") or "")
-            if show.get("classification_code")
-            else ""
+            str(intents.get("classification_code") or "") if show.get("classification_code") else ""
         )
         row["package_boq_mapping_source"] = (
-            str(intents.get("package_boq_mapping") or "")
-            if show.get("package_boq_mapping")
-            else ""
+            str(intents.get("package_boq_mapping") or "") if show.get("package_boq_mapping") else ""
         )
         row["work_package_source"] = (
             str(intents.get("work_package") or "") if show.get("work_package") else ""
