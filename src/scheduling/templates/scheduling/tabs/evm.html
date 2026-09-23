@@ -1,4 +1,4 @@
-<!-- scheduling/tabs/evm.html — EVM Dashboard: S-curve + KPI cards -->
+<!-- scheduling/tabs/evm.html — Operational EVM diagnostics (advanced) -->
 
 {% if not tasks %}
 <div class="d-flex flex-column align-items-center justify-content-center text-secondary py-5">
@@ -7,18 +7,25 @@
 </div>
 {% else %}
 
-<div class="d-flex align-items-center gap-2 mb-1">
+<div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
     <i class="bi bi-graph-up-arrow fs-5" style="color:#3b82f6;"></i>
-    <h5 class="m-0">EVM Dashboard</h5>
+    <h5 class="m-0">Schedule Health</h5>
+    <span class="badge bg-secondary-subtle text-secondary-emphasis border" style="font-size:0.7rem;">Schedule Readiness</span>
     <button type="button"
             class="help-pill"
             data-bs-toggle="modal"
             data-bs-target="#evmHelpModal"
-            title="How the EVM Dashboard works"
-            aria-label="How the EVM Dashboard works">
+            title="How Schedule Health diagnostics work"
+            aria-label="How Schedule Health diagnostics work">
         <i class="bi bi-question-circle"></i>
     </button>
 </div>
+<p class="small text-secondary mb-3" data-testid="legacy-evm-decision-note">
+    Schedule Readiness diagnostics — not the primary 4D/5D journey.
+    Prefer <a href="{% url 'scheduling:executive_controls_evm' project.pk %}">Executive EVM</a> for assignment-basis cost indicators
+    and <a href="{% url 'scheduling:executive_controls' project.pk %}">Executive Overview</a> for schedule position.
+    This page keeps DCMA and supporting checks; Monte Carlo, ML, company-style cashflow, and chat are hidden from the main product flow.
+</p>
 
 <div id="evm-root" style="display:flex; flex-direction:column; gap:16px;">
 
@@ -49,14 +56,49 @@
         </span>
     </div>
 
-    <!-- Decision Summary — executive plain-language read of the project -->
+    <!-- 4D / 5D readiness — client-side digest of existing dashboard signals -->
+    <div id="evm-trust-readiness-card"
+         style="border:1px solid var(--bs-border-color); border-radius:8px; padding:12px 14px;
+                background:var(--bs-body-bg); font-size:0.78rem;">
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <span style="font-size:0.67rem; font-weight:700; text-transform:uppercase;
+                         letter-spacing:.07em; color:var(--bs-secondary-color);">
+                Data readiness
+            </span>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#evmHelpModal"
+                    title="How 4D/5D readiness labels work"
+                    aria-label="How 4D/5D readiness labels work">
+                <i class="bi bi-question-circle"></i>
+            </button>
+        </div>
+        <div id="evm-trust-readiness-loading" class="d-flex align-items-center gap-2"
+             style="color:var(--bs-secondary-color); font-size:0.76rem;">
+            <span class="spinner-border spinner-border-sm"></span> Checking readiness signals…
+        </div>
+        <div id="evm-trust-readiness-body" class="d-none"></div>
+    </div>
+
+    <!-- Diagnostics summary — advanced supporting read (not decision-facing) -->
     <div id="evm-decision-section"
+         data-testid="legacy-evm-diagnostics-summary"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
+
+        <div style="font-size:0.67rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em;
+                    color:var(--bs-secondary-color); margin-bottom:10px;">
+            Diagnostics summary
+            <span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1"
+                  style="font-size:0.62rem; font-weight:600; text-transform:none; letter-spacing:0;">
+                Advanced checks
+            </span>
+        </div>
 
         <!-- Loading -->
         <div id="evm-decision-loading" class="d-flex align-items-center gap-2"
              style="font-size:0.78rem; color:var(--bs-secondary-color);">
-            <span class="spinner-border spinner-border-sm"></span> Analysing project…
+            <span class="spinner-border spinner-border-sm"></span> Loading diagnostics…
         </div>
 
         <!-- Results -->
@@ -74,11 +116,11 @@
                 </div>
             </div>
 
-            <!-- Block 3: top-5 action list -->
+            <!-- Block 3: ranked review list -->
             <div>
                 <div style="font-size:0.67rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em;
                             color:var(--bs-secondary-color); margin-bottom:6px;">
-                    Top 5 — Needs Attention
+                    Items to review
                 </div>
                 <div id="evm-decision-b3"></div>
             </div>
@@ -88,7 +130,7 @@
         <!-- Shown only when screen is in Audit-suggested mode to clarify DS uses AS-CODED -->
         <div id="evm-decision-coded-note" class="d-none"
              style="font-size:0.7rem; color:var(--bs-secondary-color); margin-top:6px;">
-            <i class="bi bi-info-circle"></i> Based on original P6 coding — the executive summary uses trade-agnostic metrics (SPI, CPI, DCMA) and is unaffected by the audit toggle.
+            <i class="bi bi-info-circle"></i> Based on original P6 coding — diagnostics use trade-agnostic metrics (SPI, CPI, DCMA) and are unaffected by the audit toggle.
         </div>
     </div>
 
@@ -102,8 +144,8 @@
         <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
 
-    <!-- Currency selector -->
-    <div class="d-flex align-items-center justify-content-end gap-2">
+    <!-- Currency selector (dimmed when not in monetary EVM mode) -->
+    <div id="evm-currency-wrap" class="d-flex align-items-center justify-content-end gap-2">
         <span style="font-size:0.72rem; color:var(--bs-secondary-color); font-weight:600; text-transform:uppercase; letter-spacing:.05em;">Currency</span>
         <select id="evm-currency-select" class="form-select form-select-sm" style="width:auto; font-size:0.78rem;">
             <option value="USD">USD — US Dollar</option>
@@ -161,6 +203,11 @@
             </div>
         </div>
     </div>
+
+    <!-- Performance mode badge — populated by JS from server flags -->
+    <div id="evm-performance-mode" class="d-none"
+         style="border-radius:8px; padding:8px 12px; background:var(--bs-secondary-bg);
+                border:1px solid var(--bs-border-color); font-size:0.78rem;"></div>
 
     <!-- KPI cards row -->
     <div id="evm-kpi-row" class="row g-3">
@@ -299,10 +346,13 @@
         <div id="evm-basis-note" class="d-none mt-2" style="font-size:0.72rem; color:var(--bs-secondary-color); text-align:center;"></div>
     </div>
 
-    <!-- WBS Performance Heatmap -->
-    <div id="evm-wbs-section">
-        <div class="d-flex align-items-center gap-2 mb-2">
+    <!-- WBS Performance Heatmap — stage proxy demoted from main product flow -->
+    <div id="evm-wbs-section" class="d-none" data-testid="value-cleanup-hide-wbs-proxy">
+        <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
             <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">WBS Performance</span>
+            <span class="badge text-bg-secondary" style="font-size:0.65rem; font-weight:500;"
+                  data-testid="legacy-evm-wbs-proxy-badge">Stage proxy — not canonical WBS</span>
+            <span class="badge text-bg-secondary" style="font-size:0.65rem; font-weight:500;">Diagnostic only</span>
             <span style="font-size:0.7rem; color:var(--bs-secondary-color);">by stage · SPI = earned ÷ planned</span>
         </div>
         <div id="evm-wbs-grid" class="row g-2">
@@ -401,8 +451,10 @@
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
     </div>
 
-    <!-- Probabilistic Forecast (Monte Carlo) -->
+    <!-- Probabilistic Forecast (Monte Carlo) — hidden from main product flow -->
     <div id="evm-mc-section"
+         class="d-none"
+         data-testid="value-cleanup-hide-monte-carlo"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
 
         <div class="d-flex align-items-center justify-content-between mb-3">
@@ -493,8 +545,10 @@
         </div>
     </div>
 
-    <!-- Delay Root-Cause Analysis -->
+    <!-- Delay Root-Cause Analysis — heuristic clusters demoted from main flow -->
     <div id="evm-drc-section"
+         class="d-none"
+         data-testid="value-cleanup-hide-delay-rootcause"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
 
         <div class="d-flex align-items-center gap-2 mb-3">
@@ -554,6 +608,9 @@
 
                     <div style="font-size:0.67rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">
                         By Trade (CSI) — downstream tasks
+                        <span class="badge text-bg-secondary ms-1" style="font-size:0.6rem; font-weight:500; text-transform:none; letter-spacing:0;"
+                              data-testid="legacy-evm-trade-proxy-badge">Trade proxy — not governed Trade</span>
+                        <span class="badge text-bg-secondary" style="font-size:0.6rem; font-weight:500; text-transform:none; letter-spacing:0;">Diagnostic only</span>
                     </div>
                     <div id="drc-trade-bars" class="mb-3"></div>
 
@@ -578,13 +635,16 @@
         </div>
     </div>
 
-    <!-- Cash Flow Forecast -->
+    <!-- Assignment cost phasing (not company cashflow) — hidden from main product flow -->
     <div id="evm-cf-section"
+         class="d-none"
+         data-testid="value-cleanup-hide-cashflow"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
 
         <div class="d-flex align-items-center gap-2 mb-3">
             <i class="bi bi-cash-stack" style="color:#3b82f6; font-size:1rem;"></i>
-            <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Cash Flow Forecast</span>
+            <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Assignment cost phasing</span>
+            <span class="badge bg-secondary-subtle text-secondary-emphasis border" style="font-size:0.62rem;">Not company cashflow</span>
             <button type="button"
                     class="help-pill"
                     data-bs-toggle="modal"
@@ -699,6 +759,8 @@
             <i class="bi bi-clipboard2-check" style="color:#3b82f6; font-size:1rem;"></i>
             <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Schedule Health</span>
             <span style="font-size:0.7rem; color:var(--bs-secondary-color);">DCMA 14-Point Assessment</span>
+            <span class="badge text-bg-secondary" style="font-size:0.65rem; font-weight:500;"
+                  data-testid="dcma-legacy-p6-badge">Legacy P6 diagnostic</span>
             <button type="button"
                     class="help-pill"
                     data-bs-toggle="modal"
@@ -759,8 +821,10 @@
         </div>
     </div>
 
-    <!-- Completion Probability (ML) -->
+    <!-- Completion Probability (ML) — hidden from main product flow -->
     <div id="evm-ml-section"
+         class="d-none"
+         data-testid="value-cleanup-hide-ml"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
 
         <div class="d-flex align-items-center gap-2 mb-3">
@@ -819,8 +883,10 @@
         </div>
     </div>
 
-    <!-- Anomaly Detection -->
+    <!-- Anomaly Detection — advanced only -->
     <div id="evm-anomaly-section"
+         class="d-none"
+         data-testid="value-cleanup-hide-anomaly"
          style="border:1px solid var(--bs-border-color); border-radius:8px; padding:16px; background:var(--bs-body-bg);">
 
         <div class="d-flex align-items-center gap-2 mb-3">
@@ -920,7 +986,7 @@
             <i class="bi bi-shield-check" style="color:#f59e0b; font-size:1rem;"></i>
             <span style="font-size:0.8rem; font-weight:600; color:var(--bs-secondary-color); text-transform:uppercase; letter-spacing:0.05em;">Schedule Audit</span>
             <span class="badge rounded-pill"
-                  style="font-size:0.65rem; background:rgba(245,158,11,.12); color:#f59e0b; border:1px solid rgba(245,158,11,.3); padding:2px 7px;">Quality Gate</span>
+                  style="font-size:0.65rem; background:rgba(245,158,11,.12); color:#f59e0b; border:1px solid rgba(245,158,11,.3); padding:2px 7px;">Schedule Readiness</span>
             <span style="font-size:0.7rem; color:var(--bs-secondary-color);">Activity name vs CSI code — flagged for review, not auto-corrected</span>
             <button type="button"
                     class="help-pill ms-auto"
@@ -1100,8 +1166,10 @@
         <div id="rpt-error" class="d-none mt-2 text-danger" style="font-size:0.74rem;"></div>
     </div>
 
-    <!-- Project Controls Chat -->
+    <!-- Project Controls Chat — hidden from main product flow -->
     <div id="evm-chat-section"
+         class="d-none"
+         data-testid="value-cleanup-hide-chat"
          style="border:1px solid var(--bs-border-color); border-radius:8px; background:var(--bs-body-bg); overflow:hidden;">
 
         <!-- Header / toggle -->
@@ -1132,8 +1200,8 @@
                         Schedule Analyst
                     </div>
                     <div style="color:var(--bs-body-color); line-height:1.55;">
-                        I have real-time access to your EVM metrics, critical path, and WBS risk scores.
-                        Ask me anything — delays, forecast completion, which packages are at risk, what-if analysis.
+                        Advisory diagnostics only — I can discuss loaded EVM metrics and schedule context.
+                        Answers do not approve links or change the programme. Verify against your schedule before acting.
                     </div>
                 </div>
             </div>
@@ -1166,10 +1234,15 @@ function _esc(s) {
 }
 
 (function () {
-    const EVM_URL = "{% url 'scheduling:evm_data' project.pk %}";
-    const LS_KEY  = "castor_evm_currency";
+    const EVM_URL    = "{% url 'scheduling:evm_data' project.pk %}";
+    const INTEL_URL  = "{% url 'scheduling:schedule_intelligence' project.pk %}";
+    const HEALTH_URL = "{% url 'scheduling:schedule_health_check' project.pk %}";
+    const LS_KEY     = "castor_evm_currency";
+    const BINDING_REVIEW_COUNT = {{ binding_review_count|default:0 }};
 
     let _evmData   = null;
+    let _intelData = null;
+    let _healthData = null;
     let _trendData = null;  // stored for sparkline resize re-render
     let _currency  = localStorage.getItem(LS_KEY) || "USD";
 
@@ -1200,20 +1273,213 @@ function _esc(s) {
             data = await resp.json();
         } catch (_) {
             _showError("Failed to load EVM data.");
+            _renderTrustReadiness(null, _intelData, _healthData);
             return;
         }
 
         if (!data.has_data) {
             _showError("No schedule data available.");
+            _renderTrustReadiness(data, _intelData, _healthData);
             return;
         }
 
         _evmData = data;
         _renderBanner(data);
+        _renderPerformanceMode(data);
         _renderKpis(data);
         _renderChart(data);
         _renderForecast(data);
         _renderSecondary(data);
+        _renderTrustReadiness(data, _intelData, _healthData);
+    }
+
+    /* ── 4D / 5D trust readiness card ─────────────────────────────────── */
+    function _trustPill(label, status) {
+        const styles = {
+            good:        { color: "#16a34a", bg: "#16a34a18", border: "#16a34a40" },
+            review:      { color: "#d97706", bg: "#d9770618", border: "#d9770640" },
+            unavailable: { color: "var(--bs-secondary-color)", bg: "var(--bs-secondary-bg)", border: "var(--bs-border-color)" },
+            info:        { color: "#3b82f6", bg: "#3b82f618", border: "#3b82f640" },
+            note:        { color: "#d97706", bg: "#d9770612", border: "#d9770630" },
+        };
+        const s = styles[status] || styles.unavailable;
+        return `<span style="font-size:0.64rem; font-weight:700; text-transform:uppercase;
+                             letter-spacing:.05em; color:${s.color}; background:${s.bg};
+                             border:1px solid ${s.border}; border-radius:8px;
+                             padding:1px 8px; white-space:nowrap;">${label}</span>`;
+    }
+
+    function _trustRow(title, pillHtml, detail) {
+        return `<div class="d-flex flex-wrap align-items-start gap-2 py-1"
+                     style="border-bottom:1px solid var(--bs-border-color);">
+            <div style="min-width:118px; font-weight:600; color:var(--bs-body-color);">${title}</div>
+            <div>${pillHtml}</div>
+            <div style="flex:1 1 200px; color:var(--bs-secondary-color); line-height:1.45; min-width:0;">${detail}</div>
+        </div>`;
+    }
+
+    function _renderTrustReadiness(evm, intel, health) {
+        const loading = document.getElementById("evm-trust-readiness-loading");
+        const body    = document.getElementById("evm-trust-readiness-body");
+        if (!body) return;
+
+        const rows = [];
+
+        /* Schedule data */
+        let schedPill = _trustPill("Unavailable", "unavailable");
+        let schedDetail = "Waiting for schedule metrics…";
+        if (evm && evm.has_data) {
+            const reasons = [];
+            if (!evm.data_date_is_real) {
+                reasons.push("no P6 data date — metrics use today's date");
+            }
+            if ((evm.overdue_linear_capped || 0) > 0) {
+                reasons.push(
+                    `${evm.overdue_linear_capped} in-progress task(s) past planned end without %-complete`
+                );
+            }
+            const cpm = intel && intel.critical_path;
+            if (cpm && cpm.computed === false) {
+                reasons.push("critical path not computed");
+            }
+            if (health && health.score != null && health.score < 70) {
+                reasons.push(`schedule health score ${health.score} (${health.label || "low"})`);
+            }
+            if (health && health.issues) {
+                const errN = health.issues.filter(i => i.severity === "error").length;
+                if (errN > 0) {
+                    reasons.push(`${errN} schedule error check(s) failing`);
+                }
+            }
+            if (reasons.length) {
+                schedPill = _trustPill("Needs review", "review");
+                schedDetail = reasons.join(" · ");
+            } else {
+                schedPill = _trustPill("Good", "good");
+                schedDetail = "Data date, CPM, and schedule health signals look acceptable for dashboard use.";
+            }
+        } else if (evm && !evm.has_data) {
+            schedDetail = "Import a schedule to assess schedule data readiness.";
+        }
+        rows.push(_trustRow("Schedule data", schedPill, schedDetail));
+
+        /* 4D task links */
+        let linkPill = _trustPill("Unavailable", "unavailable");
+        let linkDetail = "Schedule health check not loaded.";
+        if (health) {
+            const unlinked = (health.issues || []).find(i => i.code === "unlinked_physical");
+            const n = unlinked ? unlinked.count : 0;
+            const reviewN = BINDING_REVIEW_COUNT || 0;
+            if (n > 0 || reviewN > 0) {
+                linkPill = _trustPill("Needs review", "review");
+                const parts = [];
+                if (n > 0) {
+                    parts.push(
+                        `${n} physical task(s) have no IFC element links — run Smart Link or review bindings.`
+                    );
+                }
+                if (reviewN > 0) {
+                    parts.push(
+                        `${reviewN} task-to-model binding(s) flagged for review — confirm links in 4D Link.`
+                    );
+                }
+                linkDetail = parts.join(" ");
+            } else {
+                linkPill = _trustPill("Good", "good");
+                linkDetail = "All physical tasks are linked to model elements (binding-aware check).";
+            }
+        }
+        rows.push(_trustRow("4D task links", linkPill, linkDetail));
+
+        /* EVM mode — display only */
+        let modePill = _trustPill("Unavailable", "unavailable");
+        let modeDetail = "Waiting for EVM metrics…";
+        if (evm && evm.has_data && evm.performance_mode) {
+            const isCost = evm.performance_mode === "cost_evm";
+            modePill = _trustPill(isCost ? "Cost EVM" : "Schedule performance", "info");
+            modeDetail = evm.performance_mode_label || (
+                isCost ? "Monetary EVM using schedule/QTO costs." :
+                "Duration-weighted schedule performance — not monetary EVM."
+            );
+        } else if (evm && !evm.has_data) {
+            modeDetail = "EVM mode available after schedule import.";
+        }
+        rows.push(_trustRow("EVM mode", modePill, modeDetail));
+
+        /* 5D cost data */
+        let costPill = _trustPill("Unavailable", "unavailable");
+        let costDetail = "Waiting for EVM cost signals…";
+        if (evm && evm.has_data) {
+            if (!evm.is_monetary_evm) {
+                costPill = _trustPill("Needs review", "review");
+                costDetail = "No schedule costs or QTO estimates — 5D monetary metrics are not active.";
+            } else if ((evm.cost_coverage_pct || 0) < 80) {
+                costPill = _trustPill("Needs review", "review");
+                costDetail = `Only ${evm.cost_coverage_pct}% of tasks carry planned cost — BAC/PV/EV weighting is partial.`;
+            } else {
+                costPill = _trustPill("Good", "good");
+                costDetail = `${evm.cost_coverage_pct}% of tasks have planned cost for monetary EVM.`;
+            }
+            if (evm.is_monetary_evm && !evm.ac_available) {
+                costDetail += " Note: actual cost (AC) not imported — CPI/EAC/VAC remain disabled.";
+            }
+        } else if (evm && !evm.has_data) {
+            costDetail = "Import cost-loaded schedule or QTO data to assess 5D readiness.";
+        }
+        rows.push(_trustRow("5D cost data", costPill, costDetail));
+
+        body.innerHTML =
+            rows.join("") +
+            `<div style="margin-top:8px; padding-top:8px; font-size:0.7rem; color:var(--bs-secondary-color); line-height:1.5;">
+                <strong style="color:var(--bs-body-color);">Baseline scope:</strong>
+                Variance, delay, and forecast metrics are measured against the
+                <em>current imported schedule</em>, not an approved contractual baseline.
+                Baseline versioning is not enabled.
+            </div>
+            <div style="margin-top:6px; font-size:0.68rem; color:var(--bs-secondary-color); font-style:italic;">
+                Readiness labels reuse existing dashboard data — not a certified 4D/5D trust score.
+                Re-import the schedule and refresh bindings to improve signals.
+            </div>`;
+
+        if (loading) loading.classList.add("d-none");
+        body.classList.remove("d-none");
+    }
+
+    async function _fetchTrustInputs() {
+        const [intel, health] = await Promise.all([
+            fetch(INTEL_URL).then(r => r.ok ? r.json() : null).catch(() => null),
+            fetch(HEALTH_URL).then(r => r.ok ? r.json() : null).catch(() => null),
+        ]);
+        _intelData = intel;
+        _healthData = health;
+        _renderTrustReadiness(_evmData, _intelData, _healthData);
+    }
+
+    /* ── Performance mode badge ───────────────────────────────────────── */
+    function _renderPerformanceMode(d) {
+        const el = document.getElementById("evm-performance-mode");
+        const curWrap = document.getElementById("evm-currency-wrap");
+        if (!el || !d.performance_mode) return;
+
+        const isMonetary = d.performance_mode === "cost_evm";
+        const accent = isMonetary ? "#3b82f6" : "#d97706";
+        const badge = isMonetary ? "Monetary EVM" : "Schedule Performance";
+        el.innerHTML =
+            `<div class="d-flex align-items-start gap-2 flex-wrap">
+                <span style="font-size:0.68rem; font-weight:700; text-transform:uppercase;
+                             letter-spacing:.06em; color:${accent};
+                             background:${accent}18; border:1px solid ${accent}40;
+                             border-radius:10px; padding:2px 10px; white-space:nowrap;">${badge}</span>
+                <span style="color:var(--bs-secondary-color); line-height:1.45;">${d.performance_mode_label || ""}</span>
+            </div>`;
+        el.classList.remove("d-none");
+
+        if (curWrap) {
+            curWrap.style.opacity = isMonetary ? "1" : "0.45";
+            curWrap.title = isMonetary
+                ? ""
+                : "Currency applies to monetary EVM only — values are duration-weighted.";
+        }
     }
 
     /* ── Cost guidance banner ──────────────────────────────────────────── */
@@ -1621,34 +1887,33 @@ function _esc(s) {
         const section = document.getElementById("evm-forecast-section");
         if (!section || !d.project_start || !d.project_end) return;
 
+        const fc = d.spi_forecast || {};
         const start    = new Date(d.project_start + "T00:00:00");
         const baseline = new Date(d.project_end   + "T00:00:00");
         const today    = new Date(d.as_of         + "T00:00:00");
         const totalMs  = Math.max(baseline - start, 1);
 
-        /* Forecast end: spi-adjusted remaining duration */
-        const spi = Math.max(d.spi || 1.0, 0.05);
-        const remainingMs = Math.max(baseline - today, 0);
-        const elapsedMs   = Math.max(today - start, 0);
-        const forecastMs  = today < baseline
-            ? elapsedMs + remainingMs / spi
-            : elapsedMs / spi;
-        const forecast = new Date(start.getTime() + forecastMs);
+        const suppressed = Boolean(fc.suppressed);
+        const forecast = (!suppressed && fc.date)
+            ? new Date(fc.date + "T00:00:00")
+            : null;
 
-        const varianceDays = Math.round((baseline - forecast) / 86400000);
-        const varColor = varianceDays === 0 ? "var(--bs-secondary-color)"
+        const varianceDays = forecast ? (fc.variance_days ?? Math.round((baseline - forecast) / 86400000)) : 0;
+        const varColor = suppressed ? "var(--bs-secondary-color)"
+            : varianceDays === 0 ? "var(--bs-secondary-color)"
             : varianceDays > 0 ? "#16a34a" : "#dc2626";
-        const varLabel = varianceDays === 0 ? "On time"
+        const varLabel = suppressed ? "Forecast suppressed"
+            : varianceDays === 0 ? "On time"
             : varianceDays > 0 ? `${varianceDays}d early` : `${Math.abs(varianceDays)}d late`;
 
         /* Timeline spans start → max(baseline, forecast) */
-        const spanEnd = forecast > baseline ? forecast : baseline;
+        const spanEnd = forecast && forecast > baseline ? forecast : baseline;
         const spanMs  = Math.max(spanEnd - start, 1);
         const pct = dt => Math.max(1, Math.min(99, (dt - start) / spanMs * 100));
 
         const todayP    = pct(today);
         const baselineP = pct(baseline);
-        const forecastP = pct(forecast);
+        const forecastP = forecast ? pct(forecast) : baselineP;
         /* Earned equivalent: ev/bac fraction of total planned duration */
         const earnedEquiv = new Date(start.getTime() + (d.ev / Math.max(d.bac, 1)) * totalMs);
         const earnedP     = pct(earnedEquiv);
@@ -1656,7 +1921,9 @@ function _esc(s) {
         const fmtD = dt  => dt.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "2-digit" });
         const fmtI = iso => fmtD(new Date(iso + "T00:00:00"));
 
-        const elapsedDays   = Math.round(elapsedMs   / 86400000);
+        const elapsedMs     = Math.max(today - start, 0);
+        const remainingMs   = Math.max(baseline - today, 0);
+        const elapsedDays   = Math.round(elapsedMs / 86400000);
         const remainingDays = Math.round(remainingMs / 86400000);
 
         /* Marker helper: vertical line + label centred at left% */
@@ -1680,8 +1947,13 @@ function _esc(s) {
                              border-radius:12px; padding:2px 10px;">${varLabel}</span>
             </div>
             <div style="font-size:0.68rem; color:var(--bs-secondary-color); margin-bottom:10px;">
-                Based on SPI — assumes current efficiency continues uniformly.
-                See <strong>Monte Carlo</strong> below for the network-based projection.
+                ${suppressed
+                    ? `<span style="color:#d97706;"><i class="bi bi-info-circle"></i> ${fc.reason || "SPI forecast unavailable."}</span>`
+                    : `Server-computed SPI extrapolation — assumes current efficiency continues uniformly.
+                       See <strong>Monte Carlo</strong> below for the network-based projection.`}
+                ${d.performance_mode === "schedule_performance"
+                    ? `<div style="margin-top:4px; color:#d97706;">Trust note: duration-proxy mode — forecast reflects schedule progress, not cost performance.</div>`
+                    : ""}
             </div>
 
             <div class="row g-3 mb-3" style="font-size:0.82rem;">
@@ -1693,7 +1965,7 @@ function _esc(s) {
                 <div class="col-auto">
                     <div style="font-size:0.64rem; color:${varColor}; text-transform:uppercase;
                                 font-weight:600; letter-spacing:.06em; margin-bottom:2px;">SPI Forecast End</div>
-                    <div style="font-weight:700; color:${varColor};">${fmtD(forecast)}</div>
+                    <div style="font-weight:700; color:${varColor};">${forecast ? fmtD(forecast) : "—"}</div>
                 </div>
                 <div class="col-auto ms-auto text-end">
                     <div style="font-size:0.64rem; color:var(--bs-secondary-color); text-transform:uppercase;
@@ -1717,7 +1989,7 @@ function _esc(s) {
                 <!-- Markers -->
                 ${marker(todayP,    "#6b7280", "Today")}
                 ${marker(baselineP, "#3b82f6", fmtI(d.project_end))}
-                ${Math.abs(varianceDays) >= 1 ? marker(forecastP, varColor, fmtD(forecast)) : ""}
+                ${forecast && Math.abs(varianceDays) >= 1 ? marker(forecastP, varColor, fmtD(forecast)) : ""}
             </div>
 
             <div class="d-flex gap-3 flex-wrap mt-2" style="font-size:0.7rem; color:var(--bs-secondary-color);">
@@ -2619,7 +2891,8 @@ function _esc(s) {
             }
         }
 
-        loadDelayRootCause();
+        /* Hidden by value-cleanup — do not auto-fetch on Schedule Health load */
+        if (_sectionAllowsAutoLoad("evm-drc-section")) loadDelayRootCause();
         if (window._evmAudit) window._evmAudit.register("delay_rootcause", loadDelayRootCause);
     }());
 
@@ -2880,11 +3153,24 @@ function _esc(s) {
                 _renderChart(data.months, data.metrics);
                 const footer = document.getElementById("cf-footer");
                 if (footer) {
-                    const src = data.source === "p6_assignments" ? "P6 resource assignments" : "task costs";
+                    const src =
+                        data.source === "canonical_resource_assignment"
+                            ? "canonical ResourceAssignment"
+                            : data.source === "legacy_p6_resource_assignment_fallback"
+                              || data.source === "p6_assignments"
+                            ? "P6 resource assignments (legacy fallback)"
+                            : data.source === "task_cost"
+                            ? "task-cost proxy"
+                            : "task costs";
                     const burn = data.metrics.burn_rate_actual
                         ? `  ·  burn rate ${_fmtCost(data.metrics.burn_rate_actual)}/mo (actual)`
                         : "";
-                    footer.textContent = `${data.months.length} months  ·  source: ${src}  ·  as of ${data.as_of}${burn}`;
+                    const caveat = data.source_caveat || (data.source === "task_cost"
+                        ? "Task-cost proxy; incomplete tasks may appear as 0."
+                        : "");
+                    footer.textContent = caveat
+                        ? `${data.months.length} months  ·  source: ${src}  ·  as of ${data.as_of}${burn}  ·  ${caveat}`
+                        : `${data.months.length} months  ·  source: ${src}  ·  as of ${data.as_of}${burn}`;
                 }
             } catch (_e) {
                 if (loading) loading.classList.add("d-none");
@@ -2892,7 +3178,8 @@ function _esc(s) {
             }
         }
 
-        loadCashflow();
+        /* Hidden by value-cleanup — do not auto-fetch on Schedule Health load */
+        if (_sectionAllowsAutoLoad("evm-cf-section")) loadCashflow();
         if (typeof ResizeObserver !== 'undefined') {
             const _cfWrap = document.getElementById("cf-canvas")?.parentElement;
             if (_cfWrap) {
@@ -3281,7 +3568,7 @@ function _esc(s) {
             }
         }
 
-        loadTimelocation();
+        if (_sectionAllowsAutoLoad("evm-tl-section")) loadTimelocation();
         if (window._evmAudit) window._evmAudit.register("timelocation", loadTimelocation);
         if (typeof ResizeObserver !== 'undefined') {
             const _tlWrap = document.getElementById("tl-chart-wrap");
@@ -3470,10 +3757,22 @@ function _esc(s) {
         loadDcmaCheck();
     }());
 
+    /* Reliability A″ — only auto-load visible / core Schedule Health sections.
+       Hidden value-cleanup sections (MC/ML/cashflow/WBS/trend/root-cause/anomaly/chat)
+       must not trigger network calls on initial page load. */
+    function _sectionAllowsAutoLoad(sectionId) {
+        const el = document.getElementById(sectionId);
+        if (!el) return false;
+        if (el.classList.contains("d-none")) return false;
+        if (el.matches('[data-testid^="value-cleanup-hide-"]')) return false;
+        return true;
+    }
+
     loadEvm();
-    loadWbsHeatmap();
-    loadDelayDistribution();
-    loadTrendAnalysis();
+    _fetchTrustInputs();
+    if (_sectionAllowsAutoLoad("evm-wbs-section")) loadWbsHeatmap();
+    if (_sectionAllowsAutoLoad("evm-delay-section")) loadDelayDistribution();
+    if (_sectionAllowsAutoLoad("evm-trend-section")) loadTrendAnalysis();
 
     /* ── Canvas resize: re-draw S-curve + sparklines on container resize ── *
      * ResizeObserver fires on ANY size change (sidebar open/close, window
@@ -3617,7 +3916,8 @@ function _esc(s) {
             }
         }
 
-        loadML();
+        /* Hidden by value-cleanup — do not auto-fetch on Schedule Health load */
+        if (_sectionAllowsAutoLoad("evm-ml-section")) loadML();
     }());
 
     /* ── Anomaly Detection ─────────────────────────────────────────────── */
@@ -3746,7 +4046,8 @@ function _esc(s) {
             }
         }
 
-        loadAnomalies();
+        /* Hidden by value-cleanup — do not auto-fetch on Schedule Health load */
+        if (_sectionAllowsAutoLoad("evm-anomaly-section")) loadAnomalies();
         if (window._evmAudit) window._evmAudit.register("anomalies", loadAnomalies);
     }());
 
@@ -3913,7 +4214,7 @@ function _esc(s) {
         }
     }());
 
-    /* ── Decision Summary ────────────────────────────────────────────────── */
+    /* ── Diagnostics summary (advanced; not decision-facing) ─────────────── */
     (function () {
         const DS_URL = "{% url 'scheduling:decision_summary' project.pk %}";
 
@@ -3958,7 +4259,7 @@ function _esc(s) {
                 data = await resp.json();
             } catch (_) {
                 if (loading) loading.innerHTML =
-                    `<span style="color:var(--bs-secondary-color);font-size:.78rem;">Decision summary unavailable.</span>`;
+                    `<span style="color:var(--bs-secondary-color);font-size:.78rem;">Diagnostics summary unavailable.</span>`;
                 return;
             }
 
@@ -3967,7 +4268,7 @@ function _esc(s) {
                 if (loading) {
                     loading.classList.remove("d-none");
                     loading.innerHTML =
-                        `<span style="font-size:.78rem;color:var(--bs-secondary-color);">No schedule data — import a schedule to see the decision summary.</span>`;
+                        `<span style="font-size:.78rem;color:var(--bs-secondary-color);">No schedule data — import a schedule to see diagnostics.</span>`;
                 }
                 return;
             }
@@ -4537,7 +4838,10 @@ function _esc(s) {
             _setCritPath(data.critical_path);
         }
 
-        loadIntelligence();
+        /* Intelligence overlays WBS/MC-adjacent surfaces — skip when those stay hidden */
+        if (_sectionAllowsAutoLoad("evm-wbs-section") || _sectionAllowsAutoLoad("evm-chat-section")) {
+            loadIntelligence();
+        }
     }());
 
 }());

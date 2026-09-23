@@ -1,0 +1,164 @@
+# scheduling/services/resource_foundation.py
+"""DF-E1 Resource Foundation helpers — schema readiness and consumer cutovers.
+
+``sum_actual_cost_by_task`` supports DF-E2/E3 readiness checks. Live EVM AC
+loading prefers canonical ResourceAssignment via ``evm._load_actual_costs``
+(DF-E3). DF-E4 cashflow / workforce / coverage use
+``uses_canonical_resource_assignments`` for the same prefer-canonical rule.
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Iterable
+from dataclasses import dataclass
+from decimal import Decimal
+from uuid import UUID
+
+from django.core.exceptions import ValidationError
+from django.db.models import QuerySet, Sum
+
+from scheduling.resource_foundation_models import Resource, ResourceAssignment
+
+logger = logging.getLogger(__name__)
+
+# Shared with evm.py / cashflow / workforce — never dual-sum stores.
+COST_SOURCE_CANONICAL = "canonical_resource_assignment"
+COST_SOURCE_P6_FALLBACK = "legacy_p6_resource_assignment_fallback"
+COST_SOURCE_NONE = "none"
+COST_SOURCE_TASK_COST = "task_cost"
+
+
+def ac_source_display_label(ac_source: str | None) -> str:
+    """User-facing AC store label for KPI honesty (display only — no calculation).
+
+    Never implies company/ERP/invoice/QS actual spend — assignment indicators only.
+    """
+    if ac_source == COST_SOURCE_CANONICAL:
+        return (
+            "Assignment actual cost indicator — source: canonical ResourceAssignment "
+            "(not company/ERP/invoice/QS spend)"
+        )
+    if ac_source in (COST_SOURCE_P6_FALLBACK, "p6_assignments"):
+        return (
+            "Assignment actual cost indicator — source: legacy P6 ResourceAssignment "
+            "(fallback; not company/ERP/invoice/QS spend)"
+        )
+    if ac_source == COST_SOURCE_TASK_COST:
+        return (
+            "Task-cost proxy for assignment cost phasing; incomplete tasks may appear as 0. "
+            "Not company cashflow."
+        )
+    return ""
+
+
+def uses_canonical_resource_assignments(project_id: str | UUID) -> bool:
+    """True when the project has any non-pending canonical ResourceAssignment rows."""
+    return ResourceAssignment.objects.filter(
+        project_id=project_id,
+        is_pending=False,
+    ).exists()
+
+
+@dataclass(frozen=True, slots=True)
+class ResourceAssignmentIdentity:
+    """Stable source identity for a resource assignment row."""
+
+    project_id: str
+    source_system: str
+    external_id: str
+    source_version_id: str | None = None
+
+
+def validate_assignment_project_consistency(assignment: ResourceAssignment) -> None:
+    """Raise ValidationError when task/resource/project FKs disagree."""
+    assignment.clean()
+
+
+def assignments_for_tasks(
+    project_id: str | UUID,
+    task_ids: Iterable[str | UUID],
+    *,
+    include_pending: bool = False,
+) -> QuerySet[ResourceAssignment]:
+    """Return canonical assignments for the given project tasks."""
+    ids = [str(tid) for tid in task_ids]
+    qs = ResourceAssignment.objects.filter(project_id=project_id, task_id__in=ids)
+    if not include_pending:
+        qs = qs.filter(is_pending=False)
+    return qs.select_related("resource", "task")
+
+
+def sum_actual_cost_by_task(
+    project_id: str | UUID,
+    task_ids: Iterable[str | UUID],
+    *,
+    include_pending: bool = False,
+) -> dict[str, Decimal]:
+    """Sum non-NULL actual_cost per task. NULL rows are ignored (not treated as zero)."""
+    qs = assignments_for_tasks(project_id, task_ids, include_pending=include_pending).filter(
+        actual_cost__isnull=False
+    )
+    rows = qs.values("task_id").annotate(total=Sum("actual_cost"))
+    return {str(row["task_id"]): row["total"] or Decimal("0") for row in rows}
+
+
+def sum_planned_cost_by_task(
+    project_id: str | UUID,
+    task_ids: Iterable[str | UUID],
+    *,
+    include_pending: bool = False,
+) -> dict[str, Decimal]:
+    """Sum non-NULL planned_cost per task. NULL rows are ignored (not treated as zero)."""
+    qs = assignments_for_tasks(project_id, task_ids, include_pending=include_pending).filter(
+        planned_cost__isnull=False
+    )
+    rows = qs.values("task_id").annotate(total=Sum("planned_cost"))
+    return {str(row["task_id"]): row["total"] or Decimal("0") for row in rows}
+
+
+def create_resource(
+    *,
+    project,
+    name: str,
+    resource_type: str = Resource.ResourceType.UNKNOWN,
+    resource_code: str = "",
+    status: str = Resource.Status.ACTIVE,
+    **kwargs,
+) -> Resource:
+    """Create a Resource row (thin helper for tests / future importers)."""
+    return Resource.objects.create(
+        project=project,
+        name=name,
+        resource_type=resource_type,
+        resource_code=resource_code or "",
+        status=status,
+        **kwargs,
+    )
+
+
+def create_resource_assignment(
+    *,
+    project,
+    task,
+    resource: Resource,
+    validate: bool = True,
+    **kwargs,
+) -> ResourceAssignment:
+    """Create a ResourceAssignment with optional clean() validation."""
+    if resource.project_id != project.pk:
+        raise ValidationError(
+            {"resource": "Resource project must match ResourceAssignment.project."}
+        )
+    if task.project_id != project.pk:
+        raise ValidationError({"task": "Task project must match ResourceAssignment.project."})
+    assignment = ResourceAssignment(
+        project=project,
+        task=task,
+        resource=resource,
+        **kwargs,
+    )
+    if validate:
+        assignment.full_clean()
+    assignment.save()
+    return assignment

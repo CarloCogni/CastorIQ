@@ -1,0 +1,27 @@
+<!-- scheduling/components/executive_section_delays.html -->
+<section id="exec-section-delays" class="exec-section mb-4" aria-labelledby="exec-delays-heading">
+    <h2 class="h6 fw-semibold mb-3" id="exec-delays-heading">
+        <i class="bi bi-alarm me-1 text-primary"></i> Delay Exposure
+        <span class="badge bg-body-secondary text-body ms-1">{{ day_type|default:"working" }} days</span>
+    </h2>
+    {% if section_error %}
+    <div class="alert alert-danger" role="alert">{{ section_error }}</div>
+    {% else %}
+    <p class="small fw-semibold text-secondary mb-2">{{ primary_label }}</p>
+    <div class="row g-3 mb-3">
+        {% for card in primary_cards %}
+        <div class="col-12 col-sm-6 col-lg-3">
+            {% include "scheduling/components/executive_kpi_card.html" with card=card %}
+        </div>
+        {% endfor %}
+    </div>
+    <p class="small fw-semibold text-secondary mb-2">{{ secondary_label }}</p>
+    <div class="row g-3">
+        {% for card in indicator_cards %}
+        <div class="col-12 col-sm-6 col-lg-4 col-xl-2">
+            {% include "scheduling/components/executive_kpi_card.html" with card=card %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>

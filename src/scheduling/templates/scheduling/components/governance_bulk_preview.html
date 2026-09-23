@@ -1,0 +1,61 @@
+<!-- scheduling/components/governance_bulk_preview.html — bulk approval preview -->
+
+<div id="governance-bulk-preview" class="border rounded p-3 bg-body-tertiary small">
+    <div class="fw-semibold mb-2">Bulk approval preview</div>
+    <dl class="row mb-2 g-1">
+        <dt class="col-sm-4">Selected</dt>
+        <dd class="col-sm-8">{{ preview.requested_count }}</dd>
+        <dt class="col-sm-4">Eligible</dt>
+        <dd class="col-sm-8">{{ preview.eligible_count }}</dd>
+        <dt class="col-sm-4">Already trusted</dt>
+        <dd class="col-sm-8">{{ preview.already_accepted_count }}</dd>
+        <dt class="col-sm-4">Invalid / blocked</dt>
+        <dd class="col-sm-8">{{ preview.invalid_count }} (hard blocked {{ preview.hard_blocked_count }})</dd>
+        <dt class="col-sm-4">Conflict warnings</dt>
+        <dd class="col-sm-8">{{ preview.conflict_warning_count }}</dd>
+    </dl>
+    {% if preview.method_mix %}
+    <div class="mb-2">
+        <span class="text-secondary">Methods:</span>
+        {% for method, count in preview.method_mix.items %}
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1">{{ method }} {{ count }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+    <form hx-post="{% url 'scheduling:link_decision_bulk_apply' project.pk %}"
+          hx-target="#governance-bulk-preview"
+          hx-swap="outerHTML">
+        {% csrf_token %}
+        <input type="hidden" name="selection_fingerprint" value="{{ preview.selection_fingerprint }}">
+        <input type="hidden" name="queue_mode" value="{{ queue_mode }}">
+        <input type="hidden" name="queue_page" value="{{ queue_page }}">
+        {% for bid in binding_ids %}
+        <input type="hidden" name="binding_ids" value="{{ bid }}">
+        {% endfor %}
+        {% if preview.conflict_warning_count %}
+        <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="conflict_acknowledged" id="bulk-conflict-ack" value="true">
+            <label class="form-check-label" for="bulk-conflict-ack">
+                I acknowledge possible conflict warnings in this selection.
+            </label>
+        </div>
+        {% endif %}
+        <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="confirm_acknowledged" id="bulk-confirm-ack" value="true" required>
+            <label class="form-check-label" for="bulk-confirm-ack">
+                I confirm explicit human approval for every eligible selected item.
+            </label>
+        </div>
+        <label class="form-label mb-1" for="bulk-confirm-phrase">Type <code>APPROVE SELECTED</code> to apply</label>
+        <input id="bulk-confirm-phrase" type="text" name="confirmation" class="form-control form-control-sm mb-2" autocomplete="off">
+        <div class="d-flex gap-2">
+            {% if preview.eligible_count %}
+            <button type="submit" class="btn btn-sm btn-success">Apply bulk approval</button>
+            {% endif %}
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    onclick="document.getElementById('governance-bulk-preview')?.remove()">
+                Defer
+            </button>
+        </div>
+    </form>
+</div>

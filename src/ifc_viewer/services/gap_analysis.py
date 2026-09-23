@@ -9,13 +9,25 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def build_gap_analysis(ifc_file, by: str) -> list[dict]:
+def build_gap_analysis(
+    ifc_file,
+    by: str,
+    project_id: str | None = None,
+) -> list[dict]:
     """Return rows for the Gap Analysis panel table.
 
     Each row: {group, total, linked, pct, gap, global_ids_json}
     Sorted by gap descending (biggest gaps first).
+
+    project_id: when set, only entities with TaskEntityBinding count as linked.
     """
     from ifc_processor.models import IFCEntity  # local import — avoids circular
+
+    bound_gids: set[str] = set()
+    if project_id:
+        from scheduling.services.link_resolver import linked_entity_gids_for_project
+
+        bound_gids = linked_entity_gids_for_project(project_id)
 
     qs = IFCEntity.objects.filter(ifc_file=ifc_file).only(
         "global_id", "ifc_type", "spatial_container", "properties"
@@ -29,8 +41,7 @@ def build_gap_analysis(ifc_file, by: str) -> list[dict]:
         bucket = groups[key]
         bucket["total"] += 1
         bucket["global_ids"].append(entity.global_id)
-        props = entity.properties or {}
-        if any(k.lower().endswith("activity id") for k, v in props.items() if v):
+        if entity.global_id in bound_gids:
             bucket["linked"] += 1
 
     rows = []

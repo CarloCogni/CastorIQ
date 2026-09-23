@@ -1,7 +1,7 @@
-<!-- environments/components/bim_panel.html — 4D/5D BIM hub -->
+<!-- environments/components/bim_panel.html — 4D/5D BIM hub (Package S1 surface) -->
 <div class="d-flex flex-column h-100 overflow-hidden">
 
-    <!-- Sub-tab navigation — Schedule + Controls primary; Links/Time View placeholders -->
+    <!-- Sub-tab navigation bar — Package S1: six primary destinations -->
     <div class="d-flex align-items-center px-3 py-2 border-bottom bg-body flex-shrink-0" style="gap: 0.5rem;">
         <span class="fw-semibold text-secondary me-2" style="font-size:0.8rem; letter-spacing:0.05em;">4D/5D</span>
 
@@ -15,7 +15,7 @@
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link py-1 px-3 {% if schedule_tab == 'fourD_link' %}active{% endif %}"
+                <a class="nav-link py-1 px-3 {% if schedule_tab == 'fourD_link' or castor_subtab == 'link_analysis' or castor_subtab == 'model_inventory' %}active{% endif %}"
                    href="{% url 'scheduling:schedule' project.pk %}?tab=fourD_link"
                    style="font-size:0.85rem;"
                    data-testid="hub-links">
@@ -24,11 +24,11 @@
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link py-1 px-3 {% if castor_subtab == 'model_inventory' or castor_subtab == 'model_inventory_entities' %}active{% endif %}"
-                   href="{% url 'takeoff:model_inventory' project.pk %}"
+                <a class="nav-link py-1 px-3 {% if castor_subtab == 'viewer' %}active{% endif %}"
+                   href="{% url 'ifc_viewer:viewer' project.pk %}"
                    style="font-size:0.85rem;"
                    data-testid="hub-model">
-                    <i class="bi bi-box-seam me-1"></i>Model
+                    <i class="bi bi-cube me-1"></i>Model
                 </a>
             </li>
             <li class="nav-item">
@@ -55,7 +55,7 @@
                     <i class="bi bi-speedometer2 me-1"></i>Controls
                 </a>
             </li>
-            <!-- Demoted / compatibility routes -->
+            <!-- Internal / compatibility routes — not primary destinations -->
             <li class="nav-item d-none" data-testid="hub-schedule-health-advanced">
                 <a class="nav-link py-1 px-3 {% if schedule_tab == 'evm' %}active{% endif %}"
                    href="{% url 'scheduling:schedule' project.pk %}?tab=evm"
@@ -71,11 +71,25 @@
                     <i class="bi bi-cube me-1"></i>Viewer
                 </a>
             </li>
+            <li class="nav-item d-none" data-testid="hub-model-readiness-compat">
+                <a class="nav-link py-1 px-3 {% if castor_subtab == 'model_inventory' or castor_subtab == 'model_inventory_entities' %}active{% endif %}"
+                   href="{% url 'takeoff:model_inventory' project.pk %}"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-box-seam me-1"></i>Model Readiness
+                </a>
+            </li>
             <li class="nav-item d-none">
                 <a class="nav-link py-1 px-3 {% if castor_subtab == 'schedule' %}active{% endif %}"
                    href="{% url 'scheduling:schedule' project.pk %}"
                    style="font-size:0.85rem;">
                     <i class="bi bi-calendar3-range me-1"></i>TimeLiner
+                </a>
+            </li>
+            <li class="nav-item d-none" data-testid="hub-intelligence-hidden">
+                <a class="nav-link py-1 px-3 {% if schedule_tab == 'intelligence' %}active{% endif %}"
+                   href="{% url 'scheduling:schedule' project.pk %}?tab=intelligence"
+                   style="font-size:0.85rem;">
+                    <i class="bi bi-lightbulb me-1"></i>Intelligence
                 </a>
             </li>
             <li class="nav-item d-none">
@@ -106,12 +120,17 @@
     </div>
 
     <!-- Sub-tab content -->
-    <div class="flex-grow-1 {% if schedule_tab == 'fourD_link' or schedule_tab == 'lookahead' %}overflow-hidden{% else %}overflow-auto{% endif %}">
+    {% if schedule_tab == 'fourD_link' or schedule_tab == 'lookahead' %}
+    <div class="flex-grow-1 overflow-hidden d-flex flex-column" style="min-height:0;">
+    {% else %}
+    <div class="flex-grow-1 overflow-auto">
+    {% endif %}
         {% if castor_subtab == 'viewer' %}
             {% include "ifc_viewer/viewer.html" %}
         {% elif castor_subtab == 'schedule' %}
             {% include "scheduling/panel.html" %}
-        {% elif castor_subtab == 'model_inventory' %}
+        {% elif castor_subtab == 'link_analysis' or castor_subtab == 'model_inventory' %}
+            <!-- takeoff:model_inventory URL — Link Analysis diagnostic (Quantities B dependency). -->
             {% include "takeoff/link_analysis.html" %}
         {% elif castor_subtab == 'model_inventory_entities' %}
             {% include "takeoff/model_inventory_entities_page.html" %}

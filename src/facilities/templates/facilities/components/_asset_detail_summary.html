@@ -33,8 +33,8 @@
         {% if entity %}
         <div class="d-flex flex-column gap-2">
             {% if entity.global_id %}
-            {% url 'facilities:assets_detail' project.pk asset.pk as _asset_back_url %}
-            <a href="{% url 'ifc_viewer:viewer' project.pk %}?focus={{ entity.global_id|urlencode }}&return={{ _asset_back_url|urlencode }}&from=asset"
+            {% url 'facilities:assets_detail' project.pk asset.pk as asset_back_url %}
+            <a href="{% url 'ifc_viewer:viewer' project.pk %}?focus={{ entity.global_id|urlencode }}&return={{ asset_back_url|urlencode }}&from=asset"
                class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-2"
                title="Open this element in the 3D model, zoomed in">
                 <i class="bi bi-box"></i> View in 3D

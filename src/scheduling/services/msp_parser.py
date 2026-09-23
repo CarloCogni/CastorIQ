@@ -62,15 +62,16 @@ _P6_DEP_TYPE: dict[str, str] = {
 }
 
 
-def parse_msp(file_obj, preview_only: bool = False) -> tuple[list[dict], list[dict]]:
+def parse_msp(file_obj, preview_only: bool = False) -> tuple[list[dict], list[dict], dict]:
     """Parse an MS Project XML or Primavera P6 XML file.
 
     Format is auto-detected from the initial bytes.
     When preview_only=True: returns up to 200 tasks with no dependency data.
 
-    Returns (tasks, raw_deps):
+    Returns (tasks, raw_deps, aux_data):
       tasks    — list of task dicts for TaskSaveView
       raw_deps — list of dep dicts keyed by the detected format's ID fields.
+      aux_data — MSP summary/outline WBS evidence when applicable.
 
     Raises ValueError if the file is not valid XML or has no parseable tasks.
     """
@@ -83,7 +84,8 @@ def parse_msp(file_obj, preview_only: bool = False) -> tuple[list[dict], list[di
 
     sample = file_bytes[:2048]
     if b"APIBusinessObjects" in sample or b"<Activity" in sample:
-        return _parse_p6_xml(file_bytes, preview_only)
+        tasks, deps = _parse_p6_xml(file_bytes, preview_only)
+        return tasks, deps, {}
 
     return _parse_msp_xml(file_bytes, preview_only)
 
@@ -142,8 +144,14 @@ def _parse_msp_xml(file_bytes: bytes, preview_only: bool) -> tuple[list[dict], l
     if not tasks:
         raise ValueError("<Tasks> element found but no parseable tasks.")
 
-    logger.info("msp_parser: parsed %d tasks, %d deps", len(tasks), len(raw_deps))
-    return tasks, raw_deps
+    aux_data = _build_msp_wbs_aux(tasks)
+    logger.info(
+        "msp_parser: parsed %d tasks, %d deps, %d summary wbs",
+        len(tasks),
+        len(raw_deps),
+        len(aux_data.get("summary_nodes", [])),
+    )
+    return tasks, raw_deps, aux_data
 
 
 def _parse_msp_task(el, ns: str) -> dict | None:
@@ -191,7 +199,71 @@ def _parse_msp_task(el, ns: str) -> dict | None:
         "source": "msp",
         "description": text("Notes"),
         "_p6_phys_pct": _p6_phys_pct,
+        "_msp_outline_number": text("OutlineNumber"),
+        "_msp_outline_level": text("OutlineLevel"),
+        "_msp_summary": text("Summary").lower() in ("1", "true"),
     }
+
+
+def _build_msp_wbs_aux(tasks: list[dict]) -> dict:
+    """Derive summary-task WBS nodes and per-task outline parent UIDs."""
+    summary_nodes: list[dict] = []
+    outline_to_uid: dict[str, str] = {}
+    for task in tasks:
+        if not task.get("_msp_summary"):
+            continue
+        uid = str(task.get("_msp_uid") or "").strip()
+        outline = str(task.get("_msp_outline_number") or "").strip()
+        if not uid:
+            continue
+        parent_uid = _msp_parent_summary_uid(outline, outline_to_uid)
+        level = 0
+        try:
+            level = int(task.get("_msp_outline_level") or 0)
+        except (TypeError, ValueError):
+            level = outline.count(".") + 1 if outline else 0
+        summary_nodes.append(
+            {
+                "external_id": uid,
+                "external_parent_id": parent_uid,
+                "code": task.get("activity_code") or outline,
+                "name": task.get("name") or uid,
+                "sequence": level,
+                "outline_level": level,
+            }
+        )
+        if outline:
+            outline_to_uid[outline] = uid
+
+    for task in tasks:
+        outline = str(task.get("_msp_outline_number") or "").strip()
+        task["_msp_wbs_uid"] = _msp_nearest_summary_uid(outline, outline_to_uid)
+
+    return {"summary_nodes": summary_nodes}
+
+
+def _msp_parent_summary_uid(outline: str, outline_to_uid: dict[str, str]) -> str:
+    if not outline or "." not in outline:
+        return ""
+    parts = outline.split(".")
+    while len(parts) > 1:
+        parts.pop()
+        candidate = ".".join(parts)
+        if candidate in outline_to_uid:
+            return outline_to_uid[candidate]
+    return ""
+
+
+def _msp_nearest_summary_uid(outline: str, outline_to_uid: dict[str, str]) -> str:
+    if not outline:
+        return ""
+    parts = outline.split(".")
+    while parts:
+        candidate = ".".join(parts)
+        if candidate in outline_to_uid:
+            return outline_to_uid[candidate]
+        parts.pop()
+    return ""
 
 
 def _parse_p6_xml(file_bytes: bytes, preview_only: bool) -> tuple[list[dict], list[dict]]:

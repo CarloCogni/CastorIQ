@@ -91,14 +91,11 @@ def test_quantities_workspace_v1_layout_markers(client):
     assert 'data-testid="qty-select-basis-IfcWall"' in html
     assert 'data-testid="qty-generate-prep-model"' in html
     assert "Generate Preparation Data Model" in html
-    assert 'data-testid="quantities-modify-handoff"' in html
-    assert 'data-testid="qty-send-unresolved-to-modify"' in html
-    assert "Send unresolved rows to Castor Modify" in html
+    # TABLE-04: no Modify handoff section / CTA on the one-table workspace.
+    assert 'data-testid="quantities-modify-handoff"' not in html
+    assert 'data-testid="qty-send-unresolved-to-modify"' not in html
     assert "disabled" in html
-    assert (
-        "No IFC modification proposals directly" in html
-        or "does not create IFC modification" in html
-    )
+    assert "Not Ask, not Modify, not BOQ, not cost" in html
     assert 'data-testid="quantities-model-reference"' in html
     assert "Raw Indexed Quantity Inventory" in html
     assert 'data-testid="qty-raw-inventory-details"' in html
@@ -137,36 +134,31 @@ def test_quantities_workspace_v1_layout_markers(client):
     assert html.index('data-testid="quantities-workspace-toolbar"') < html.index(
         'data-testid="quantities-optional-estimate"'
     )
-    assert "qty-advanced-recompute" in html
-    assert "Recompute optional cache" in html
+    # Legacy QTO cache export is demoted into Advanced and clearly scoped.
+    assert 'data-testid="qty-advanced-export"' in html
     assert "Export legacy QTO cache" in html
     assert "Export preparation data model" not in html
     assert "Export indexed quantities" not in html
     assert "Export Excel" not in html
-    assert "does not export the current generated preparation data model" in html
-    assert "manual mapping values" in html
     assert 'data-testid="qty-advanced-legacy-export-copy"' in html
-    # Slice 2b — after Unresolved Data Register, before Modify handoff
-    assert 'data-testid="quantities-visual-summary"' in html
-    assert "Preparation Data Model Visual Summary" in html
-    assert 'data-testid="quantities-preparation-insights"' in html
-    assert "Quantity Preparation Insights" in html
-    assert "Generated Preparation Data Model and Unresolved Data Register" in html
-    assert html.index('data-testid="quantities-unresolved-register"') < html.index(
-        'data-testid="quantities-visual-summary"'
+    assert "Legacy QTO cache export is separate from Export table." in html
+    assert "qty-advanced-recompute" not in html
+    # TABLE-04 removed the standalone Visual Summary / Insights sections; the
+    # Unresolved Data Register is the single derived-signal surface.
+    assert 'data-testid="quantities-visual-summary"' not in html
+    assert 'data-testid="quantities-preparation-insights"' not in html
+    assert "Preparation Data Model Visual Summary" not in html
+    assert "Quantity Preparation Insights" not in html
+    assert 'data-testid="quantities-unresolved-register"' in html
+    assert "Derived only from the Generated Preparation Data Model" in html
+    assert html.index('data-testid="quantities-prep-table"') < html.index(
+        'data-testid="quantities-unresolved-register"'
     )
-    assert html.index('data-testid="quantities-visual-summary"') < html.index(
-        'data-testid="quantities-preparation-insights"'
-    )
-    assert html.index('data-testid="quantities-preparation-insights"') < html.index(
-        'data-testid="quantities-modify-handoff"'
-    )
-    # Forbidden as positive claims; negation copy in Visual Summary helper is OK.
+    # Forbidden as positive claims.
     assert "proposal readiness" not in html.lower()
     assert "Quantity Coverage" not in html
     assert "Qto Coverage" not in html
     assert "Model Quantity Readiness" not in html
-    assert "Deterministic — not AI" in html
 
 
 @pytest.mark.django_db

@@ -1,4 +1,4 @@
-<!-- ifc_viewer/viewer.html — Castor Simulator: 3D viewer + 4D/5D controls -->
+<!-- ifc_viewer/viewer.html — Castor Viewer: 3D model inspection -->
 {% load static %}
 <div class="d-flex flex-column h-100 position-relative" id="ifc-viewer-root">
 
@@ -22,7 +22,7 @@
             <i class="bi bi-arrow-left"></i> Back to {{ back_label }}
         </a>
         {% endif %}
-        <span class="fw-semibold me-1">Castor Simulator</span>
+        <span class="fw-semibold me-1">Castor Viewer</span>
         <span class="text-secondary text-truncate" style="font-size:0.78rem; max-width:200px;">{{ viewer_ifc_file.name }}</span>
 
         <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
@@ -49,8 +49,8 @@
                     class="help-pill"
                     data-bs-toggle="modal"
                     data-bs-target="#simulatorHelpModal"
-                    title="How Castor Simulator works"
-                    aria-label="How Castor Simulator works">
+                    title="How Castor Viewer works"
+                    aria-label="How Castor Viewer works">
                 <i class="bi bi-question-circle"></i>
             </button>
 
@@ -92,6 +92,16 @@
                 title="Download standalone stakeholder report (HTML)"
                 style="font-size:12px;"
                 onclick="window.location.href='{% url 'ifc_viewer:export_report' project.pk %}'">📤 Export</button>
+        <div style="width:1px;height:16px;background:rgba(255,255,255,0.2);margin:0 4px;"></div>
+        <!-- Scale Figure — primitive height reference only (V1 polish) -->
+        <button id="scale-figure-toggle-btn" class="vctl-btn"
+                data-testid="scale-figure-toggle"
+                title="Show Scale Figure — non-human height reference (~1.75 model units)"
+                style="font-size:12px;">Show Scale Figure</button>
+        <button id="scale-figure-reset-btn" class="vctl-btn"
+                data-testid="scale-figure-reset"
+                title="Reset Scale Figure to model centre / floor"
+                style="font-size:12px;">Reset Scale Figure</button>
         <div style="flex:1;"></div>
         <button class="vctl-btn" data-zoom="+" title="Zoom In">+</button>
         <button class="vctl-btn" data-zoom="-" title="Zoom Out">−</button>
@@ -104,10 +114,32 @@
         <div class="flex-grow-1 position-relative overflow-hidden bg-dark">
             <div id="ifc-container" style="width:100%; height:100%; position:relative;"></div>
 
+            <!-- Zero-result Vis filter banner (shown when every type checkbox is off) -->
+            <div id="vis-zero-banner"
+                 class="position-absolute top-50 start-50 translate-middle text-center text-light d-none"
+                 style="z-index:8; max-width:320px; pointer-events:none;"
+                 role="status"
+                 aria-live="polite">
+                <i class="bi bi-eye-slash fs-3 text-secondary mb-2 d-block"></i>
+                <div class="fw-semibold mb-1" style="font-size:0.9rem;">No elements visible</div>
+                <div class="text-secondary" style="font-size:0.78rem;">
+                    All visibility filters are off. Use Vis → Show All, or Reset, to restore the model.
+                </div>
+            </div>
+
             <!-- Measurement distance labels (HTML overlay, updated by rAF loop) -->
             <div id="measure-labels"
                  style="position:absolute;top:0;left:0;width:100%;height:100%;
                         pointer-events:none;z-index:6;overflow:hidden;"></div>
+            <!-- Scale Figure height label (HTML overlay) -->
+            <div id="scale-figure-label"
+                 data-testid="scale-figure-label"
+                 class="d-none"
+                 style="position:absolute;transform:translate(-50%,-120%);
+                        background:rgba(15,23,42,0.88);color:#e2e8f0;
+                        padding:2px 7px;border-radius:3px;font-size:11px;font-weight:600;
+                        white-space:nowrap;pointer-events:none;z-index:6;
+                        border:1px solid rgba(148,163,184,0.45);">1.75 model units</div>
 
             <!-- Loading overlay -->
             <div id="viewer-loading"
@@ -358,7 +390,7 @@
          class="border-top bg-body flex-shrink-0 px-3 py-2 d-none text-secondary"
          style="display:none!important; font-size:0.8rem;">
         <i class="bi bi-info-circle me-1"></i>
-        No schedule linked — import a schedule in 4D/5D Controls &gt; TimeLiner to enable the timeline.
+        No schedule linked — import a schedule in 4D/5D Schedule, then open Time View for programme playback.
     </div>
 
     <style>
@@ -379,25 +411,26 @@
     <script type="importmap">
     {
       "imports": {
-        "three":                "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
-        "@thatopen/components": "https://cdn.jsdelivr.net/npm/@thatopen/components@2.4.11/+esm",
-        "@thatopen/fragments":  "https://cdn.jsdelivr.net/npm/@thatopen/fragments@2.4.0/+esm",
-        "web-ifc":              "{% static 'vendor/web-ifc/web-ifc-api.js' %}?v=2"
+        "three":               "{% static 'vendor/three/build/three.module.js' %}",
+        "@thatopen/fragments": "{% static 'vendor/thatopen-fragments/dist/index.min.mjs' %}",
+        "web-ifc":             "{% static 'vendor/web-ifc/web-ifc-api.js' %}?v=2"
       }
     }
     </script>
 
     <!-- ── Module script ─────────────────────────────────────────────────── -->
     <script type="module">
-    import * as OBC   from "@thatopen/components";
+    import * as OBC   from "{% static 'vendor/thatopen-components/dist/index.min.mjs' %}";
     import * as THREE from "three";
 
     const IFC_URL           = "{{ ifc_file_url }}";
-    const FRAG_URL          = "{% url 'ifc_viewer:viewer_fragments'      project.pk %}";
-    const COLORMAP_URL      = "{% url 'ifc_viewer:viewer_colormap'       project.pk %}";
+    /* Pin data endpoints to the same IFC file the page loaded (multi-IFC safe). */
+    const IFC_QUERY         = "{% if viewer_ifc_file %}?ifc={{ viewer_ifc_file.pk }}{% endif %}";
+    const FRAG_URL          = "{% url 'ifc_viewer:viewer_fragments'      project.pk %}" + IFC_QUERY;
+    const COLORMAP_URL      = "{% url 'ifc_viewer:viewer_colormap'       project.pk %}" + IFC_QUERY;
     const TIMELINE_URL      = "{% url 'ifc_viewer:viewer_timeline'       project.pk %}";
-    const ENTITY_TYPES_URL  = "{% url 'ifc_viewer:viewer_entity_types'   project.pk %}";
-    const SPATIAL_TREE_URL  = "{% url 'ifc_viewer:viewer_spatial_tree'   project.pk %}";
+    const ENTITY_TYPES_URL  = "{% url 'ifc_viewer:viewer_entity_types'   project.pk %}" + IFC_QUERY;
+    const SPATIAL_TREE_URL  = "{% url 'ifc_viewer:viewer_spatial_tree'   project.pk %}" + IFC_QUERY;
     const CSRF_TOKEN        = "{{ csrf_token }}";
 
     const container  = document.getElementById("ifc-container");
@@ -442,10 +475,8 @@
             components.init();
             world.scene.setup();
 
-            // Geometry cache disabled (see viewer_embed): the current
-            // @thatopen/fragments build does not round-trip a saved .frag, so we
-            // always parse the IFC below.
-            const fragResp = { ok: false };
+            loadMsg.textContent = "Checking geometry cache…";
+            const fragResp = await fetch(FRAG_URL);
 
             if (fragResp.ok) {
                 loadMsg.textContent = "Loading cached model…";
@@ -480,7 +511,7 @@
                 const data = new Uint8Array(await resp.arrayBuffer());
                 model = await ifcLoader.load(data);
                 world.scene.three.add(model);
-                // Cache save disabled — see the note where the cache read is skipped.
+                _saveFragments(components, model);
                 buildIndex();
             }
 
@@ -488,21 +519,12 @@
             resetAllColors();
             _initSelector();
             _initViewControls();
+            _initScaleFigure();
             _initSelectionSidebar();
             _initVisibilityPanel();
             _initSectionBox();
             _initMeasureTool();
             _initSpatialTree();
-
-            // Deep-link focus: /viewer/projects/<pk>/?focus=<GlobalID> highlights and
-            // zooms to that element. ?room=<GlobalID> instead drops the camera INTO
-            // the centre of that IfcSpace (interior view — used by the Spaces tab).
-            // Delayed so they run after the initial camera fit.
-            const _qs         = new URLSearchParams(location.search);
-            const _focusParam = _qs.get("focus");
-            const _roomParam  = _qs.get("room");
-            if (_roomParam)       setTimeout(() => _focusRoom(_roomParam), 900);
-            else if (_focusParam) setTimeout(() => _focusGid(_focusParam), 700);
 
         } catch (err) {
             console.error("IFC viewer init failed:", err);
@@ -550,83 +572,6 @@
         }
     }
 
-    // ── 2b. Deep-link focus (highlight + zoom to one element) ────────────
-
-    function _bboxForGid(gid) {
-        const box = new THREE.Box3();
-        if (!model) return box;
-        const eid = globalIdIndex.get(gid);
-        if (eid === undefined) return box;
-        const frag = fragmentIndex.get(eid);
-        if (!frag || !frag.mesh) return box;
-        // Whole-fragment bbox (same approach as the embed viewer's focusOnGlobalId).
-        frag.mesh.updateMatrixWorld(true);
-        box.setFromObject(frag.mesh);
-        return box;
-    }
-
-    function _focusGid(gid) {
-        if (!gid || !model || !globalIdIndex.has(gid)) return;
-        try {
-            resetAllColors();
-            colorByGlobalIds([gid], C.highlight);
-            const controls = world?.camera?.controls;
-            const box = _bboxForGid(gid);
-            if (controls && typeof controls.fitToBox === "function" && !box.isEmpty()) {
-                controls.fitToBox(box, true);
-            }
-        } catch (e) { console.warn("[simulator] focus failed:", e); }
-    }
-
-    // ── 2c. Deep-link room focus (interior view — camera at the room centre) ──
-    //    The Spaces tab links pins to IfcSpaces. Rather than framing a space's
-    //    bounding box from the outside, drop the camera INTO the centre of the
-    //    room at eye height and look horizontally across it, so the view opens
-    //    "standing inside" the room. The space solid itself is hidden (and kept
-    //    hidden through later colour/selection resets) so the camera isn't
-    //    trapped inside a coloured volume; the walls / floor / doors remain.
-    async function _focusRoom(gid) {
-        if (!gid || !model || !globalIdIndex.has(gid)) return _focusGid(gid);
-        try {
-            const controls = world?.camera?.controls;
-            const box = _bboxForGid(gid);
-            // No usable space geometry → fall back to framing the element.
-            if (!controls || typeof controls.setLookAt !== "function" || box.isEmpty()) {
-                return _focusGid(gid);
-            }
-            // Perspective projection reads far more naturally from inside a room.
-            try {
-                if (world.camera.projection && world.camera.projection.current === "Orthographic") {
-                    await world.camera.projection.set("Perspective");
-                }
-            } catch (_) { /* projection API optional */ }
-
-            // Hide the room's own space solid so we can see out of it, and keep
-            // it hidden across future resets.
-            resetAllColors();
-            _hiddenGlobalIds.add(gid);
-            hideGlobalIds([gid]);
-
-            const center = box.getCenter(new THREE.Vector3());
-            const size   = box.getSize(new THREE.Vector3());
-            // Eye at the room centre, near standing height above the floor.
-            const eyeY   = box.min.y + Math.min(1.6, Math.max(0.1, size.y * 0.5));
-            // Look horizontally along the room's longer floor axis.
-            const alongX = size.x >= size.z;
-            world.camera.three.up.set(0, 1, 0);
-            controls.setLookAt(
-                center.x, eyeY, center.z,                               // eye: room centre
-                center.x + (alongX ? size.x * 0.5 + 0.01 : 0),          // target: far wall
-                eyeY,
-                center.z + (alongX ? 0 : size.z * 0.5 + 0.01),
-                true,
-            );
-        } catch (e) {
-            console.warn("[simulator] room focus failed:", e);
-            return _focusGid(gid);
-        }
-    }
-
     // ── 3. Colour helpers ────────────────────────────────────────────────
 
     function colorByGlobalIds(globalIds, color) {
@@ -647,6 +592,23 @@
         }
         /* Re-apply user-hidden elements so they survive color/timeline resets */
         if (_hiddenGlobalIds.size) hideGlobalIds([..._hiddenGlobalIds]);
+        /* Vis panel hides live in _visibilityState, not _hiddenGlobalIds — re-apply
+           so a selection click does not wipe active type/level filters. */
+        if (typeof _visCache !== "undefined") _reapplyVisibilityFilters();
+        /* Analytical Color-by must survive selection / visibility resets. */
+        if (typeof _reapplyActiveColormap === "function") _reapplyActiveColormap();
+    }
+
+    function _reapplyVisibilityFilters() {
+        const hidden = window._visibilityState && window._visibilityState.hidden;
+        if (!hidden || typeof _visCache === "undefined") return;
+        const sliderVal = parseInt(document.getElementById("vis-opacity")?.value ?? "0", 10);
+        for (const kind of ["level", "type"]) {
+            for (const name of Object.keys(hidden[kind] || {})) {
+                const gids = (_visCache[kind] && _visCache[kind][name]) || null;
+                if (gids && gids.length) _applyHideCategory(gids, sliderVal);
+            }
+        }
     }
 
     function hideGlobalIds(globalIds) {
@@ -698,41 +660,112 @@
 
     // ── 5. Color By ──────────────────────────────────────────────────────
 
+    let _colorBySeq = 0;
+    let _activeColorBy = "none";
+    let _activeColormap = null;  // {global_id: hex} for re-apply after selection
+
+    function _qsAppend(url, params) {
+        /* COLORMAP_URL may already include ?ifc= — never append a second '?'. */
+        const bits = [];
+        for (const [k, v] of Object.entries(params)) {
+            bits.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+        }
+        if (!bits.length) return url;
+        return url + (url.includes("?") ? "&" : "?") + bits.join("&");
+    }
+
+    function _clearColorByUi() {
+        _activeColorBy = "none";
+        _activeColormap = null;
+        const legendEl = document.getElementById("colorby-legend");
+        legendEl?.classList.add("d-none");
+        const body = document.getElementById("colorby-legend-body");
+        if (body) body.innerHTML = "";
+    }
+
+    function _paintColormap(colormap) {
+        if (!model || !colormap) return;
+        const byHex = {};
+        for (const [gid, hex] of Object.entries(colormap)) {
+            (byHex[hex] = byHex[hex] || []).push(gid);
+        }
+        for (const [hex, ids] of Object.entries(byHex)) {
+            colorByGlobalIds(ids, makeColor(hex));
+        }
+    }
+
+    function _renderColorByLegend(legend) {
+        const legendEl   = document.getElementById("colorby-legend");
+        const legendBody = document.getElementById("colorby-legend-body");
+        if (!legendEl || !legendBody) return;
+        legendBody.innerHTML = (legend || []).map(({ label, color }) =>
+            `<div class="d-flex align-items-center gap-2">` +
+            `<span style="width:10px;height:10px;border-radius:2px;background:${color};display:inline-block;flex-shrink:0;"></span>` +
+            `<span style="font-size:0.72rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px;" title="${_esc(label)}">${_esc(label)}</span>` +
+            `</div>`
+        ).join("");
+        legendEl.classList.toggle("d-none", !(legend && legend.length));
+    }
+
+    function _reapplyActiveColormap() {
+        if (_activeColorBy && _activeColorBy !== "none" && _activeColormap) {
+            _paintColormap(_activeColormap);
+        }
+    }
+
     async function applyColormap(by) {
+        const selectEl = document.getElementById("colorby-select");
         if (by === "none") {
+            _colorBySeq += 1;
+            _clearColorByUi();
+            if (selectEl) selectEl.value = "none";
             resetAllColors();
-            document.getElementById("colorby-legend").classList.add("d-none");
+            if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
             return;
         }
         if (!model) return;
+        const seq = ++_colorBySeq;
+        /* Clear previous scheme legend immediately so a stale Type legend cannot linger. */
+        const legendBody = document.getElementById("colorby-legend-body");
+        if (legendBody) legendBody.innerHTML = "";
+        document.getElementById("colorby-legend")?.classList.add("d-none");
         try {
-            const resp = await fetch(`${COLORMAP_URL}?by=${by}`);
-            if (!resp.ok) return;
+            const url = _qsAppend(COLORMAP_URL, { by });
+            const resp = await fetch(url);
+            if (seq !== _colorBySeq) return;
+            if (!resp.ok) {
+                console.warn("[simulator] Colormap HTTP", resp.status);
+                if (selectEl) selectEl.value = _activeColorBy || "none";
+                return;
+            }
             const data = await resp.json();
+            if (seq !== _colorBySeq) return;
+            /* Server must echo the requested scheme — reject semantic mismatches. */
+            if (data.by && data.by !== by) {
+                console.warn("[simulator] Colormap scheme mismatch:", data.by, "!=", by);
+                if (selectEl) selectEl.value = _activeColorBy || "none";
+                return;
+            }
             const colormap = data.colormap || {};
             const legend   = data.legend   || [];
-
-            /* group global_ids by colour hex for efficiency */
-            const byHex = {};
-            for (const [gid, hex] of Object.entries(colormap)) {
-                (byHex[hex] = byHex[hex] || []).push(gid);
+            if (!legend.length && !Object.keys(colormap).length) {
+                _activeColorBy = by;
+                _activeColormap = {};
+                _renderColorByLegend([]);
+                resetAllColors();
+                if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
+                return;
             }
+            _activeColorBy = by;
+            _activeColormap = colormap;
+            /* Legend first so scheme switch is honest even while paint is still running. */
+            _renderColorByLegend(legend);
             resetAllColors();
-            for (const [hex, ids] of Object.entries(byHex)) {
-                colorByGlobalIds(ids, makeColor(hex));
-            }
-
-            const legendEl   = document.getElementById("colorby-legend");
-            const legendBody = document.getElementById("colorby-legend-body");
-            legendBody.innerHTML = legend.map(({ label, color }) =>
-                `<div class="d-flex align-items-center gap-2">` +
-                `<span style="width:10px;height:10px;border-radius:2px;background:${color};display:inline-block;flex-shrink:0;"></span>` +
-                `<span style="font-size:0.72rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px;" title="${label}">${label}</span>` +
-                `</div>`
-            ).join("");
-            legendEl.classList.remove("d-none");
+            if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
         } catch (e) {
+            if (seq !== _colorBySeq) return;
             console.warn("[simulator] Colormap fetch failed:", e);
+            if (selectEl) selectEl.value = _activeColorBy || "none";
         }
     }
 
@@ -915,12 +948,14 @@
         _timelinePause();
         simLegend.innerHTML = _simLegendOrig;
         simLegend.classList.add("d-none");
-        document.getElementById("colorby-legend").classList.add("d-none");
         document.getElementById("colorby-select").value = "none";
+        _colorBySeq += 1;
+        _clearColorByUi();
         _selectedGlobalIds.clear();
         _hiddenGlobalIds.clear();   // clear BEFORE resetAllColors so nothing gets re-hidden
         _updateSelCounter();
         resetAllColors();
+        document.getElementById("vis-zero-banner")?.classList.add("d-none");
         if (_sectionEnabled) {
             _disableSectionBox();
             _sectionEnabled = false;
@@ -955,6 +990,7 @@
         _selectedGlobalIds.clear();
         resetAllColors();
         _updateSelCounter();
+        if (typeof _syncPropsToSelection === "function") _syncPropsToSelection();
     }
 
     function _findGlobalIdFromHit(intersection) {
@@ -988,12 +1024,14 @@
             mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
             mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
             raycaster.setFromCamera(mouse, world.camera.three);
-            const hits = raycaster.intersectObjects(world.scene.three.children, true);
+            const hits = raycaster.intersectObjects(world.scene.three.children, true)
+                .filter(h => !_isScaleFigureObject(h.object));
             if (!hits.length) {
                 if (_selectedGlobalIds.size) {
                     resetAllColors();
                     _selectedGlobalIds.clear();
                     _updateSelCounter();
+                    _syncPropsToSelection();
                 }
                 return;
             }
@@ -1020,6 +1058,7 @@
             resetAllColors();
             if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
             _updateSelCounter();
+            _syncPropsToSelection();
         });
 
         canvas.addEventListener('contextmenu', (e) => {
@@ -1030,7 +1069,8 @@
             mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
             mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
             raycaster.setFromCamera(mouse, world.camera.three);
-            const hits = raycaster.intersectObjects(world.scene.three.children, true);
+            const hits = raycaster.intersectObjects(world.scene.three.children, true)
+                .filter(h => !_isScaleFigureObject(h.object));
             if (!hits.length) { if (_ctxMenuEl) _ctxMenuEl.style.display = "none"; return; }
             const globalId = _findGlobalIdFromHit(hits[0]);
             if (!globalId) return;
@@ -1053,14 +1093,31 @@
 
     // ── 11. Context menu & Properties panel ─────────────────────────────
 
-    const ELEM_PROPS_URL_TMPL = "{% url 'ifc_viewer:viewer_element_props' project.pk 'ELEM_PH' %}";
+    const ELEM_PROPS_URL_TMPL = "{% url 'ifc_viewer:viewer_element_props' project.pk 'ELEM_PH' %}" + IFC_QUERY;
 
     const _ctxMenuEl    = document.getElementById("sel-ctx-menu");
     const _propsPanelEl = document.getElementById("sel-props-panel");
     const _propsBodyEl  = document.getElementById("sel-props-body");
+    let _propsRequestSeq = 0;  /* ignore stale property responses after rapid reselection */
 
     function _esc(s) {
         return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function _formatPropValue(v) {
+        if (v == null) return "—";
+        if (typeof v === "boolean") return v ? "✓" : "✗";
+        if (typeof v === "number") {
+            return Number.isFinite(v)
+                ? v.toLocaleString(undefined, { maximumFractionDigits: 4 })
+                : "—";
+        }
+        if (typeof v === "object") {
+            try { return JSON.stringify(v); } catch (_) { return String(v); }
+        }
+        const s = String(v);
+        if (s === "" || s === "undefined" || s === "null" || s === "[object Object]") return "—";
+        return s;
     }
 
     function _renderProps(data) {
@@ -1099,10 +1156,7 @@
                                   color:#94a3b8;font-size:0.73rem;font-weight:600;">${_esc(group)}</div>
                      <table style="width:100%;border-collapse:collapse;font-size:0.75rem;margin-top:2px;">`;
             for (const [k, v] of entries) {
-                const display = v == null      ? "—"
-                              : typeof v === "boolean" ? (v ? "✓" : "✗")
-                              : typeof v === "number"  ? v.toLocaleString(undefined, {maximumFractionDigits: 4})
-                              : String(v);
+                const display = _formatPropValue(v);
                 html += `<tr>
                     <td style="color:#94a3b8;padding:1px 8px 1px 0;white-space:nowrap;">${_esc(k)}</td>
                     <td style="padding:1px 0;word-break:break-word;">${_esc(display)}</td></tr>`;
@@ -1151,13 +1205,32 @@
     }
 
     function _openPropsPanel(globalId) {
-        if (!_propsPanelEl) return;
+        if (!_propsPanelEl || !globalId) return;
         _propsPanelEl.style.display = "block";
         _propsBodyEl.innerHTML = '<div class="py-3 text-center"><div class="spinner-border spinner-border-sm text-secondary" role="status"></div></div>';
-        fetch(ELEM_PROPS_URL_TMPL.replace("ELEM_PH", encodeURIComponent(globalId)))
+        const seq = ++_propsRequestSeq;
+        const url = ELEM_PROPS_URL_TMPL.replace("ELEM_PH", encodeURIComponent(globalId));
+        fetch(url)
             .then(r => r.json())
-            .then(data => { _propsBodyEl.innerHTML = _renderProps(data); })
-            .catch(() => { _propsBodyEl.innerHTML = '<span class="text-danger small">Failed to load properties.</span>'; });
+            .then(data => {
+                if (seq !== _propsRequestSeq) return;  /* stale — newer selection won */
+                _propsBodyEl.innerHTML = _renderProps(data);
+            })
+            .catch(() => {
+                if (seq !== _propsRequestSeq) return;
+                _propsBodyEl.innerHTML = '<span class="text-danger small">Failed to load properties.</span>';
+            });
+    }
+
+    /** Open/refresh Properties for the current primary selection (single-select). */
+    function _syncPropsToSelection() {
+        if (_selectedGlobalIds.size === 1) {
+            const gid = [..._selectedGlobalIds][0];
+            _openPropsPanel(gid);
+        } else if (_selectedGlobalIds.size === 0) {
+            if (_propsPanelEl) _propsPanelEl.style.display = "none";
+        }
+        /* Multi-select: leave panel as-is (last single open) — no ambiguous overwrite. */
     }
 
     document.getElementById("sel-ctx-props")?.addEventListener("click", () => {
@@ -1175,7 +1248,13 @@
         if (expressId !== undefined) {
             fragmentIndex.get(expressId)?.setVisibility(true, [expressId]);
         }
-        colorByGlobalIds([gid], _SEL_COLOR);
+        /* Prefer active Color-by over selection cyan when isolating. */
+        const cmapHex = _activeColormap && _activeColormap[gid];
+        if (cmapHex) {
+            colorByGlobalIds([gid], new THREE.Color(cmapHex));
+        } else {
+            colorByGlobalIds([gid], _SEL_COLOR);
+        }
     });
 
     document.getElementById("sel-ctx-hide")?.addEventListener("click", () => {
@@ -1309,6 +1388,240 @@
                 await world.camera.projection.toggle();
             });
         }
+    }
+
+    // ── 12b. Scale Figure (V1 polish — height reference only) ─────────────
+    // Non-human upright height marker for judging model scale. No GLB,
+    // animation, collision, WASD, follow/walk mode, or path recording.
+    // Height ~1.75 model units (IFC unit metadata is not formally read).
+
+    const SCALE_FIGURE_HEIGHT = 1.75;
+    let _scaleFigureRoot    = null;
+    let _scaleFigureVisible = false;
+    let _scaleLabelLoopOn   = false;
+
+    function _isScaleFigureObject(obj) {
+        let o = obj;
+        while (o) {
+            if (o.userData && o.userData.castorScaleFigure) return true;
+            o = o.parent;
+        }
+        return false;
+    }
+
+    function _tagScaleFigure(obj) {
+        obj.userData.castorScaleFigure = true;
+        obj.raycast = () => {};  // never steal selection / measure hits
+        return obj;
+    }
+
+    function _buildScaleFigure() {
+        const root = new THREE.Group();
+        root.name = "castorScaleFigure";
+        root.userData.castorScaleFigure = true;
+
+        /* Muted AEC marker palette — slate post + amber accent (not debug cyan). */
+        const postMat = new THREE.MeshBasicMaterial({
+            color: 0x94a3b8,
+            transparent: true,
+            opacity: 0.95,
+            depthTest: true,
+        });
+        const outlineMat = new THREE.MeshBasicMaterial({
+            color: 0x334155,
+            transparent: true,
+            opacity: 0.85,
+            depthTest: true,
+        });
+        const accentMat = new THREE.MeshBasicMaterial({
+            color: 0xd97706,
+            transparent: true,
+            opacity: 0.95,
+            depthTest: true,
+        });
+        const ringMat = new THREE.MeshBasicMaterial({
+            color: 0x64748b,
+            transparent: true,
+            opacity: 0.45,
+            side: THREE.DoubleSide,
+            depthTest: true,
+        });
+        const lineMat = new THREE.LineBasicMaterial({
+            color: 0xd97706,
+            transparent: true,
+            opacity: 0.9,
+            depthTest: true,
+        });
+
+        const postR = 0.11;
+        /* Dark outline cylinder slightly larger than the post. */
+        const outline = _tagScaleFigure(new THREE.Mesh(
+            new THREE.CylinderGeometry(postR + 0.035, postR + 0.035, SCALE_FIGURE_HEIGHT, 14),
+            outlineMat,
+        ));
+        outline.position.y = SCALE_FIGURE_HEIGHT / 2;
+        root.add(outline);
+
+        const post = _tagScaleFigure(new THREE.Mesh(
+            new THREE.CylinderGeometry(postR, postR, SCALE_FIGURE_HEIGHT, 14),
+            postMat,
+        ));
+        post.position.y = SCALE_FIGURE_HEIGHT / 2;
+        root.add(post);
+
+        /* Flat top cap — height tick, not a head. */
+        const cap = _tagScaleFigure(new THREE.Mesh(
+            new THREE.CylinderGeometry(0.2, 0.2, 0.04, 16),
+            accentMat,
+        ));
+        cap.position.y = SCALE_FIGURE_HEIGHT;
+        root.add(cap);
+
+        /* Vertical accent line beside the post (readable height cue). */
+        const tickGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0.28, 0, 0),
+            new THREE.Vector3(0.28, SCALE_FIGURE_HEIGHT, 0),
+        ]);
+        const tick = _tagScaleFigure(new THREE.Line(tickGeo, lineMat));
+        tick.renderOrder = 998;
+        root.add(tick);
+
+        /* Top/bottom tick marks. */
+        const topTickGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0.18, SCALE_FIGURE_HEIGHT, 0),
+            new THREE.Vector3(0.38, SCALE_FIGURE_HEIGHT, 0),
+        ]);
+        const botTickGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0.18, 0, 0),
+            new THREE.Vector3(0.38, 0, 0),
+        ]);
+        root.add(_tagScaleFigure(new THREE.Line(topTickGeo, lineMat)));
+        root.add(_tagScaleFigure(new THREE.Line(botTickGeo, lineMat)));
+
+        /* Lightweight ground ring. */
+        const ring = _tagScaleFigure(new THREE.Mesh(
+            new THREE.RingGeometry(0.32, 0.48, 28),
+            ringMat,
+        ));
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = 0.02;
+        root.add(ring);
+
+        root.visible = false;
+        return root;
+    }
+
+    function _estimateFloorY(bbox) {
+        /* Viewer top-preset looks down from +Y, so Y is treated as vertical.
+           Floor ≈ model bbox.min.y. IFC units are not formally inspected — if a
+           project is not metre-scaled, the 1.75-unit figure will look wrong. */
+        if (!bbox || bbox.isEmpty()) return 0;
+        return bbox.min.y;
+    }
+
+    function _updateScaleFigureLabel() {
+        const el = document.getElementById("scale-figure-label");
+        if (!el || !_scaleFigureRoot || !_scaleFigureVisible) {
+            if (el) el.classList.add("d-none");
+            return;
+        }
+        const tip = _scaleFigureRoot.position.clone();
+        tip.y += SCALE_FIGURE_HEIGHT;
+        const s = _worldToScreen(tip);
+        if (!s) {
+            el.classList.add("d-none");
+            return;
+        }
+        el.classList.remove("d-none");
+        el.style.left = s.x + "px";
+        el.style.top = s.y + "px";
+    }
+
+    function _ensureScaleLabelLoop() {
+        if (_scaleLabelLoopOn) return;
+        _scaleLabelLoopOn = true;
+        const tick = () => {
+            if (!_scaleFigureVisible) {
+                _scaleLabelLoopOn = false;
+                const el = document.getElementById("scale-figure-label");
+                if (el) el.classList.add("d-none");
+                return;
+            }
+            _updateScaleFigureLabel();
+            requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    }
+
+    function _nudgeCameraTowardScaleFigure() {
+        /* Mild only: retarget orbit centre + gentle dolly if camera is very far.
+           Does not lock controls, force walk mode, or break Fit All afterward. */
+        if (!_scaleFigureRoot || !world?.camera?.controls) return;
+        const controls = world.camera.controls;
+        const p = _scaleFigureRoot.position;
+        const lookY = p.y + SCALE_FIGURE_HEIGHT * 0.5;
+        if (typeof controls.setTarget === "function") {
+            controls.setTarget(p.x, lookY, p.z, true);
+        } else if (controls.target) {
+            controls.target.set(p.x, lookY, p.z);
+            if (typeof controls.update === "function") controls.update();
+        }
+        if (typeof controls.dollyTo === "function" && controls.distance != null && controls.distance > 45) {
+            controls.dollyTo(Math.max(14, Math.min(controls.distance * 0.5, 30)), true);
+        }
+    }
+
+    function _resetScaleFigurePosition() {
+        if (!_scaleFigureRoot) return;
+        const bbox = _getSceneBBox();
+        const center = new THREE.Vector3();
+        if (!bbox.isEmpty()) bbox.getCenter(center);
+        const floorY = _estimateFloorY(bbox);
+        _scaleFigureRoot.position.set(center.x, floorY, center.z);
+    }
+
+    function _setScaleFigureVisible(visible) {
+        _scaleFigureVisible = !!visible;
+        if (_scaleFigureRoot) _scaleFigureRoot.visible = _scaleFigureVisible;
+        const btn = document.getElementById("scale-figure-toggle-btn");
+        if (btn) {
+            btn.textContent = _scaleFigureVisible ? "Hide Scale Figure" : "Show Scale Figure";
+            btn.style.outline = _scaleFigureVisible ? "1px solid rgba(217,119,6,0.65)" : "";
+            btn.title = _scaleFigureVisible
+                ? "Hide Scale Figure"
+                : "Show Scale Figure — non-human height reference (~1.75 model units)";
+        }
+        if (_scaleFigureVisible) {
+            _ensureScaleLabelLoop();
+            _updateScaleFigureLabel();
+        } else {
+            const el = document.getElementById("scale-figure-label");
+            if (el) el.classList.add("d-none");
+        }
+    }
+
+    function _initScaleFigure() {
+        if (!world?.scene?.three) return;
+        _scaleFigureRoot = _buildScaleFigure();
+        world.scene.three.add(_scaleFigureRoot);
+        _resetScaleFigurePosition();
+        _setScaleFigureVisible(false);
+
+        document.getElementById("scale-figure-toggle-btn")?.addEventListener("click", () => {
+            if (!_scaleFigureVisible) {
+                _resetScaleFigurePosition();
+                _setScaleFigureVisible(true);
+                _nudgeCameraTowardScaleFigure();
+            } else {
+                _setScaleFigureVisible(false);
+            }
+        });
+        document.getElementById("scale-figure-reset-btn")?.addEventListener("click", () => {
+            _resetScaleFigurePosition();
+            if (!_scaleFigureVisible) _setScaleFigureVisible(true);
+            _nudgeCameraTowardScaleFigure();
+            _updateScaleFigureLabel();
+        });
     }
 
     // ── 15. Section Box (clipping planes) ───────────────────────────────
@@ -1458,8 +1771,9 @@
     async function _fetchVisCache(kind, name) {
         if (_visCache[kind][name]) return _visCache[kind][name];
         const param = kind === "level" ? "level" : "type";
+        const sep = ENTITY_TYPES_URL.includes("?") ? "&" : "?";
         try {
-            const resp = await fetch(`${ENTITY_TYPES_URL}?${param}=${encodeURIComponent(name)}`);
+            const resp = await fetch(`${ENTITY_TYPES_URL}${sep}${param}=${encodeURIComponent(name)}`);
             const data = await resp.json();
             _visCache[kind][name] = data.global_ids || [];
         } catch (_) {
@@ -1523,9 +1837,34 @@
                     const selHit = gids.filter(g => _selectedGlobalIds.has(g));
                     if (selHit.length) colorByGlobalIds(selHit, _SEL_COLOR);
                 }
+                _updateVisZeroBanner();
             });
             return row;
         }
+
+        function _updateVisZeroBanner() {
+            const banner = document.getElementById("vis-zero-banner");
+            if (!banner || !typesDiv) return;
+            const typeBoxes = typesDiv.querySelectorAll("input[type=checkbox]");
+            if (!typeBoxes.length) {
+                banner.classList.add("d-none");
+                return;
+            }
+            const anyVisible = [...typeBoxes].some(cb => cb.checked);
+            banner.classList.toggle("d-none", anyVisible);
+            /* When every type filter is off, hide the entire fragment set — not only
+               GIDs returned by entity-types (orphans / index gaps would otherwise
+               leave residual visible geometry while the banner claims empty). */
+            if (!anyVisible && model) {
+                for (const fragment of model.items) {
+                    try { fragment.setVisibility(false); } catch (_) { /* OBC v1 */ }
+                }
+                _selectedGlobalIds.clear();
+                _updateSelCounter();
+                if (_propsPanelEl) _propsPanelEl.style.display = "none";
+            }
+        }
+        window._updateVisZeroBanner = _updateVisZeroBanner;
 
         /* Populate from backend */
         try {
@@ -1556,6 +1895,7 @@
             if (opacitySlider) opacitySlider.value = "0";
             resetAllColors();
             if (_selectedGlobalIds.size) colorByGlobalIds([..._selectedGlobalIds], _SEL_COLOR);
+            _updateVisZeroBanner();
         });
 
         /* Hide All */
@@ -1563,6 +1903,8 @@
             panel.querySelectorAll("input[type=checkbox]").forEach(cb => {
                 if (cb.checked) { cb.checked = false; cb.dispatchEvent(new Event("change")); }
             });
+            /* change handlers update banner; ensure after async hide settles */
+            setTimeout(() => _updateVisZeroBanner(), 50);
         });
     }
 
@@ -1631,7 +1973,7 @@
             const type = document.getElementById("sel-by-type")?.value;
             if (!type) return;
             try {
-                const resp = await fetch(`${ENTITY_TYPES_URL}?type=${encodeURIComponent(type)}`);
+                const resp = await fetch(_qsAppend(ENTITY_TYPES_URL, { type }));
                 const data = await resp.json();
                 _selectedGlobalIds.clear();
                 (data.global_ids || []).forEach(g => _selectedGlobalIds.add(g));
@@ -1646,7 +1988,7 @@
             const level = document.getElementById("sel-by-level")?.value;
             if (!level) return;
             try {
-                const resp = await fetch(`${ENTITY_TYPES_URL}?level=${encodeURIComponent(level)}`);
+                const resp = await fetch(_qsAppend(ENTITY_TYPES_URL, { level }));
                 const data = await resp.json();
                 _selectedGlobalIds.clear();
                 (data.global_ids || []).forEach(g => _selectedGlobalIds.add(g));
@@ -1897,6 +2239,7 @@
                 resetAllColors();
                 colorByGlobalIds([child.globalId], _SEL_COLOR);
                 _updateSelCounter();
+                _syncPropsToSelection();
             });
             return row;
         }
@@ -2188,6 +2531,7 @@
 
             const hits = _mvRay.intersectObjects(world.scene.three.children, true);
             const hit  = hits.find(h =>
+                !_isScaleFigureObject(h.object) &&
                 !_sectionHandles.includes(h.object) &&
                 h.object !== _snapIndicator &&
                 h.object !== _axisGuideLine &&

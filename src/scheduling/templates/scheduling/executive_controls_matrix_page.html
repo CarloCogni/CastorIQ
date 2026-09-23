@@ -1,0 +1,147 @@
+{% extends "core/base.html" %}
+<!-- scheduling/executive_controls_matrix_page.html — E8-C matrix shell -->
+
+{% block title %}Performance Matrix — {{ project.name }} — Castor{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3 px-3 px-lg-4 executive-controls-scope">
+    <nav aria-label="breadcrumb" class="mb-2">
+        <ol class="breadcrumb small mb-0">
+            <li class="breadcrumb-item"><a href="{% url 'projects:detail' project.pk %}">{{ project.name }}</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'scheduling:executive_controls' project.pk %}">Controls</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Performance Matrix</li>
+        </ol>
+    </nav>
+
+    {% include "scheduling/components/executive_controls_subnav.html" with exec_subtab="matrix" capability_profile=capability_profile %}
+    {% include "scheduling/components/executive_context_header.html" with ctx=analytical_context %}
+
+    {% if hierarchy_context %}
+    <div class="alert alert-secondary py-2 small mb-3" role="status">
+        <strong>Hierarchy:</strong>
+        {% if hierarchy_context.hierarchy_mode == "canonical_wbs" %}
+        <span class="badge bg-primary-subtle text-primary-emphasis">Canonical WBS</span>
+        {% elif hierarchy_context.hierarchy_mode == "canonical_wbs_partial" %}
+        <span class="badge bg-warning-subtle text-warning-emphasis">Partial Canonical WBS</span>
+        {% elif hierarchy_context.hierarchy_mode == "stage_proxy" %}
+        <span class="badge bg-secondary-subtle text-secondary-emphasis" data-testid="matrix-proxy-badge">Stage proxy — not canonical WBS · diagnostic</span>
+        {% else %}
+        <span class="badge bg-danger-subtle text-danger-emphasis">Unavailable</span>
+        {% endif %}
+        {{ hierarchy_context.hierarchy_name }}
+        {% if hierarchy_context.assignment_coverage_pct != None %}
+        · Coverage: {{ hierarchy_context.assignment_coverage_pct }}%
+        ({{ hierarchy_context.assigned_task_count }}/{{ hierarchy_context.eligible_task_count }} tasks)
+        {% endif %}
+        {% if hierarchy_context.unassigned_task_count %}
+        · <span class="text-warning-emphasis">{{ hierarchy_context.unassigned_task_count }} unassigned</span>
+        {% endif %}
+        {% for c in hierarchy_context.caveats %}<div class="mt-1 text-secondary">{{ c }}</div>{% endfor %}
+    </div>
+    {% endif %}
+
+    <form class="exec-filters border rounded p-3 mb-3 bg-body" method="get" id="exec-matrix-filter-form" aria-label="Matrix filters">
+        <div class="row g-2 align-items-end">
+            {% if matrix_hierarchy_options.show_hierarchy_selector %}
+            <div class="col-md-3">
+                <label class="form-label small mb-0" for="matrix-hierarchy">Hierarchy view</label>
+                <select class="form-select form-select-sm" id="matrix-hierarchy" name="hierarchy_mode">
+                    {% for view in matrix_hierarchy_options.hierarchy_views %}
+                    <option value="{{ view.option_id }}"
+                            {% if view.active %}selected{% endif %}
+                            title="{{ view.caveat }}">
+                        {{ view.label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            {% if matrix_hierarchy_options.show_dimension_selector %}
+            <div class="col-md-3">
+                <label class="form-label small mb-0" for="matrix-dimension">Stage proxy grouping</label>
+                <select class="form-select form-select-sm" id="matrix-dimension" name="dimension">
+                    {% for dim in available_dimensions %}
+                    <option value="{{ dim.dimension_id }}" {% if filters.dimension == dim.dimension_id %}selected{% endif %}>
+                        {{ dim.label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            {% if matrix_hierarchy_options.show_aggregation_selector %}
+            <div class="col-md-2">
+                <label class="form-label small mb-0" for="matrix-aggregation">WBS aggregation</label>
+                <select class="form-select form-select-sm" id="matrix-aggregation" name="aggregation_mode">
+                    <option value="rolled_up" {% if filters.aggregation_mode == 'rolled_up' %}selected{% endif %}>Rolled up</option>
+                    <option value="direct" {% if filters.aggregation_mode == 'direct' %}selected{% endif %}>Direct only</option>
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-md-2">
+                <label class="form-label small mb-0" for="matrix-weighting">Weighting</label>
+                <select class="form-select form-select-sm" id="matrix-weighting" name="weighting_mode">
+                    <option value="">Auto</option>
+                    <option value="cost_weighted" {% if filters.weighting_mode == 'cost_weighted' %}selected{% endif %}>Cost-weighted</option>
+                    <option value="duration_weighted" {% if filters.weighting_mode == 'duration_weighted' %}selected{% endif %}>Duration proxy</option>
+                    <option value="count_based" {% if filters.weighting_mode == 'count_based' %}selected{% endif %}>Count-based</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-0" for="matrix-status">Status</label>
+                <select class="form-select form-select-sm" id="matrix-status" name="status">
+                    <option value="">All</option>
+                    <option value="planned" {% if filters.status == 'planned' %}selected{% endif %}>Planned</option>
+                    <option value="active" {% if filters.status == 'active' %}selected{% endif %}>Active</option>
+                    <option value="complete" {% if filters.status == 'complete' %}selected{% endif %}>Complete</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <div class="form-check mt-3">
+                    <input class="form-check-input" type="checkbox" name="linked_trusted" value="1" id="matrix-trusted"
+                           {% if filters.linked_trusted %}checked{% endif %}>
+                    <label class="form-check-label small" for="matrix-trusted">Applied / Confirmed only</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+            </div>
+        </div>
+        {% if filters.parent_key %}
+        <p class="small text-secondary mt-2 mb-0">
+            Drill context: {{ filters.parent_dimension }} = <strong>{{ filters.parent_key }}</strong>
+            <a href="{% url 'scheduling:executive_controls_matrix' project.pk %}?dimension={{ filters.dimension }}" class="ms-2">Reset drill</a>
+        </p>
+        {% endif %}
+    </form>
+
+    <div id="exec-matrix-rows-slot"
+         hx-get="{% url 'scheduling:executive_controls_matrix_rows' project.pk %}?{{ filter_query }}"
+         hx-trigger="load"
+         hx-swap="innerHTML"
+         aria-busy="true"
+         aria-live="polite">
+        <div class="d-flex align-items-center gap-2 text-secondary py-4">
+            <div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading matrix…</span></div>
+            Loading performance matrix…
+        </div>
+    </div>
+
+    {% include "scheduling/components/executive_controls_help_modal.html" %}
+</div>
+
+<script>
+(function () {
+    document.getElementById('exec-matrix-filter-form')?.addEventListener('submit', function (e) {
+        e.preventDefault();
+        const qs = new URLSearchParams(new FormData(this)).toString();
+        const base = window.location.pathname;
+        window.history.pushState({}, '', qs ? base + '?' + qs : base);
+        const slot = document.getElementById('exec-matrix-rows-slot');
+        if (slot && typeof htmx !== 'undefined') {
+            const url = slot.getAttribute('hx-get').split('?')[0] + (qs ? '?' + qs : '');
+            htmx.ajax('GET', url, { target: slot, swap: 'innerHTML' });
+        }
+    });
+})();
+</script>
+{% endblock %}

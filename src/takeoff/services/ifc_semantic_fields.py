@@ -108,7 +108,8 @@ PREP_NATIVE_FIELDS: tuple[dict[str, Any], ...] = (
         "label": "IFC Class",
         "source": "prep_row",
         "source_property": None,
-        "is_filterable": True,
+        # Class scope lives on the dedicated IFC Class selector — not Field picker.
+        "is_filterable": False,
         "is_sortable": True,
     },
     {
@@ -162,8 +163,9 @@ PREP_NATIVE_FIELDS: tuple[dict[str, Any], ...] = (
 )
 
 # TABLE-04 primary filter surface — Category/Family stay out of primary UX.
+# IFC Class is owned by the dedicated class selector (not the Field picker).
 PRIMARY_FILTER_FIELD_KEYS: frozenset[str] = frozenset(
-    {"ifc_class", "type_name", "measurement_type", "ifc_quantity_source"}
+    {"type_name", "measurement_type", "ifc_quantity_source"}
 )
 
 ENTITY_HINT_FIELDS: tuple[dict[str, Any], ...] = (
@@ -292,6 +294,90 @@ def _property_group(source_property: str) -> str:
     return "Other"
 
 
+def label_for_stable_field_key(field_key: str) -> str:
+    """Resolve a human label from a stable field key without a catalogue scan."""
+    key = _str_val(field_key)
+    if not key:
+        return ""
+    for spec in (*PREP_NATIVE_FIELDS, *ENTITY_HINT_FIELDS):
+        if str(spec.get("key")) == key:
+            return str(spec.get("label") or key)
+    if key == SPATIAL_STOREY_KEY:
+        return "Level / Storey (spatial)"
+    if key == SPATIAL_CONTAINER_KEY:
+        return "Spatial container"
+    for curated in (*STRUCTURE_CURATED, *CLASSIFICATION_LIKE_CURATED, *CLASSREF_CURATED):
+        if curated["key"] == key:
+            return curated["label"]
+    if is_classref_column_key(key):
+        for curated in CLASSREF_CURATED:
+            if curated["key"] == key:
+                return curated["label"]
+        return key
+    src = source_property_from_column_key(key)
+    if src:
+        return _property_label(src)
+    return key
+
+
+def guess_value_type_for_field_key(field_key: str) -> str:
+    """Best-effort value_type from a stable key (Qto → numeric; else text)."""
+    key = _str_val(field_key)
+    if key == "element_count":
+        return "numeric"
+    src = source_property_from_column_key(key) or ""
+    if src.startswith("Qto_") or key.startswith("prop:Qto_"):
+        return "numeric"
+    return "text"
+
+
+def static_zone_unavailable() -> dict[str, Any]:
+    """Zone is never discovered as available from indexed spatial structure."""
+    return {
+        "key": "struct:zone",
+        "label": "Zone",
+        "group": "Model structure",
+        "available": False,
+        "message": (
+            "No Zone evidence was found in this IFC export. If a suitable exported "
+            "property exists, select it as the Zone source during preparation "
+            "before freezing a new snapshot."
+        ),
+    }
+
+
+def lightweight_structure_unavailable(
+    project: Any,
+    *,
+    ifc_file: Any | None = None,
+) -> dict[str, Any]:
+    """Zone + classref unavailable helpers without a full entity catalogue scan."""
+    unavailable: dict[str, Any] = {"zone": static_zone_unavailable()}
+    ifc = _resolve_scan_ifc(project, ifc_file)
+    classref_present = False
+    if ifc is not None:
+        from ifc_processor.models import IFCEntity
+
+        qs = IFCEntity.objects.filter(ifc_file=ifc)
+        for curated in CLASSREF_CURATED:
+            src = curated["source_property"]
+            if qs.filter(properties__has_key=src).exists():
+                classref_present = True
+                break
+    if not classref_present:
+        unavailable["ifc_classification_ref"] = {
+            "key": "classref:ifc",
+            "label": "IFC Classification Reference",
+            "group": "Existing IFC classification",
+            "available": False,
+            "message": (
+                "No indexed IFC classification references found in this IFC export "
+                "(or not re-indexed yet after SEM-4A)."
+            ),
+        }
+    return unavailable
+
+
 def _latest_completed_ifc(project: Any) -> Any | None:
     from ifc_processor.models import IFCFile
 
@@ -401,12 +487,15 @@ def _scan_entities(
     selected_spatial_keys: Sequence[str] | None = None,
     ifc_file: Any | None = None,
     entity_predicate: Any | None = None,
+    discover_catalogue: bool = True,
 ) -> dict[str, Any]:
     """One read-only entity pass: discovery stats + grain counters.
 
     When ``entity_predicate`` is set, only matching entities contribute to
     grain counters (DYNAMIC-07 filter-before-aggregation for columns).
-    Discovery key_nonempty still scans all entities so the catalogue stays complete.
+    When ``discover_catalogue`` is True, ``key_nonempty`` still scans all
+    entities so the catalogue stays complete. When False, only selected
+    (and Category/Family) props are tracked — no full-property catalogue pass.
     """
     from takeoff.services.quantity_entity_filter import coerce_property_text
 
@@ -433,7 +522,15 @@ def _scan_entities(
     spatial_selected = [
         k for k in (selected_spatial_keys or []) if is_spatial_column_key(_str_val(k))
     ]
-    always = ["Other.Category", "Other.Family"]
+    # PERF-15C1: closed pickers + no visible prop columns → skip the iterator.
+    if not discover_catalogue and not selected and not spatial_selected:
+        return empty
+
+    always = ["Other.Category", "Other.Family"] if discover_catalogue else []
+    if not discover_catalogue and selected:
+        # Enrichment still needs Category/Family grain when rows show them later;
+        # keep them cheap to track alongside selected props.
+        always = ["Other.Category", "Other.Family"]
     tracked = list(dict.fromkeys([*always, *selected]))
 
     key_nonempty: Counter[str] = Counter()
@@ -488,10 +585,11 @@ def _scan_entities(
             text, is_complex = coerce_property_text(pv)
             if is_complex or text == "":
                 continue
-            key_nonempty[pk] += 1
-            samples = key_samples[pk]
-            if len(samples) < MAX_PROP_DISTINCT_SAMPLE:
-                samples[text[:120]] += 1
+            if discover_catalogue:
+                key_nonempty[pk] += 1
+                samples = key_samples[pk]
+                if len(samples) < MAX_PROP_DISTINCT_SAMPLE:
+                    samples[text[:120]] += 1
 
         include_grain = True
         if entity_predicate is not None:
@@ -519,20 +617,22 @@ def _scan_entities(
                 instance_values[prop_name][gid] = text
 
         if storey_name:
-            spatial_nonempty[SPATIAL_STOREY_KEY] += 1
-            samples = spatial_samples[SPATIAL_STOREY_KEY]
-            if len(samples) < MAX_PROP_DISTINCT_SAMPLE:
-                samples[storey_name[:120]] += 1
+            if discover_catalogue or SPATIAL_STOREY_KEY in spatial_selected:
+                spatial_nonempty[SPATIAL_STOREY_KEY] += 1
+                samples = spatial_samples[SPATIAL_STOREY_KEY]
+                if len(samples) < MAX_PROP_DISTINCT_SAMPLE:
+                    samples[storey_name[:120]] += 1
             if SPATIAL_STOREY_KEY in spatial_selected:
                 grain_counters[SPATIAL_STOREY_KEY][grain][storey_name] += 1
                 class_counters[SPATIAL_STOREY_KEY][ifc_class][storey_name] += 1
                 if gid:
                     instance_values[SPATIAL_STOREY_KEY][gid] = storey_name
         if container_name:
-            spatial_nonempty[SPATIAL_CONTAINER_KEY] += 1
-            samples = spatial_samples[SPATIAL_CONTAINER_KEY]
-            if len(samples) < MAX_PROP_DISTINCT_SAMPLE:
-                samples[container_name[:120]] += 1
+            if discover_catalogue or SPATIAL_CONTAINER_KEY in spatial_selected:
+                spatial_nonempty[SPATIAL_CONTAINER_KEY] += 1
+                samples = spatial_samples[SPATIAL_CONTAINER_KEY]
+                if len(samples) < MAX_PROP_DISTINCT_SAMPLE:
+                    samples[container_name[:120]] += 1
             if SPATIAL_CONTAINER_KEY in spatial_selected:
                 grain_counters[SPATIAL_CONTAINER_KEY][grain][container_name] += 1
                 class_counters[SPATIAL_CONTAINER_KEY][ifc_class][container_name] += 1
@@ -788,11 +888,15 @@ def enrich_prep_rows_with_entity_semantics(
     ifc_file: Any | None = None,
     entity_predicate: Any | None = None,
     extra_rows: Sequence[MutableMapping[str, Any]] | None = None,
+    discover_catalogue: bool = True,
 ) -> dict[str, Any]:
     """Attach Category/Family, selected property, and SEM-3 spatial columns onto prep rows.
 
     COLUMNS-10: hierarchy Instance rows resolve the exact entity GlobalId leaf value.
     Class/Type rows keep aggregate (single / Multiple values / —).
+
+    PERF-15C1: when ``discover_catalogue`` is False and no selected property /
+    spatial columns need enrichment, the full IFCEntity catalogue scan is skipped.
     """
     rows = list(prep_rows)
     extras = list(extra_rows or [])
@@ -819,9 +923,28 @@ def enrich_prep_rows_with_entity_semantics(
             "No indexed IFC property columns are available yet. "
             "Current filters use preparation fields (class, type, basis, source)."
         ),
+        "catalogue_discovered": False,
     }
     all_rows = [*rows, *extras]
     if not all_rows:
+        if not discover_catalogue:
+            meta["unavailable"] = lightweight_structure_unavailable(project, ifc_file=ifc_file)
+        return meta
+
+    need_enrichment = bool(selected_sources or selected_spatial)
+    if not discover_catalogue and not need_enrichment:
+        for row in all_rows:
+            row.setdefault("semantic_category", "")
+            row.setdefault("semantic_family", "")
+            row.setdefault("prop_columns", {})
+            row.setdefault("prop_column_cells", [])
+        meta["unavailable"] = lightweight_structure_unavailable(project, ifc_file=ifc_file)
+        meta["helper"] = (
+            "Add indexed IFC properties, Qto measures, spatial or classification "
+            "fields as columns. Field catalogues load when you open Add column "
+            "or Filter Field."
+        )
+        meta["scan_summary"] = {"key_nonempty": {}, "spatial_nonempty": {}}
         return meta
 
     for row in all_rows:
@@ -836,28 +959,34 @@ def enrich_prep_rows_with_entity_semantics(
         selected_spatial_keys=selected_spatial,
         ifc_file=ifc_file,
         entity_predicate=entity_predicate,
+        discover_catalogue=discover_catalogue,
     )
     meta["entity_count_scanned"] = int(scan.get("entity_count_scanned") or 0)
-    available = discover_indexed_property_columns(scan)
-    from takeoff.services.quantity_editable_table import COLUMNS_UI_EXCLUDED_SOURCE_PROPS
+    meta["catalogue_discovered"] = bool(discover_catalogue)
+    available: list[dict[str, Any]] = []
+    if discover_catalogue:
+        available = discover_indexed_property_columns(scan)
+        from takeoff.services.quantity_editable_table import COLUMNS_UI_EXCLUDED_SOURCE_PROPS
 
-    meta["property_columns_available"] = [
-        d
-        for d in available
-        if str(d.get("source_property") or "") not in COLUMNS_UI_EXCLUDED_SOURCE_PROPS
-    ]
-    sem3 = discover_sem3_structure_fields(scan)
-    meta["structure_columns_available"] = sem3["structure_columns_available"]
-    meta["classification_like_available"] = sem3["classification_like_available"]
-    meta["classref_available"] = sem3.get("classref_available") or []
-    meta["unavailable"] = sem3["unavailable"]
+        meta["property_columns_available"] = [
+            d
+            for d in available
+            if str(d.get("source_property") or "") not in COLUMNS_UI_EXCLUDED_SOURCE_PROPS
+        ]
+        sem3 = discover_sem3_structure_fields(scan)
+        meta["structure_columns_available"] = sem3["structure_columns_available"]
+        meta["classification_like_available"] = sem3["classification_like_available"]
+        meta["classref_available"] = sem3.get("classref_available") or []
+        meta["unavailable"] = sem3["unavailable"]
+    else:
+        meta["unavailable"] = lightweight_structure_unavailable(project, ifc_file=ifc_file)
 
     curated_by_key = {
         str(d["key"]): d
         for d in (
-            *sem3["structure_columns_available"],
-            *sem3["classification_like_available"],
-            *(sem3.get("classref_available") or []),
+            *meta["structure_columns_available"],
+            *meta["classification_like_available"],
+            *(meta.get("classref_available") or []),
         )
     }
     allowed_prop_keys = {d["key"] for d in available} | set(curated_by_key)
@@ -1006,24 +1135,30 @@ def enrich_prep_rows_with_entity_semantics(
     meta["property_column_coverage"] = prop_cov
     meta["property_sets_indexed_on_prep"] = (
         bool(available)
-        or bool(sem3["structure_columns_available"])
-        or bool(sem3.get("classref_available"))
+        or bool(meta["structure_columns_available"])
+        or bool(meta.get("classref_available"))
+        or bool(selected_valid)
     )
     meta["scan_summary"] = {
-        "key_nonempty": dict(scan.get("key_nonempty") or {}),
+        "key_nonempty": dict(scan.get("key_nonempty") or {}) if discover_catalogue else {},
         "spatial_nonempty": dict(scan.get("spatial_nonempty") or {}),
     }
-    if meta["property_sets_indexed_on_prep"] or meta["structure_columns_available"]:
+    if (
+        meta["property_sets_indexed_on_prep"]
+        or meta["structure_columns_available"]
+        or selected_valid
+    ):
         meta["helper"] = (
             "Add indexed IFC properties, Qto measures, spatial or classification "
             "fields as columns. Instance cells show the leaf value; Class/Type "
             "show aggregates unless a Calculation is configured."
         )
     logger.debug(
-        "ifc semantic enrich project=%s scanned=%s props=%s",
+        "ifc semantic enrich project=%s scanned=%s props=%s catalogue=%s",
         getattr(project, "pk", None),
         meta["entity_count_scanned"],
         len(selected_valid),
+        discover_catalogue,
     )
     return meta
 
@@ -1338,7 +1473,14 @@ def discover_semantic_fields(
     primary_filter_fields = [
         f
         for f in filterable
-        if str(f.get("key")) not in {"semantic_category", "semantic_family", "category", "family"}
+        if str(f.get("key"))
+        not in {
+            "semantic_category",
+            "semantic_family",
+            "category",
+            "family",
+            "ifc_class",
+        }
         and str(f.get("source_property") or "") not in COLUMNS_UI_EXCLUDED_SOURCE_PROPS
         and str(f.get("label") or "").lower() not in {"category", "family"}
     ]
@@ -1388,9 +1530,10 @@ def filter_prep_rows_by_semantic(
         return [dict(r) for r in prep_rows]
     if op_key not in {"is_missing", "is_present"} and not target and value_type != "boolean":
         return [dict(r) for r in prep_rows]
-    allowed = {f["key"] for f in PREP_NATIVE_FIELDS if f["is_filterable"]} | {
-        f["key"] for f in ENTITY_HINT_FIELDS
-    }
+    # ``is_filterable`` governs Field-picker visibility (TABLE-04), not what the
+    # engine may evaluate: IFC Class is filtered by the dedicated class selector
+    # and by legacy Field-only URLs, so every prep-native key stays evaluable.
+    allowed = {f["key"] for f in PREP_NATIVE_FIELDS} | {f["key"] for f in ENTITY_HINT_FIELDS}
     for extra in allowed_extra_keys or []:
         if _str_val(extra):
             allowed.add(_str_val(extra))
@@ -1472,11 +1615,18 @@ def apply_semantic_filters_to_qty_prep(
     ifc_file: Any | None = None,
     entity_predicate: Any | None = None,
     entity_filter_applied: bool = False,
+    defer_field_catalogue: bool = True,
 ) -> dict[str, Any]:
-    """Enrich, discover, filter, and sort prep rows in-place. Returns panel context."""
+    """Enrich, discover, filter, and sort prep rows in-place. Returns panel context.
+
+    PERF-15C1: when ``defer_field_catalogue`` is True (default), skip full
+    catalogue discovery on the page GET and leave picker hierarchies empty for
+    lazy loading. Row enrichment for visible property columns still runs.
+    """
     from takeoff.services.quantity_entity_filter import (
         condition_chip_label,
         is_entity_level_field,
+        operators_for_value_type,
     )
 
     rows = list(qty_prep.get("prep_rows") or [])
@@ -1494,10 +1644,11 @@ def apply_semantic_filters_to_qty_prep(
         ifc_file=ifc_file,
         entity_predicate=entity_predicate,
         extra_rows=export_rows,
+        discover_catalogue=not defer_field_catalogue,
     )
     discovery = discover_semantic_fields(project, rows, enrichment_meta=enrichment)
     selected_classes = [str(c) for c in (qty_prep.get("selected_classes") or []) if str(c).strip()]
-    if selected_classes:
+    if selected_classes and not defer_field_catalogue:
         scoped_catalogue: list[dict[str, Any]] = []
         selected_set = set(selected_classes)
         for f in discovery.get("filter_catalogue") or []:
@@ -1529,10 +1680,30 @@ def apply_semantic_filters_to_qty_prep(
         discovery["primary_filter_fields"] = scoped_catalogue
         discovery["filterable_fields"] = scoped_catalogue
 
+    # Class selector owns IFC Class scope — ignore redundant Field=ifc_class so
+    # chips stay “IFC Class: IfcColumn” (not “… · IFC Class equals IfcColumn”).
+    # Legacy Field-only URLs (no semantic_classes) still evaluate the field filter.
+    filter_params = dict(params)
+    if filter_params.get("field") == "ifc_class" and selected_classes:
+        filter_params["field"] = ""
+        filter_params["value"] = ""
+        filter_params["op"] = "eq"
+
     field_meta = {str(f.get("key")): f for f in (discovery.get("filter_catalogue") or [])}
-    active_field_meta = field_meta.get(params["field"]) or {}
-    value_type = str(active_field_meta.get("value_type") or "text")
+    active_field_meta = field_meta.get(filter_params["field"]) or {}
+    query_vt = _str_val(query.get("semantic_value_type"))
+    value_type = (
+        query_vt
+        or str(active_field_meta.get("value_type") or "")
+        or guess_value_type_for_field_key(filter_params["field"])
+        or "text"
+    )
     unit_label = str(active_field_meta.get("unit_label") or "")
+    active_field_label = (
+        str(active_field_meta.get("label") or "")
+        or label_for_stable_field_key(filter_params["field"])
+        or filter_params["field"]
+    )
 
     filtered = rows
     active_filter = False
@@ -1544,19 +1715,21 @@ def apply_semantic_filters_to_qty_prep(
         + [d["key"] for d in (enrichment.get("classref_available") or [])]
         + [d["key"] for d in (discovery.get("filter_catalogue") or [])]
     )
-    op = params.get("op") or "eq"
-    has_condition = bool(params["field"]) and (
-        op in {"is_missing", "is_present"} or bool(params["value"])
+    if filter_params["field"]:
+        allowed_extra.append(filter_params["field"])
+    op = filter_params.get("op") or "eq"
+    has_condition = bool(filter_params["field"]) and (
+        op in {"is_missing", "is_present"} or bool(filter_params["value"])
     )
     if has_condition:
         active_filter = True
         # Entity-level filters already reshaped aggregates; do not re-filter
         # on "Multiple values" display text.
-        if not (entity_filter_applied and is_entity_level_field(params["field"])):
+        if not (entity_filter_applied and is_entity_level_field(filter_params["field"])):
             filtered = filter_prep_rows_by_semantic(
                 rows,
-                field_key=params["field"],
-                value=params["value"],
+                field_key=filter_params["field"],
+                value=filter_params["value"],
                 op=op,
                 value_type=value_type,
                 allowed_extra_keys=allowed_extra,
@@ -1593,13 +1766,36 @@ def apply_semantic_filters_to_qty_prep(
                         else "Spatial container"
                     ),
                     "source_property": None,
+                    "value_type": "text",
                 }
             else:
+                src = source_property_from_column_key(key)
                 desc = {
                     "key": key,
-                    "label": _property_label(source_property_from_column_key(key)),
-                    "source_property": source_property_from_column_key(key),
+                    "label": label_for_stable_field_key(key) or _property_label(src),
+                    "source_property": src,
                 }
+        else:
+            desc = dict(desc)
+        # PERF-15C1: deferred catalogue may omit value_type — infer for calc/filter UX.
+        src = str(desc.get("source_property") or source_property_from_column_key(key) or "")
+        samples = _distinct_samples(rows, key)
+        from takeoff.services.quantity_entity_filter import infer_value_type
+
+        vt = str(desc.get("value_type") or "")
+        if vt not in {"numeric", "number", "measure", "real", "integer", "float", "boolean"}:
+            guessed = guess_value_type_for_field_key(key)
+            if guessed == "numeric":
+                vt = "numeric"
+            else:
+                vt = infer_value_type(samples, source_property=src)
+            if vt not in {"numeric", "number", "measure", "real", "integer", "float"}:
+                for r in [*rows, *export_rows]:
+                    agg = (r.get("prop_columns") or {}).get(key)
+                    if isinstance(agg, dict) and agg.get("numeric_value") is not None:
+                        vt = "numeric"
+                        break
+        desc["value_type"] = vt or "text"
         selected_meta.append(desc)
 
     class_chip = ""
@@ -1607,9 +1803,9 @@ def apply_semantic_filters_to_qty_prep(
         class_chip = "IFC Class: " + ", ".join(selected_classes)
     field_chip = (
         condition_chip_label(
-            field_label=str(active_field_meta.get("label") or params["field"] or "Field"),
+            field_label=active_field_label or "Field",
             op=op,
-            value=params["value"],
+            value=filter_params["value"],
             unit_label=unit_label,
         )
         if active_filter
@@ -1625,7 +1821,7 @@ def apply_semantic_filters_to_qty_prep(
 
     catalogue_fields = list(discovery.get("filter_catalogue") or [])
     # Class-scope Add-column prop list the same way as the filter catalogue.
-    if selected_classes:
+    if selected_classes and not defer_field_catalogue:
         selected_set = set(selected_classes)
         scoped_props: list[dict[str, Any]] = []
         for d in enrichment.get("property_columns_available") or []:
@@ -1653,23 +1849,60 @@ def apply_semantic_filters_to_qty_prep(
             picker_fields.append(dict(d))
             seen_picker.add(k)
 
-    picker_hierarchy = build_picker_hierarchy(picker_fields)
+    if defer_field_catalogue:
+        picker_hierarchy: list[dict[str, Any]] = []
+        column_picker_hierarchy: list[dict[str, Any]] = []
+        # Bootstrap meta for prep-native + active field only (not full catalogue).
+        bootstrap_fields: list[dict[str, Any]] = []
+        for spec in PREP_NATIVE_FIELDS:
+            if not spec.get("is_filterable"):
+                continue
+            vt = "numeric" if spec["key"] == "element_count" else "text"
+            bootstrap_fields.append(
+                {
+                    "key": spec["key"],
+                    "label": spec["label"],
+                    "value_type": vt,
+                    "operators": [{"key": op_k} for op_k in operators_for_value_type(vt)],
+                }
+            )
+        if filter_params["field"] and filter_params["field"] not in {
+            f["key"] for f in bootstrap_fields
+        }:
+            bootstrap_fields.append(
+                {
+                    "key": filter_params["field"],
+                    "label": active_field_label,
+                    "value_type": value_type,
+                    "unit_label": unit_label,
+                    "operators": [{"key": op_k} for op_k in operators_for_value_type(value_type)],
+                }
+            )
+        field_meta_json = field_meta_json_by_key(bootstrap_fields)
+        field_samples_json = "{}"
+    else:
+        picker_hierarchy = build_picker_hierarchy(picker_fields)
+        from takeoff.services.quantity_table_layout import OPTIONAL_TABLE_COLUMNS
 
-    from takeoff.services.quantity_table_layout import OPTIONAL_TABLE_COLUMNS
+        column_picker_hierarchy = build_picker_hierarchy(
+            picker_fields,
+            include_table_fields=list(OPTIONAL_TABLE_COLUMNS),
+        )
+        field_meta_json = field_meta_json_by_key(catalogue_fields)
+        field_samples_json = samples_json_by_key(picker_fields)
 
-    column_picker_hierarchy = build_picker_hierarchy(
-        picker_fields,
-        include_table_fields=list(OPTIONAL_TABLE_COLUMNS),
-    )
+    unavailable = dict(enrichment.get("unavailable") or {})
+    if "zone" not in unavailable:
+        unavailable["zone"] = static_zone_unavailable()
 
     panel = {
         **discovery,
-        "active_field": params["field"],
-        "active_field_label": str(active_field_meta.get("label") or params["field"] or ""),
-        "active_value": params["value"],
-        "active_op": op,
-        "active_value_type": value_type,
-        "active_unit_label": unit_label,
+        "active_field": filter_params["field"],
+        "active_field_label": active_field_label if filter_params["field"] else "",
+        "active_value": filter_params["value"],
+        "active_op": op if filter_params["field"] else "eq",
+        "active_value_type": value_type if filter_params["field"] else "text",
+        "active_unit_label": unit_label if filter_params["field"] else "",
         "active_chip": active_chip,
         "active_sort": params["sort"],
         "active_sort_dir": params["sort_dir"],
@@ -1704,11 +1937,12 @@ def apply_semantic_filters_to_qty_prep(
             enrichment.get("classification_like_available") or []
         ),
         "classref_available": list(enrichment.get("classref_available") or []),
-        "unavailable": dict(enrichment.get("unavailable") or {}),
+        "unavailable": unavailable,
         "picker_hierarchy": picker_hierarchy,
         "column_picker_hierarchy": column_picker_hierarchy,
-        "field_samples_json": samples_json_by_key(picker_fields),
-        "field_meta_json": field_meta_json_by_key(catalogue_fields),
+        "field_catalogue_lazy": bool(defer_field_catalogue),
+        "field_samples_json": field_samples_json,
+        "field_meta_json": field_meta_json,
         "sample_value_cap": SAMPLE_VALUE_CAP,
         "mapping_distinction_note": (
             "Three layers stay separate: (1) IFC classification references from this "

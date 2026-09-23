@@ -20,44 +20,77 @@
                     What is it?
                 </p>
                 <p class="text-secondary fs-7 mb-4">
-                    Time View is <strong>programme playback</strong> for the linked model timeline.
-                    Scrub or play programme dates to colour the 3D model by schedule state.
+                    Time View is a <strong>date-based 4D programme view</strong> for the linked model.
+                    It answers what was planned, what actually happened, and the
+                    <strong>accumulated model state</strong> at the selected Playback date.
+                    Modes: <strong>Planned</strong>, <strong>Actual</strong>, and <strong>Variance</strong> (default).
                     Model colours use <strong>applied / confirmed links</strong> only.
-                    This is not a walkthrough or construction simulation.
+                    This is not a walkthrough, playlist of activities, or construction simulation.
                 </p>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-calendar-event me-1" style="color: #3b82f6;"></i>
+                    Date truth
+                </p>
+                <ul class="text-secondary fs-7 mb-4">
+                    <li>The primary label is <strong>Playback date · &lt;selected timeline date&gt;</strong>
+                        — the same date as the scrubber, the colour payload, and the model paints.</li>
+                    <li>Secondary context shows <strong>Programme · start – finish</strong>.</li>
+                    <li>Browser “today” is never used as the colour date.</li>
+                    <li>First entry opens at programme start so the 4D sequence can be played.
+                        Refresh/return in the same session restores the last Playback date and mode.</li>
+                </ul>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-layers me-1" style="color: #3b82f6;"></i>
+                    Modes
+                </p>
+                <ul class="text-secondary fs-7 mb-4">
+                    <li><strong>Planned</strong> — approved programme only
+                        (not started muted grey / in progress / complete / insufficient purple). Never claims actual completion.</li>
+                    <li><strong>Actual</strong> — dated actual evidence only.
+                        Complete work is green even if it finished late against the plan.
+                        In progress is blue. Future-dated actuals stay muted grey
+                        (“No actual progress by this date”); absent Actual Start/Finish
+                        evidence is purple (“No actual dates recorded”).
+                        Never falls back to planned dates or variance wording.</li>
+                    <li><strong>Variance</strong> — plan vs actual at the playback date
+                        (completed by/after planned finish, in progress within/past planned finish,
+                        planned start/finish passed with no actual update, not yet due,
+                        incomplete schedule dates, no linked activity).</li>
+                    <li>Changing mode keeps the Playback date and camera, pauses play if running, and recolours immediately.</li>
+                </ul>
+
+                <p class="fw-semibold fs-7 mb-2">
+                    <i class="bi bi-eye me-1" style="color: #3b82f6;"></i>
+                    Visible context
+                </p>
+                <ul class="text-secondary fs-7 mb-4">
+                    <li>Future / not-due geometry stays <strong>visible as muted light grey</strong> by default
+                        so upper floors do not vanish.</li>
+                    <li><strong>Hide future work</strong> is optional in Settings; when off (default), context stays ghosted.</li>
+                    <li>Unlinked elements stay <strong>No linked schedule activity</strong> wireframe.</li>
+                    <li>The comparison strip (all modes) reports element-set counts at the Playback date:
+                        Planned complete, Actual complete, Plan-complete but not actual-complete, No actual evidence.</li>
+                </ul>
 
                 <p class="fw-semibold fs-7 mb-2">
                     <i class="bi bi-play-circle me-1" style="color: #3b82f6;"></i>
-                    Programme playback
+                    Programme Playback controls
                 </p>
                 <ul class="text-secondary fs-7 mb-4">
-                    <li>The bottom dock holds Start / Previous / Play / Pause / Next and the scrubber.</li>
-                    <li><strong>Playback Setup</strong> sets presentation duration (30&nbsp;sec / 1&nbsp;min / 3&nbsp;min / 5&nbsp;min). Step delay is duration ÷ weekly intervals.</li>
-                    <li>Programme range and weekly step are read-only in this release.</li>
-                    <li>Playback defaults near today’s as-of date when timeline intervals exist.</li>
-                    <li>Details (closed by default) show interval linked-element counts for the current playback date.</li>
-                </ul>
-
-                <p class="fw-semibold fs-7 mb-2">
-                    <i class="bi bi-palette me-1" style="color: #3b82f6;"></i>
-                    Appearance
-                </p>
-                <ul class="text-secondary fs-7 mb-4">
-                    <li>Active appearance profile: <strong>Schedule state</strong> (complete / in progress / delayed / not started).</li>
-                    <li>The on-model legend is generated from that profile and visibility toggles.</li>
-                    <li>An applied-count chip reports how many linked elements were coloured for the playback date.</li>
-                    <li><strong>Task Legend Groups</strong> (user-defined activity tags with colours) are planned — not IFC class categories. Not available in this release.</li>
-                </ul>
-
-                <p class="fw-semibold fs-7 mb-2">
-                    <i class="bi bi-cube me-1" style="color: #3b82f6;"></i>
-                    Model colours
-                </p>
-                <ul class="text-secondary fs-7 mb-4">
-                    <li>Uses the latest processed IFC for this project.</li>
-                    <li>Only applied / confirmed schedule-model links colour the model.</li>
-                    <li>Unlinked schedule activities do not appear in model colours.</li>
-                    <li>Create or check links in the <strong>Links</strong> tab. Walkthrough / camera-path playback is not available in this release.</li>
+                    <li>Time View always opens <strong>Paused</strong>. The timeline never advances until you press Play.</li>
+                    <li><strong>Playback date</strong> opens a real calendar. Choosing a date pauses playback and locks that date until you Play or change it again.</li>
+                    <li><strong>View</strong> Planned / Actual / Variance are real buttons in the dock — one click switches mode, pauses playback, and keeps the same date.</li>
+                    <li>Transport order: Start · Previous · Play/Pause · Next · End.
+                        Previous/Next and Play traverse <strong>unique linked activity dates</strong>
+                        (not individual lifecycle records). Several activities on one date appear together.</li>
+                    <li>The right panel follows the <strong>selected mode</strong> on the exact selected day:
+                        Planned shows Planned at this date membership only, Actual shows Actual at this date only,
+                        and Variance shows exclusive Planned + Actual / Planned only / Actual only groups.
+                        Play / Prev / Next traverse that mode’s linked-date queue.</li>
+                    <li>Dragging the slider pauses immediately; release renders that date and stays paused.</li>
+                    <li><strong>Full playback</strong> is the presentation duration for a complete play-through across unique dates.</li>
                 </ul>
 
                 <p class="fw-semibold fs-7 mb-2">
@@ -75,8 +108,10 @@
                 </p>
                 <p class="text-secondary fs-7 mb-0">
                     This is a read-only playback view — no links are created here.
-                    Colouring depends on schedule dates, applied / confirmed links, and a processed IFC file.
-                    Missing links are not inferred. Interval step is weekly in this release.
+                    Actual mode does not invent history from status or percent-complete fields.
+                    Variance does not invent percentage “ahead” without time-phased progress evidence.
+                    Interval step is weekly in this release.
+                    Package-linked colouring means one activity can paint many elements with the same state.
                 </p>
 
             </div>

@@ -57,7 +57,7 @@ def param_match_tasks(tasks: list, ifc_entities: list, param_name: str) -> list[
 
 
 def persist_param_matches(matches: list[dict], entities: list[IFCEntity]) -> dict[str, int]:
-    """Upsert accepted TaskEntityBinding rows for parameter-match results.
+    """Upsert trusted TaskEntityBinding rows for parameter-match results.
 
     Only matched (task, entity) pairs are written. Existing bindings on other
     tasks or unmatched links are left untouched. Matched entities are also added

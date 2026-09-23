@@ -215,12 +215,99 @@ def legacy_order_from_query(query: Mapping[str, Any]) -> list[str]:
     return ensure_core_columns(order)
 
 
+# One-shot mutators must never linger as the source of truth for later controls.
+LAYOUT_MUTATOR_KEYS: frozenset[str] = frozenset({COL_ORDER_ADD, COL_ORDER_REMOVE, COL_ORDER_MOVE})
+
+
+def canonical_col_order_param(layout: Mapping[str, Any]) -> str:
+    """Serialize the effective visible order (post add/remove/move)."""
+    raw = _str_val(layout.get("col_order_param"))
+    if raw:
+        return raw
+    order = layout.get("order") or DEFAULT_NEW_ORDER
+    return ",".join(ensure_core_columns(order))
+
+
+def order_after_remove(order: Sequence[str], key: str) -> list[str]:
+    """Return order without an optional column; cores always retained."""
+    remove = _str_val(key)
+    if not remove or remove in CORE_COLUMN_SET:
+        return ensure_core_columns(order)
+    return ensure_core_columns([k for k in order if k != remove])
+
+
+def order_after_move(order: Sequence[str], key: str, direction: str) -> list[str]:
+    """Return order after moving ``key`` up or down one slot."""
+    final = ensure_core_columns(order)
+    move_key = _str_val(key)
+    dir_norm = _str_val(direction).lower()
+    if move_key not in final:
+        return final
+    idx = final.index(move_key)
+    if dir_norm == "up" and idx > 0:
+        final[idx - 1], final[idx] = final[idx], final[idx - 1]
+    elif dir_norm == "down" and idx < len(final) - 1:
+        final[idx + 1], final[idx] = final[idx], final[idx + 1]
+    return final
+
+
+def layout_query_pairs(
+    query: Mapping[str, Any],
+    layout: Mapping[str, Any],
+    *,
+    extra_drop: set[str] | frozenset[str] | None = None,
+    col_order: str | None = None,
+) -> list[tuple[str, str]]:
+    """Copy GET pairs with canonical ``col_order`` / ``table_layout``; drop mutators.
+
+    All column controls must serialize through this helper so later actions never
+    depend on a leftover ``col_order_remove`` / ``col_order_add`` tombstone.
+    """
+    drop: set[str] = {
+        COL_ORDER_PARAM,
+        LEGACY_LAYOUT_MARKER,
+        *LAYOUT_MUTATOR_KEYS,
+        "sem_cols_add",
+        "col_calc_add",
+    }
+    if extra_drop:
+        drop.update(extra_drop)
+
+    pairs: list[tuple[str, str]] = []
+    if hasattr(query, "lists"):
+        for key, values in query.lists():  # type: ignore[attr-defined]
+            if key in drop:
+                continue
+            for value in values:
+                pairs.append((str(key), str(value)))
+    else:
+        for key, value in query.items():
+            if key in drop:
+                continue
+            if isinstance(value, (list, tuple)):
+                for item in value:
+                    pairs.append((str(key), str(item)))
+            else:
+                pairs.append((str(key), str(value)))
+
+    order_param = _str_val(col_order) or canonical_col_order_param(layout)
+    pairs.append((LEGACY_LAYOUT_MARKER, "v2"))
+    pairs.append((COL_ORDER_PARAM, order_param))
+    return pairs
+
+
 def parse_table_layout(query: Mapping[str, Any]) -> dict[str, Any]:
     """Resolve visible column order and derived flags from GET-like query.
 
     New empty query → four-column default.
     Explicit ``col_order`` → that layout (cores forced present).
     Saved legacy (sem_cols / no col_order) → LEGACY sticky + sem_cols.
+
+    After optional ``col_order_add`` / ``col_order_remove`` / ``col_order_move``,
+    ``order`` / ``col_order_param`` are the single canonical effective layout:
+    visible non-deleted keys only, original relative order, cores forced, no
+    duplicate keys. Downstream controls must serialize that param and must not
+    rely on mutator tombstones remaining in the URL.
     """
     raw_order = _str_val(query.get(COL_ORDER_PARAM))
     # has_explicit unused after simplify — kept via LEGACY_LAYOUT_MARKER branch
@@ -253,19 +340,13 @@ def parse_table_layout(query: Mapping[str, Any]) -> dict[str, Any]:
         order = ensure_core_columns(order)
 
     remove = _str_val(query.get(COL_ORDER_REMOVE))
-    if remove and remove not in CORE_COLUMN_SET and remove in order:
-        order = [k for k in order if k != remove]
-        order = ensure_core_columns(order)
+    if remove and remove not in CORE_COLUMN_SET:
+        order = order_after_remove(order, remove)
 
     move = _str_val(query.get(COL_ORDER_MOVE))
     if move and ":" in move:
         key, direction = move.rsplit(":", 1)
-        if key in order:
-            idx = order.index(key)
-            if direction == "up" and idx > 0:
-                order[idx - 1], order[idx] = order[idx], order[idx - 1]
-            elif direction == "down" and idx < len(order) - 1:
-                order[idx + 1], order[idx] = order[idx], order[idx + 1]
+        order = order_after_move(order, key, direction)
 
     visible = set(order)
     sem_cols = [k for k in order if is_ifc_column_key(k)]
@@ -319,10 +400,13 @@ def column_meta_for_key(
             "removable": True,
             "source_property": src.get("source_property"),
             "source_context": src.get("source_context") or src.get("group"),
+            "value_type": src.get("value_type") or "",
         }
     if is_ifc_column_key(key):
         src_prop = source_property_from_column_key(key)
         label = src_prop.split(".", 1)[-1] if src_prop and "." in src_prop else (src_prop or key)
+        from takeoff.services.ifc_semantic_fields import guess_value_type_for_field_key
+
         return {
             "key": key,
             "label": label,
@@ -331,6 +415,7 @@ def column_meta_for_key(
             "removable": True,
             "source_property": src_prop,
             "source_context": src_prop.rsplit(".", 1)[0] if src_prop and "." in src_prop else "",
+            "value_type": guess_value_type_for_field_key(key),
         }
     return {"key": key, "label": key, "group": "Other", "kind": "unknown", "removable": True}
 
@@ -349,6 +434,10 @@ def build_layout_column_descriptors(
         meta["index"] = i
         meta["can_move_up"] = i > 0
         meta["can_move_down"] = i < len(order) - 1
+        # Precompute canonical orders for Manage-columns controls (no tombstones).
+        meta["remove_col_order"] = ",".join(order_after_remove(order, key))
+        meta["move_up_col_order"] = ",".join(order_after_move(order, key, "up"))
+        meta["move_down_col_order"] = ",".join(order_after_move(order, key, "down"))
         out.append(meta)
     return out
 

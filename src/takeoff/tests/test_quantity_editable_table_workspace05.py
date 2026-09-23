@@ -427,10 +427,13 @@ def test_ambiguous_unmatched_targets_not_silently_attached():
     session2: dict = {}
     out = svc.restore_into_session(table=table, session=session2)
     assert out["error"] is None
-    assert "mt1|missing|target" in (out["restore_report"]["unmatched_assignment_targets"] or [])
+    # PERF-15B: rematch is deferred to the first GET rebuild.
+    assert out["restore_report"].get("deferred") is True
     runtime = build_qty_prep_session_ui(
         project=project, user=user, session=session2, query={}, ifc_file=ifc
     )
+    report = runtime["qty_prep"].get("editable_restore_report") or {}
+    assert "mt1|missing|target" in (report.get("unmatched_assignment_targets") or [])
     for row in runtime["qty_prep"].get("prep_rows") or []:
         assert row.get("classification_code") != "SHOULD-NOT-APPLY"
 

@@ -20,7 +20,10 @@ from collections.abc import Mapping, MutableMapping
 from typing import Any
 from uuid import UUID
 
-from takeoff.services.quantity_prep_row_review import build_row_key
+from takeoff.services.quantity_prep_row_review import (
+    build_row_key,
+    resolve_session_annotation_for_row,
+)
 from takeoff.services.quantity_preparation_ui import (
     EDITABLE_SOURCE_MAPPING_KEYS,
     _handoff_status,
@@ -837,7 +840,9 @@ def apply_session_mapping_values_to_ui(
 
         row["manual_mapping"] = False
         row["manual_mapping_fields"] = []
-        hit = ann_map.get(key) or {}
+        # Exact row_key, else class/type inheritance for hierarchy instance rows.
+        hit_raw = resolve_session_annotation_for_row(ann_map, row)
+        hit = dict(hit_raw) if isinstance(hit_raw, Mapping) else {}
         row_had_value = False
 
         for field in MAPPING_FIELD_KEYS:
@@ -861,6 +866,7 @@ def apply_session_mapping_values_to_ui(
             if raw_val:
                 # Explicit Castor working-row override (session). Does not mutate
                 # source_mapping_intents or IFC properties.
+                # TABLE-04B: inclusion gates Assign values; source intent is honesty.
                 row[field] = raw_val
                 row[missing_attr] = False
                 row["manual_mapping"] = True

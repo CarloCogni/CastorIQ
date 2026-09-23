@@ -5,6 +5,7 @@
      data-preview-url="{% url 'scheduling:schedule_preview' project.pk %}"
      data-save-url="{% url 'scheduling:schedule_save' project.pk %}"
      data-mapping-url="{% url 'scheduling:schedule_mapping_submit' project.pk %}"
+     data-mapping-preflight-url="{% url 'scheduling:schedule_mapping_preflight' project.pk %}"
      data-detect-url="{% url 'scheduling:schedule_detect_columns' project.pk %}"
      data-save-lookup-url="{% url 'scheduling:schedule_save_mapping_lookup' project.pk %}"
      data-review-url="{% url 'scheduling:review' project.pk %}"
@@ -168,45 +169,7 @@
             </div>
             {% endif %}
 
-            <!-- AI Column Detection panel (Excel/CSV only) -->
-            <div id="ds-ai-panel"
-                 style="display:none;"
-                 class="rounded border mb-2 px-3 py-2 flex-shrink-0"
-                 data-bs-theme="">
-                <div id="ds-ai-detecting"
-                     class="d-flex align-items-center gap-2 text-secondary small py-1">
-                    <span class="spinner-border spinner-border-sm" style="width:.85rem;height:.85rem;"></span>
-                    AI is detecting column mapping…
-                </div>
-                <div id="ds-ai-result" style="display:none;">
-                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-1 mb-2">
-                        <span class="small fw-semibold">
-                            <i class="bi bi-cpu me-1 text-primary"></i>Auto-detected mapping
-                            <span id="ds-ai-confidence" class="badge ms-1"></span>
-                        </span>
-                        <span id="ds-ai-notes" class="text-secondary" style="font-size:.72rem;"></span>
-                    </div>
-                    <div id="ds-ai-mapping-list" class="d-flex flex-wrap gap-1 mb-1"></div>
-                    <div id="ds-ai-unmapped-list" class="d-flex flex-wrap gap-1 mb-1" style="display:none;"></div>
-                    <div id="ds-ai-unmapped-note" class="small text-secondary mb-2" style="display:none;"></div>
-                    <div id="ds-ai-missing-warn" class="small text-warning mb-2" style="display:none;">
-                        <i class="bi bi-exclamation-triangle me-1"></i>
-                        <span id="ds-ai-missing-msg"></span>
-                    </div>
-                    <div class="d-flex gap-2 mt-1">
-                        <button id="ds-ai-confirm-btn" type="button" class="btn btn-sm btn-primary">
-                            <i class="bi bi-check-circle me-1"></i>Confirm &amp; Import
-                        </button>
-                        <button id="ds-ai-edit-btn" type="button" class="btn btn-sm btn-outline-secondary">
-                            <i class="bi bi-pencil me-1"></i>Edit Mapping
-                        </button>
-                    </div>
-                </div>
-                <div id="ds-ai-error" style="display:none;" class="small text-warning py-1">
-                    <i class="bi bi-exclamation-triangle me-1"></i>
-                    <span id="ds-ai-error-msg"></span>
-                </div>
-            </div>
+            <!-- Mapping resolve status lives inside the sticky import session (single surface) -->
 
             <!-- Gantt view (default primary) — mutually exclusive with Table -->
             <div id="ds-view-gantt-wrap"
@@ -237,6 +200,115 @@
                  data-testid="schedule-table-view"
                  data-active-view="table"
                  style="display:none; min-height:0;">
+
+                <!-- ONE import surface: status → mapping summary → preflight → CTA → sample -->
+                <div id="ds-import-session-panel"
+                     class="ds-import-session-panel flex-shrink-0"
+                     data-testid="schedule-import-mapping"
+                     style="display:none;"
+                     aria-hidden="true">
+                    <div class="ds-import-session-sticky rounded border px-2 py-2 mb-2"
+                         style="background:var(--bs-body-bg); border-color:var(--bs-border-color) !important;">
+
+                        <div id="ds-import-file-status"
+                             class="fw-semibold mb-1"
+                             style="font-size:.82rem;"
+                             data-testid="schedule-import-file-status">
+                            Ready for mapping review
+                        </div>
+
+                        <div id="ds-mapping-resolve-status"
+                             class="align-items-center gap-2 text-secondary small mb-2"
+                             style="display:none;"
+                             data-testid="schedule-mapping-resolve">
+                            <span class="spinner-border spinner-border-sm"
+                                  style="width:.85rem;height:.85rem;"
+                                  id="ds-mapping-resolve-spin"></span>
+                            <span id="ds-mapping-resolve-lbl">Checking column mapping…</span>
+                        </div>
+
+                        <div id="ds-mapping-summary"
+                             class="mb-2"
+                             style="display:none; font-size:.78rem;"
+                             data-testid="schedule-mapping-summary">
+                            <div id="ds-mapping-source-line" class="mb-1"></div>
+                            <div id="ds-mapping-required-line" class="mb-1"></div>
+                            <div id="ds-mapping-optional-line" class="text-secondary mb-1"
+                                 style="font-size:.72rem; display:none;"></div>
+                            <button type="button"
+                                    id="ds-edit-mapping-btn"
+                                    class="btn btn-outline-secondary btn-sm"
+                                    data-testid="schedule-edit-mapping">
+                                <i class="bi bi-pencil me-1"></i>Edit Mapping
+                            </button>
+                        </div>
+
+                        <div id="ds-import-map-controls"
+                             class="d-flex flex-wrap gap-2 mb-2"
+                             data-testid="schedule-import-map-controls"
+                             style="display:none;"
+                             aria-hidden="true"></div>
+
+                        <div id="ds-preflight-line"
+                             class="small mb-2"
+                             style="display:none;"
+                             data-testid="schedule-import-preflight"></div>
+
+                        <div id="ds-summary-bar"
+                             class="ds-summary-bar align-items-center justify-content-between flex-wrap gap-2 px-0 py-1"
+                             data-testid="schedule-import-summary"
+                             aria-hidden="true">
+                            <div id="ds-summary-left" class="small text-secondary"></div>
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <button id="ds-reset-btn" type="button" class="btn btn-outline-secondary btn-sm">
+                                    <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+                                </button>
+                                {% if task_count %}
+                                <button id="ds-clear-btn" type="button" class="btn btn-outline-danger btn-sm"
+                                        data-clear-url="{% url 'scheduling:schedule_clear' project.pk %}"
+                                        title="Delete all tasks for this project">
+                                    <span class="spinner-border spinner-border-sm me-1 d-none" id="ds-clear-spin"></span>
+                                    <i class="bi bi-trash3 me-1"></i>Clear
+                                </button>
+                                {% endif %}
+                                <button id="ds-replace-btn" type="button" class="btn btn-outline-danger btn-sm d-none">
+                                    <i class="bi bi-arrow-repeat me-1"></i>Replace all
+                                </button>
+                                <button id="ds-import-btn" type="button" class="btn btn-primary btn-sm" disabled
+                                        data-testid="schedule-confirm-import">
+                                    <span class="spinner-border spinner-border-sm me-1 d-none" id="ds-spin"></span>
+                                    <span id="ds-import-lbl">Confirm Import →</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="text-secondary mt-1" style="font-size:.72rem;" id="ds-import-preview-hint">
+                            Sample preview below (40 rows max) — full file commits on Confirm Import.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden legacy AI panel hooks (JS no-ops keep callers safe) -->
+                <div id="ds-ai-panel" style="display:none !important;" aria-hidden="true" hidden>
+                    <div id="ds-ai-detecting" style="display:none;"></div>
+                    <div id="ds-ai-result" style="display:none;">
+                        <span class="fw-semibold"></span>
+                        <span id="ds-ai-confidence"></span>
+                        <span id="ds-ai-notes"></span>
+                        <div id="ds-ai-mapping-list"></div>
+                        <div id="ds-ai-unmapped-list" style="display:none;"></div>
+                        <div id="ds-ai-unmapped-note" style="display:none;"></div>
+                        <div id="ds-ai-missing-warn" style="display:none;">
+                            <span id="ds-ai-missing-msg"></span>
+                        </div>
+                        <button id="ds-ai-confirm-btn" type="button" style="display:none;"></button>
+                        <button id="ds-edit-btn-legacy" type="button" style="display:none;"></button>
+                        <button id="ds-ai-edit-btn" type="button" style="display:none;"></button>
+                    </div>
+                    <div id="ds-ai-error" style="display:none;">
+                        <span id="ds-ai-error-msg"></span>
+                    </div>
+                </div>
+
                 <!-- Schedule task table (Table mode primary surface) -->
                 <div id="ds-schedule-task-panel"
                      class="ds-schedule-task-panel flex-column flex-grow-1 min-h-0"
@@ -255,7 +327,7 @@
                     </div>
                     <div id="ds-schedule-task-meta" class="small text-secondary mt-1 flex-shrink-0"></div>
                 </div>
-                <!-- Import mapping table — only during an active import/mapping session -->
+                <!-- Import sample preview — only during an active import/mapping session -->
                 <div id="ds-table-section" style="display:none; flex:1; min-height:0; overflow:auto;">
                     <div id="ds-table-wrapper"
                          style="max-height:100%; overflow:auto; border:1px solid var(--bs-border-color); border-radius:4px;">
@@ -269,6 +341,7 @@
                             <tbody id="ds-tbody"></tbody>
                         </table>
                     </div>
+                    <div id="ds-import-preview-meta" class="small text-secondary mt-1"></div>
                 </div>
                 <div id="ds-table-loading" class="text-secondary small p-3" style="display:none;"
                      data-testid="schedule-table-loading">
@@ -285,34 +358,6 @@
             <div id="ds-splitter"
                  style="display:none !important; height:0; overflow:hidden;"
                  aria-hidden="true"></div>
-
-            <!-- Summary bar (import session only — hidden unless .ds-summary-visible) -->
-            <div id="ds-summary-bar"
-                 class="ds-summary-bar align-items-center justify-content-between flex-wrap gap-2 mt-2 px-2 py-2 bg-body-secondary rounded flex-shrink-0"
-                 data-testid="schedule-import-summary"
-                 aria-hidden="true">
-                <div id="ds-summary-left" class="small"></div>
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <button id="ds-reset-btn" type="button" class="btn btn-outline-secondary btn-sm">
-                        <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
-                    </button>
-                    {% if task_count %}
-                    <button id="ds-clear-btn" type="button" class="btn btn-outline-danger btn-sm"
-                            data-clear-url="{% url 'scheduling:schedule_clear' project.pk %}"
-                            title="Delete all tasks for this project">
-                        <span class="spinner-border spinner-border-sm me-1 d-none" id="ds-clear-spin"></span>
-                        <i class="bi bi-trash3 me-1"></i>Clear
-                    </button>
-                    {% endif %}
-                    <button id="ds-replace-btn" type="button" class="btn btn-outline-danger btn-sm d-none">
-                        <i class="bi bi-arrow-repeat me-1"></i>Replace all
-                    </button>
-                    <button id="ds-import-btn" type="button" class="btn btn-primary btn-sm" disabled>
-                        <span class="spinner-border spinner-border-sm me-1 d-none" id="ds-spin"></span>
-                        <span id="ds-import-lbl">Import →</span>
-                    </button>
-                </div>
-            </div>
 
             <!-- Import result (task_list); demoted — not a default stacked hero -->
             <div id="task-preview-area" class="mt-2 flex-shrink-0"
@@ -337,7 +382,7 @@
 
             <div id="ds-side-info" class="flex-grow-1 overflow-auto p-2"
                  data-testid="schedule-info-panel" style="font-size:0.72rem;">
-                <div class="mb-2">
+                <div class="mb-2" data-schedule-info-source>
                     <div class="text-secondary text-uppercase mb-1"
                          style="font-size:0.65rem; letter-spacing:.05em; font-weight:600;">Source</div>
                     {% if schedule_sources %}
@@ -348,7 +393,7 @@
                     <div class="text-secondary">No schedule imported yet.</div>
                     {% endif %}
                 </div>
-                <div class="mb-2">
+                <div class="mb-2" data-schedule-info-tasks>
                     <div class="text-secondary text-uppercase mb-1"
                          style="font-size:0.65rem; letter-spacing:.05em; font-weight:600;">Tasks</div>
                     <div><strong>{{ task_count }}</strong> task{{ task_count|pluralize }}</div>
@@ -662,10 +707,34 @@
 #ds-summary-bar {
     display: none !important;
     flex-shrink: 0;
-    background: var(--color-background-secondary);
 }
 #ds-summary-bar.ds-summary-visible {
     display: flex !important;
+}
+#ds-import-session-panel {
+    display: none;
+}
+#ds-import-session-panel.ds-import-session-visible {
+    display: block !important;
+}
+.ds-import-session-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    box-shadow: 0 1px 0 var(--bs-border-color);
+}
+.ds-import-map-field {
+    min-width: 160px;
+    max-width: 220px;
+}
+.ds-import-map-field label {
+    font-size: .68rem;
+    font-weight: 600;
+    margin-bottom: 2px;
+    display: block;
+}
+.ds-import-map-field select {
+    font-size: .78rem;
 }
 .ds-side-panel { z-index: 2; }
 .ds-side-panel.ds-side-collapsed { display: none !important; }
@@ -843,6 +912,7 @@
     const PREVIEW_URL    = root.dataset.previewUrl;
     const SAVE_URL       = root.dataset.saveUrl;
     const MAPPING_URL    = root.dataset.mappingUrl;
+    const PREFLIGHT_URL  = root.dataset.mappingPreflightUrl || '';
     const DETECT_URL      = root.dataset.detectUrl;
     const SAVE_LOOKUP_URL = root.dataset.saveLookupUrl;
     const REVIEW_URL        = root.dataset.reviewUrl;
@@ -930,6 +1000,18 @@
         if (!summaryBar) return;
         summaryBar.classList.toggle('ds-summary-visible', !!on);
         summaryBar.setAttribute('aria-hidden', on ? 'false' : 'true');
+        const sessionPanel = document.getElementById('ds-import-session-panel');
+        if (sessionPanel) {
+            sessionPanel.classList.toggle('ds-import-session-visible', !!on);
+            sessionPanel.style.display = on ? '' : 'none';
+            sessionPanel.setAttribute('aria-hidden', on ? 'false' : 'true');
+        }
+    }
+
+    function endImportSession() {
+        WS.importing = false;
+        setSummaryBarVisible(false);
+        if (tableSection) tableSection.style.display = 'none';
     }
 
     function applyViewExclusive() {
@@ -1410,10 +1492,10 @@
 
     /* ── Canonical field definitions ────────────────────────────────── */
     const FIELDS = [
-        { key: 'name',          label: 'Task Name',      req: true  },
+        { key: 'activity_code', label: 'Activity ID',    req: true  },
+        { key: 'name',          label: 'Activity Name',  req: true  },
         { key: 'start_date',    label: 'Planned Start',  req: true  },
-        { key: 'end_date',      label: 'Planned End',    req: true  },
-        { key: 'activity_code', label: 'Activity Code',  req: false },
+        { key: 'end_date',      label: 'Planned Finish', req: true  },
         { key: 'wbs_name',      label: 'WBS',            req: false },
         { key: 'actual_start',  label: 'Actual Start',   req: false },
         { key: 'actual_end',       label: 'Actual End',      req: false },
@@ -1425,9 +1507,11 @@
         { key: 'predecessors',  label: 'Predecessors',   req: false },
         { key: 'status',        label: 'Status',         req: false },
         { key: 'color',         label: 'Colour',         req: false },
+        { key: 'percent_complete', label: '% Complete',  req: false },
     ];
     const BY_KEY = Object.fromEntries(FIELDS.map(f => [f.key, f]));
-    const REQUIRED = ['name', 'start_date', 'end_date'];
+    const REQUIRED = ['activity_code', 'name', 'start_date', 'end_date'];
+    const PREVIEW_DOM_LIMIT = 40;
 
     /* ── Gantt constants ─────────────────────────────────────────────── */
     const ROW_H   = 48;   /* increased to fit activity code + name two-line cell */
@@ -1618,7 +1702,76 @@
         deps:         [],   // normalized deps from server: [{pred, succ, type, lag}]
         columnWidths: {},   // rawCol → width px (user-resized)
         dragSrcCol:   null, // col name being dragged for reorder
+        preflight:    null, // {rows_detected, tasks_ready, rows_skipped, skip_reasons}
+        mappingMeta:  null, // {source, hitCount, notes} after resolve
+        mappingEditOpen: false,
     };
+
+    const SKIP_REASON_LABELS = {
+        wbs_summary_or_non_activity: 'WBS/summary',
+        missing_name: 'missing name',
+        missing_activity_id: 'missing Activity ID',
+        missing_or_invalid_planned_start: 'invalid Planned Start',
+        missing_or_invalid_planned_finish: 'invalid Planned Finish',
+        missing_or_invalid_dates: 'missing dates',
+        duplicate_activity_id: 'duplicate Activity ID',
+    };
+
+    let _preflightTimer = null;
+    let _preflightSeq = 0;
+
+    function _canonicalMappingPayload() {
+        const mapping = {};
+        const used = {};
+        for (const [col, field] of Object.entries(S.mapping)) {
+            if (field && field !== 'ignore' && !used[field]) {
+                mapping[field] = col;
+                used[field] = true;
+            }
+        }
+        return mapping;
+    }
+
+    function schedulePreflight() {
+        if (!PREFLIGHT_URL) return;
+        const mappedFields = new Set(
+            Object.values(S.mapping).filter(v => v && v !== 'ignore')
+        );
+        if (!REQUIRED.every(k => mappedFields.has(k))) {
+            S.preflight = null;
+            return;
+        }
+        clearTimeout(_preflightTimer);
+        _preflightTimer = setTimeout(runPreflight, 280);
+    }
+
+    async function runPreflight() {
+        if (!PREFLIGHT_URL) return;
+        const mapping = _canonicalMappingPayload();
+        if (!REQUIRED.every(k => mapping[k])) {
+            S.preflight = null;
+            return;
+        }
+        const seq = ++_preflightSeq;
+        try {
+            const r = await fetch(PREFLIGHT_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': CSRF,
+                },
+                body: JSON.stringify({ mapping }),
+            });
+            if (!r.ok) return;
+            const data = await r.json();
+            if (seq !== _preflightSeq) return;
+            if (data.error) return;
+            S.preflight = data;
+            renderSummary();
+        } catch (e) {
+            console.error('[CASTOR] mapping preflight failed:', e.message);
+        }
+    }
 
     /* ── Skeleton loader ────────────────────────────────────────────── */
     function showSkeleton() {
@@ -1729,8 +1882,15 @@
             mapping: S.mapping, deps: S.deps, totalRows: S.totalRows,
         });
 
-        const n = S.totalRows, w = n === 1 ? 'row' : 'rows';
-        statusEl.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${n.toLocaleString()} ${w} · ${S.format.toUpperCase()}</span>`;
+        const n = S.totalRows;
+        statusEl.innerHTML =
+            `<span class="text-success"><i class="bi bi-check-circle me-1"></i>` +
+            `${n.toLocaleString()} rows detected — ready for mapping review</span>`;
+        const fileStatus = document.getElementById('ds-import-file-status');
+        if (fileStatus) {
+            fileStatus.textContent =
+                `${n.toLocaleString()} rows detected — ready for mapping review`;
+        }
 
         /* When tasks already exist: primary = Replace (warning style), secondary = Add */
         if (_TASK_COUNT > 0) {
@@ -1742,18 +1902,24 @@
                 replaceBtn.classList.remove('d-none');
             }
         } else {
-            importLbl.textContent = `Import ${n.toLocaleString()} tasks →`;
+            importLbl.textContent = 'Confirm Import →';
         }
 
+        S.mappingEditOpen = false;
+        S.mappingMeta = null;
         renderSummary();
-        /* Summary bar only during a live import/mapping session — not source browse */
+        /* Preflight after detect/manual mapping — avoid racing before Actual_* columns merge */
+        if (!(data.needs_mapping && DETECT_URL)) {
+            schedulePreflight();
+        }
+        /* Summary / mapping chrome only during a live import session */
         setSummaryBarVisible(!!WS.importing);
         buildGanttShell();
         if (splitterEl) splitterEl.style.display = 'none';
-        switchMode('source'); /* syncs both table and Gantt to the loaded source */
         if (WS.importing) {
-            /* Keep importing true while switching so Table shows mapping surface */
+            /* Keep importing=true until Confirm Import succeeds or Reset */
             closeImportModal();
+            switchMode('source');
             setWorkspaceView('table');
             if (tableSection) tableSection.style.display = '';
             const panel = document.getElementById('ds-schedule-task-panel');
@@ -1762,9 +1928,10 @@
                 panel.style.display = 'none';
             }
             setSummaryBarVisible(true);
-            WS.importing = false;
+            renderImportMapControls();
+            renderTable();
         } else {
-            WS.importing = false;
+            switchMode('source');
             setSummaryBarVisible(false);
             setWorkspaceView('gantt');
             if (tableSection) tableSection.style.display = 'none';
@@ -2100,8 +2267,9 @@
         const tbody = document.getElementById('ds-tbody');
         tbody.innerHTML = '';
         const idxs = S.visible.map(c => S.allCols.indexOf(c));
+        const slice = (S.rows || []).slice(0, PREVIEW_DOM_LIMIT);
 
-        S.rows.forEach(row => {
+        slice.forEach(row => {
             const tr = document.createElement('tr');
             idxs.forEach(i => {
                 const td = document.createElement('td');
@@ -2114,52 +2282,234 @@
             tr.appendChild(document.createElement('td')); /* spacer */
             tbody.appendChild(tr);
         });
+
+        const meta = document.getElementById('ds-import-preview-meta');
+        if (meta) {
+            const shown = slice.length;
+            const total = S.totalRows || (S.rows || []).length;
+            meta.textContent = total > shown
+                ? `Showing sample ${shown.toLocaleString()} of ${total.toLocaleString()} rows — map columns above, then Confirm Import.`
+                : `Showing ${shown.toLocaleString()} row${shown === 1 ? '' : 's'}.`;
+        }
+    }
+
+    function renderImportMapControls() {
+        const host = document.getElementById('ds-import-map-controls');
+        if (!host) return;
+        const usedCols = new Set(
+            Object.entries(S.mapping)
+                .filter(([, field]) => field && field !== 'ignore')
+                .map(([col]) => col)
+        );
+        const fieldToCol = {};
+        Object.entries(S.mapping).forEach(([col, field]) => {
+            if (field && field !== 'ignore' && !fieldToCol[field]) fieldToCol[field] = col;
+        });
+
+        host.innerHTML = REQUIRED.map(field => {
+            const meta = BY_KEY[field] || { label: field };
+            const selected = fieldToCol[field] || '';
+            const opts = ['<option value="">— select column —</option>']
+                .concat(S.allCols.map(col => {
+                    const taken = usedCols.has(col) && col !== selected;
+                    return `<option value="${esc(col)}"${col === selected ? ' selected' : ''}${taken ? ' disabled' : ''}>${esc(col)}</option>`;
+                }));
+            return `<div class="ds-import-map-field">
+                <label for="ds-map-${esc(field)}">${esc(meta.label)} *</label>
+                <select id="ds-map-${esc(field)}" class="form-select form-select-sm" data-map-field="${esc(field)}">
+                    ${opts.join('')}
+                </select>
+            </div>`;
+        }).join('');
+
+        host.querySelectorAll('select[data-map-field]').forEach(sel => {
+            sel.addEventListener('change', function () {
+                const field = this.dataset.mapField;
+                const col = this.value;
+                /* Clear previous column assigned to this field */
+                Object.keys(S.mapping).forEach(c => {
+                    if (S.mapping[c] === field) delete S.mapping[c];
+                });
+                if (col) S.mapping[col] = field;
+                /* Ensure mapped columns stay visible in the sample preview */
+                if (col && !S.visible.includes(col)) S.visible.push(col);
+                Object.assign(_sourceS, {
+                    rows: S.rows, allCols: S.allCols, visible: S.visible,
+                    mapping: S.mapping, deps: S.deps, totalRows: S.totalRows,
+                });
+                renderImportMapControls();
+                renderTable();
+                renderSummary();
+                schedulePreflight();
+            });
+        });
     }
 
     /* ── Summary bar ────────────────────────────────────────────────── */
     function renderSummary() {
         const mappedPairs  = Object.entries(S.mapping).filter(([, v]) => v && v !== 'ignore');
-        const mappedCount  = mappedPairs.length;
         const mappedFields = new Set(mappedPairs.map(([, v]) => v));
-        const unmapped     = S.visible.filter(c => !S.mapping[c] || S.mapping[c] === 'ignore').length;
+        const requiredMapped = REQUIRED.filter(k => mappedFields.has(k)).length;
+        const optionalMapped = mappedPairs.filter(([, v]) => !REQUIRED.includes(v)).length;
+        const optionalUnmappedHeaders = S.allCols.filter(c => {
+            const v = S.mapping[c];
+            return !v || v === 'ignore';
+        }).length;
 
-        const badges = REQUIRED.map(k => {
-            const ok  = mappedFields.has(k);
-            const lbl = BY_KEY[k]?.label || k;
-            return `<span class="badge ${ok ? 'bg-success' : 'bg-danger'} me-1" style="font-size:.68rem;">${ok ? '✓' : '✗'} ${esc(lbl)}</span>`;
-        }).join('');
+        const pf = S.preflight;
+        const readyCount = (pf && typeof pf.tasks_ready === 'number') ? pf.tasks_ready : null;
+        const detected = (pf && typeof pf.rows_detected === 'number')
+            ? pf.rows_detected
+            : S.totalRows;
+        const skipped = (pf && typeof pf.rows_skipped === 'number') ? pf.rows_skipped : null;
 
-        summaryLeft.innerHTML =
-            `<strong>${mappedCount}</strong> mapped &middot; <strong>${unmapped}</strong> unmapped &nbsp;${badges}`;
-
-        const canImport = REQUIRED.every(k => mappedFields.has(k));
-        importBtn.disabled = !canImport;
-        importLbl.textContent = `Import ${S.totalRows.toLocaleString()} tasks →`;
-        importBtn.style.cursor = canImport ? '' : 'not-allowed';
-
-        /* warning hint for missing required fields */
-        const missing = REQUIRED.filter(k => !mappedFields.has(k));
-        if (missing.length) {
-            summaryLeft.insertAdjacentHTML('beforeend',
-                ` &nbsp;<span class="text-warning" style="font-size:.76rem;">⚠ map ${missing.map(k => BY_KEY[k].label).join(', ')}</span>`
-            );
+        const fileStatus = document.getElementById('ds-import-file-status');
+        if (fileStatus && S.totalRows) {
+            fileStatus.textContent =
+                `${S.totalRows.toLocaleString()} rows detected — ready for mapping review`;
         }
 
-        /* project date span */
-        if (S.dateRange) {
+        const mapSummary = document.getElementById('ds-mapping-summary');
+        const sourceLine = document.getElementById('ds-mapping-source-line');
+        const requiredLine = document.getElementById('ds-mapping-required-line');
+        const optionalLine = document.getElementById('ds-mapping-optional-line');
+        const mapControls = document.getElementById('ds-import-map-controls');
+        const editBtn = document.getElementById('ds-edit-mapping-btn');
+
+        if (mapSummary && sourceLine && requiredLine) {
+            const meta = S.mappingMeta;
+            if (meta || requiredMapped > 0) {
+                mapSummary.style.display = '';
+                if (meta && meta.source === 'lookup') {
+                    const uses = meta.hitCount || 0;
+                    sourceLine.innerHTML =
+                        `<i class="bi bi-bookmark-check me-1 text-success"></i>` +
+                        `<strong>Saved mapping</strong> · used ${uses.toLocaleString()} time${uses === 1 ? '' : 's'}`;
+                } else if (meta && meta.source === 'llm') {
+                    sourceLine.innerHTML =
+                        `<i class="bi bi-cpu me-1 text-primary"></i>` +
+                        `<strong>AI-detected mapping</strong>`;
+                } else if (meta && meta.source === 'synonym') {
+                    sourceLine.innerHTML =
+                        `<i class="bi bi-check2-square me-1 text-primary"></i>` +
+                        `<strong>Keyword mapping</strong>`;
+                } else {
+                    sourceLine.innerHTML =
+                        `<i class="bi bi-sliders me-1 text-primary"></i>` +
+                        `<strong>Column mapping</strong>`;
+                }
+                const reqOk = requiredMapped === REQUIRED.length;
+                requiredLine.innerHTML =
+                    `Required fields mapped ` +
+                    `<strong class="${reqOk ? 'text-success' : 'text-warning'}">` +
+                    `${requiredMapped}/${REQUIRED.length}</strong>`;
+                if (optionalLine) {
+                    optionalLine.style.display = '';
+                    optionalLine.textContent =
+                        `${optionalMapped} optional field${optionalMapped === 1 ? '' : 's'} mapped` +
+                        (optionalUnmappedHeaders
+                            ? ` · ${optionalUnmappedHeaders} column${optionalUnmappedHeaders === 1 ? '' : 's'} left unmapped (optional)`
+                            : '');
+                }
+            } else {
+                mapSummary.style.display = 'none';
+            }
+        }
+
+        if (mapControls) {
+            const showEdit = !!S.mappingEditOpen;
+            mapControls.style.display = showEdit ? '' : 'none';
+            mapControls.setAttribute('aria-hidden', showEdit ? 'false' : 'true');
+            if (editBtn) {
+                editBtn.innerHTML = showEdit
+                    ? '<i class="bi bi-chevron-up me-1"></i>Hide Mapping'
+                    : '<i class="bi bi-pencil me-1"></i>Edit Mapping';
+            }
+        }
+
+        const preflightEl = document.getElementById('ds-preflight-line');
+        if (preflightEl) {
+            if (readyCount != null && skipped != null) {
+                const reasonParts = Object.entries(pf.skip_reasons || {})
+                    .filter(([, n]) => n > 0)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([k, n]) => `${n.toLocaleString()} ${SKIP_REASON_LABELS[k] || k}`);
+                const reasonTxt = reasonParts.length
+                    ? ` <span class="text-secondary">(${reasonParts.join('; ')})</span>`
+                    : '';
+                preflightEl.style.display = '';
+                preflightEl.innerHTML =
+                    `${detected.toLocaleString()} rows detected · ` +
+                    `<strong>${readyCount.toLocaleString()}</strong> tasks ready · ` +
+                    `${skipped.toLocaleString()} skipped${reasonTxt}`;
+            } else {
+                preflightEl.style.display = 'none';
+                preflightEl.innerHTML = '';
+            }
+        }
+
+        /* Keep summary-left minimal — no competing mapped/unmapped counts */
+        const missing = REQUIRED.filter(k => !mappedFields.has(k));
+        summaryLeft.innerHTML = missing.length
+            ? `<span class="text-warning">⚠ map required: ${missing.map(k => BY_KEY[k].label).join(', ')}</span>`
+            : '';
+
+        if (S.dateRange && !missing.length) {
             const fmtD = iso => {
                 const d = new Date(iso);
                 return MON_ABBR[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
             };
             summaryLeft.insertAdjacentHTML('beforeend',
-                ` &nbsp;<span class="text-secondary" style="font-size:.76rem;">
-                    <i class="bi bi-calendar-range me-1"></i>${fmtD(S.dateRange.start)} – ${fmtD(S.dateRange.end)}
-                 </span>`
+                `<span class="text-secondary" style="font-size:.76rem;">` +
+                `<i class="bi bi-calendar-range me-1"></i>${fmtD(S.dateRange.start)} – ${fmtD(S.dateRange.end)}` +
+                `</span>`
             );
         }
+
+        const canImport = REQUIRED.every(k => mappedFields.has(k))
+            && readyCount != null
+            && readyCount > 0;
+        importBtn.disabled = !canImport;
+        importLbl.textContent = canImport
+            ? `Confirm Import ${readyCount.toLocaleString()} tasks →`
+            : REQUIRED.every(k => mappedFields.has(k))
+                ? 'Checking tasks…'
+                : 'Confirm Import →';
+        importBtn.style.cursor = canImport ? '' : 'not-allowed';
+        importBtn.title = canImport
+            ? `Save ${readyCount.toLocaleString()} validated tasks to this project`
+            : REQUIRED.every(k => mappedFields.has(k))
+                ? 'Counting importable tasks…'
+                : 'Map Activity ID, Activity Name, Planned Start, and Planned Finish first';
     }
 
     /* ── Import / Replace shared submit ────────────────────────────── */
+    function _dispatchHxTrigger(response) {
+        const trigger = response.headers.get('HX-Trigger');
+        if (!trigger) return;
+        try {
+            const evts = JSON.parse(trigger);
+            for (const [name, detail] of Object.entries(evts)) {
+                document.body.dispatchEvent(new CustomEvent(name, { detail, bubbles: true }));
+            }
+        } catch (e) {
+            console.error('[CASTOR DEBUG] HX-Trigger parse failed:', e.message, e.stack);
+        }
+    }
+
+    function _importFailure(message, status) {
+        _importReset();
+        resultEl.style.display = '';
+        showImportResultArea();
+        resultEl.innerHTML =
+            `<div class="alert alert-danger small mt-2" role="alert">
+                <i class="bi bi-exclamation-triangle me-1"></i>${esc(message)}
+             </div>`;
+        summaryLeft.insertAdjacentHTML('beforeend',
+            ` <span class="text-danger" style="font-size:.76rem;">⚠ Import failed${status ? ` (${status})` : ''}</span>`
+        );
+    }
+
     async function _submitImport(replace) {
         const isTabular = S.format === 'excel' || S.format === 'csv';
 
@@ -2188,24 +2538,27 @@
                 r1 = await fetch(MAPPING_URL, { method: 'POST', body: fd });
             } catch (e) {
                 console.error('[CASTOR DEBUG] mapping step failed:', e.message, e.stack);
-                _importReset();
-                resultEl.style.display = '';
-                resultEl.innerHTML = `<div class="alert alert-danger small mt-2">Import failed — ${esc(e.message)} — check console for details.</div>`;
+                _importFailure(`Import failed — ${e.message}`, null);
                 return;
             }
+            _dispatchHxTrigger(r1);
             if (!r1.ok) {
-                _importReset();
-                resultEl.innerHTML = await r1.text();
-            showImportResultArea();
-                htmx.process(resultEl);
-                summaryLeft.insertAdjacentHTML('beforeend',
-                    ` <span class="text-danger" style="font-size:.76rem;">⚠ ${replace ? 'Replace' : 'Import'} failed (${r1.status})</span>`
+                const toastMsg = (() => {
+                    try {
+                        const t = JSON.parse(r1.headers.get('HX-Trigger') || '{}');
+                        return t['castor:toast']?.message || '';
+                    } catch (_) { return ''; }
+                })();
+                const bodyText = (await r1.text()).trim();
+                _importFailure(
+                    toastMsg || bodyText || 'Column mapping failed — no tasks staged for import.',
+                    r1.status
                 );
                 return;
             }
         }
 
-        /* ── Step 2: persist tasks to DB ── */
+        /* ── Step 2: persist tasks to DB via shared TaskSaveView ── */
         const fd2 = new FormData();
         fd2.append('csrfmiddlewaretoken', CSRF);
         if (replace) fd2.append('replace', 'true');
@@ -2216,31 +2569,32 @@
             html = await r.text();
         } catch (e) {
             console.error('[CASTOR DEBUG]', e.message, e.stack);
-            _importReset();
-            resultEl.style.display = '';
-                resultEl.innerHTML = `<div class="alert alert-danger small mt-2">Import failed — ${esc(e.message)} — check console for details.</div>`;
+            _importFailure(`Import failed — ${e.message}`, null);
             return;
         }
 
-        const trigger = r.headers.get('HX-Trigger');
-        if (trigger) {
-            try {
-                const evts = JSON.parse(trigger);
-                for (const [name, detail] of Object.entries(evts)) {
-                    document.body.dispatchEvent(new CustomEvent(name, { detail, bubbles: true }));
-                }
-            } catch (e) {
-                console.error('[CASTOR DEBUG] HX-Trigger parse failed:', e.message, e.stack);
-            }
+        _dispatchHxTrigger(r);
+
+        let verified = null;
+        try {
+            const raw = r.headers.get('X-Castor-Import-Result');
+            if (raw) verified = JSON.parse(raw);
+        } catch (e) {
+            console.error('[CASTOR DEBUG] import result parse failed:', e.message);
         }
 
-        if (!r.ok) {
-            _importReset();
-            resultEl.innerHTML = html;
-            showImportResultArea();
-            htmx.process(resultEl);
-            summaryLeft.insertAdjacentHTML('beforeend',
-                ` <span class="text-danger" style="font-size:.76rem;">⚠ ${replace ? 'Replace' : 'Import'} failed (${r.status})</span>`
+        if (!r.ok || !verified || !verified.ok || !(verified.task_count > 0)) {
+            const toastMsg = (() => {
+                try {
+                    const t = JSON.parse(r.headers.get('HX-Trigger') || '{}');
+                    return t['castor:toast']?.message || '';
+                } catch (_) { return ''; }
+            })();
+            _importFailure(
+                toastMsg ||
+                (html && html.trim()) ||
+                'Import did not commit tasks to the database.',
+                r.status
             );
             return;
         }
@@ -2248,10 +2602,44 @@
         importSpin.classList.add('d-none');
         importLbl.textContent = replace ? '✓ Replaced' : '✓ Imported';
 
-        const n   = S.totalRows;
-        const lbl = `<strong>${n.toLocaleString()}</strong> task${n === 1 ? '' : 's'} ${replace ? 'replaced' : 'imported'}`;
+        const n   = verified.task_count;
+        const fname = verified.filename ? ` from <strong>${esc(verified.filename)}</strong>` : '';
+        const lbl = `<strong>${n.toLocaleString()}</strong> task${n === 1 ? '' : 's'} ${replace ? 'replaced' : 'imported'}${fname}`;
         summaryLeft.innerHTML =
             `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${lbl}.</span>`;
+
+        /* Persist mapping lookup after successful confirm */
+        const pending = window.__castorPendingLookupSave;
+        if (pending && SAVE_LOOKUP_URL) {
+            _saveMappingLookup(pending.fingerprint, pending.fnPattern, pending.mapping);
+            window.__castorPendingLookupSave = null;
+        }
+
+        /* Update Schedule Info immediately to committed source + count */
+        const sideInfo = document.getElementById('ds-side-info');
+        if (sideInfo) {
+            const srcBlock = sideInfo.querySelector('[data-schedule-info-source]')
+                || sideInfo.children[0];
+            const taskBlock = sideInfo.querySelector('[data-schedule-info-tasks]')
+                || sideInfo.children[1];
+            if (srcBlock) {
+                srcBlock.innerHTML =
+                    `<div class="text-secondary text-uppercase mb-1"
+                          style="font-size:0.65rem; letter-spacing:.05em; font-weight:600;">Source</div>` +
+                    `<div>${esc(verified.filename || 'schedule')}` +
+                    `<span class="badge bg-secondary ms-1" style="font-size:.62rem;">` +
+                    `${esc((S.format || 'excel').toUpperCase())}</span></div>`;
+            }
+            if (taskBlock) {
+                taskBlock.innerHTML =
+                    `<div class="text-secondary text-uppercase mb-1"
+                          style="font-size:0.65rem; letter-spacing:.05em; font-weight:600;">Tasks</div>` +
+                    `<div><strong>${n.toLocaleString()}</strong> task${n === 1 ? '' : 's'}</div>`;
+            }
+        }
+        root.dataset.taskCount = String(n);
+
+        endImportSession();
 
         /* Navigate to Gantt so the user immediately sees their schedule. */
         if (GANTT_URL) {
@@ -2274,11 +2662,14 @@
 
     importBtn.addEventListener('click', function () {
         if (this.disabled) return;
+        const ready = (S.preflight && typeof S.preflight.tasks_ready === 'number')
+            ? S.preflight.tasks_ready
+            : S.totalRows;
         if (_TASK_COUNT > 0) {
             const n = _TASK_COUNT;
             if (!confirm(
                 `⚠ This will DELETE all ${n.toLocaleString()} existing task${n === 1 ? '' : 's'} and their links, ` +
-                `then import ${S.totalRows.toLocaleString()} task${S.totalRows === 1 ? '' : 's'} from the uploaded file.\n\n` +
+                `then import ${ready.toLocaleString()} task${ready === 1 ? '' : 's'} from the uploaded file.\n\n` +
                 `This cannot be undone. Proceed?`
             )) return;
             _submitImport(true);
@@ -2296,55 +2687,81 @@
 
     function _importReset() {
         importSpin.classList.add('d-none');
-        importBtn.disabled = false;
+        renderSummary();
         if (replaceBtn) replaceBtn.disabled = false;
-        importLbl.textContent = _TASK_COUNT > 0
-            ? 'Replace & Import →'
-            : `Import ${S.totalRows.toLocaleString()} tasks →`;
     }
 
-    /* ── AI Column Detection ─────────────────────────────────────────── */
-    const _aiPanel      = document.getElementById('ds-ai-panel');
-    const _aiDetecting  = document.getElementById('ds-ai-detecting');
-    const _aiResult     = document.getElementById('ds-ai-result');
-    const _aiError      = document.getElementById('ds-ai-error');
-    const _aiErrorMsg   = document.getElementById('ds-ai-error-msg');
-    const _aiConfBadge  = document.getElementById('ds-ai-confidence');
-    const _aiNotes      = document.getElementById('ds-ai-notes');
-    const _aiMapList    = document.getElementById('ds-ai-mapping-list');
-    const _aiMissWarn      = document.getElementById('ds-ai-missing-warn');
-    const _aiMissMsg       = document.getElementById('ds-ai-missing-msg');
-    const _aiUnmappedList  = document.getElementById('ds-ai-unmapped-list');
-    const _aiUnmappedNote  = document.getElementById('ds-ai-unmapped-note');
-    const _aiConfirmBtn    = document.getElementById('ds-ai-confirm-btn');
-    const _aiEditBtn       = document.getElementById('ds-ai-edit-btn');
+    /* ── Reset button ───────────────────────────────────────────────── */
+    resetBtn.addEventListener('click', function () {
+        _aiPanelReset();
+        WS.importing = true;
+        setWorkspaceView('table');
+        if (tableSection) tableSection.style.display = '';
+        setSummaryBarVisible(true);
+        S.mapping = {};
+        for (const [field, col] of Object.entries(S.suggested)) {
+            S.mapping[col] = field;
+        }
+        Object.assign(_sourceS, {
+            rows: S.rows, allCols: S.allCols, visible: S.visible,
+            mapping: S.mapping, deps: S.deps, totalRows: S.totalRows,
+        });
+        renderImportMapControls();
+        renderTable();
+        renderSummary();
+        schedulePreflight();
+        renderGantt();
+    });
 
-    const _AI_FIELD_LABELS = {
-        name: 'Task Name', start_date: 'Start Date', end_date: 'End Date',
-        activity_code: 'Activity Code', status: 'Status', color: 'Colour',
-        cost: 'Cost', activity_type: 'Activity Type',
-        predecessors: 'Predecessors', actual_start: 'Actual Start', actual_end: 'Actual End',
-        total_float: 'Total Float', wbs_name: 'WBS Name',
-        duration: 'Duration', weight: 'Weight', is_critical: 'Critical Path',
-        stage: 'Stage', sub_stage: 'Sub-Stage',
-    };
+    /* ── Column mapping resolve (lookup / keyword / LLM) ─────────────── */
+    const _resolveStatus = document.getElementById('ds-mapping-resolve-status');
+    const _resolveLbl    = document.getElementById('ds-mapping-resolve-lbl');
+    const _resolveSpin   = document.getElementById('ds-mapping-resolve-spin');
+    const _editMappingBtn = document.getElementById('ds-edit-mapping-btn');
 
     function _aiPanelReset() {
-        if (!_aiPanel) return;
-        _aiPanel.style.display = 'none';
-        if (_aiDetecting) _aiDetecting.style.display = 'none';
-        if (_aiResult)    _aiResult.style.display    = 'none';
-        if (_aiError)     _aiError.style.display     = 'none';
+        /* Legacy name — clears resolve chrome */
+        if (_resolveStatus) {
+            _resolveStatus.style.display = 'none';
+            _resolveStatus.classList.remove('d-flex');
+        }
+        if (_resolveSpin) _resolveSpin.classList.add('d-none');
+        if (_resolveLbl) _resolveLbl.textContent = 'Checking column mapping…';
+    }
+
+    function _showResolving() {
+        if (!_resolveStatus) return;
+        _resolveStatus.style.display = 'flex';
+        _resolveStatus.classList.add('d-flex');
+        if (_resolveSpin) _resolveSpin.classList.remove('d-none');
+        if (_resolveLbl) _resolveLbl.textContent = 'Checking column mapping…';
+    }
+
+    function _hideResolving(okMsg) {
+        if (!_resolveStatus) return;
+        if (_resolveSpin) _resolveSpin.classList.add('d-none');
+        if (okMsg) {
+            if (_resolveLbl) _resolveLbl.textContent = okMsg;
+            _resolveStatus.style.display = 'flex';
+            _resolveStatus.classList.add('d-flex');
+            setTimeout(() => {
+                _resolveStatus.style.display = 'none';
+                _resolveStatus.classList.remove('d-flex');
+            }, 1200);
+        } else {
+            _resolveStatus.style.display = 'none';
+            _resolveStatus.classList.remove('d-flex');
+        }
     }
 
     async function _runDetectColumns(headers, sampleRows, filename) {
-        if (!_aiPanel || !DETECT_URL) return;
+        if (!DETECT_URL) return;
 
-        _aiPanel.style.display     = '';
-        _aiDetecting.style.display = '';
-        _aiResult.style.display    = 'none';
-        _aiError.style.display     = 'none';
-        tableSection.style.display = 'none'; /* hidden until user clicks Edit Mapping */
+        _showResolving();
+        WS.importing = true;
+        setWorkspaceView('table');
+        setSummaryBarVisible(true);
+        if (tableSection) tableSection.style.display = '';
 
         let data;
         try {
@@ -2356,121 +2773,85 @@
             data = await r.json();
             if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
         } catch (e) {
-            _aiDetecting.style.display = 'none';
-            _aiError.style.display     = '';
-            _aiErrorMsg.textContent    = `Detection failed: ${e.message}. Use manual mapping below.`;
+            _hideResolving();
+            if (_resolveStatus && _resolveLbl) {
+                _resolveStatus.style.display = 'flex';
+                _resolveStatus.classList.add('d-flex');
+                if (_resolveSpin) _resolveSpin.classList.add('d-none');
+                _resolveLbl.innerHTML =
+                    `<span class="text-warning">Mapping check failed: ${esc(e.message)}. Use Edit Mapping.</span>`;
+            }
+            S.mappingMeta = { source: 'manual', hitCount: 0, notes: '' };
+            S.mappingEditOpen = true;
+            renderImportMapControls();
+            renderTable();
+            renderSummary();
+            schedulePreflight();
             return;
         }
 
-        _aiDetecting.style.display = 'none';
-
         const mapping     = data.mapping    || {};
-        const confidence  = data.confidence || 0;
-        const notes       = data.notes      || '';
         const fromLookup  = !!data.from_lookup;
         const fingerprint = data.fingerprint || '';
         const fnPattern   = data.filename_pattern || filename.replace(/\.[^.]+$/, '');
+        const detectionSource = data.detection_source
+            || (fromLookup ? 'lookup' : (data.confidence === 0 ? 'synonym' : 'llm'));
+        const hitCount = typeof data.hit_count === 'number' ? data.hit_count : 0;
 
-        /* Header: different label for saved vs AI-detected */
-        const headEl = _aiResult.querySelector('.fw-semibold');
-        if (headEl) {
-            if (fromLookup) {
-                headEl.innerHTML = '<i class="bi bi-bookmark-check me-1 text-success"></i>Using saved mapping';
-            } else {
-                headEl.innerHTML = '<i class="bi bi-cpu me-1 text-primary"></i>Auto-detected mapping';
-            }
-        }
+        S.mappingMeta = {
+            source: detectionSource,
+            hitCount,
+            notes: data.notes || '',
+            fingerprint,
+            fnPattern,
+            mappingCanonical: mapping,
+        };
 
-        /* Confidence badge */
-        const pct = Math.round(confidence * 100);
-        _aiConfBadge.textContent = fromLookup ? 'saved' : `${pct}% confidence`;
-        if (fromLookup)         { _aiConfBadge.className = 'badge ms-1 bg-success-subtle text-success-emphasis'; }
-        else if (pct >= 70)     { _aiConfBadge.className = 'badge ms-1 bg-success-subtle text-success-emphasis'; }
-        else if (pct >= 40)     { _aiConfBadge.className = 'badge ms-1 bg-warning-subtle text-warning-emphasis'; }
-        else                    { _aiConfBadge.className = 'badge ms-1 bg-secondary-subtle text-secondary-emphasis'; }
-
-        _aiNotes.textContent = notes;
-
-        /* Mapping chips */
-        _aiMapList.innerHTML = '';
-        const entries = Object.entries(mapping);
-        if (entries.length === 0) {
-            _aiMapList.innerHTML = '<span class="text-secondary small">No columns detected automatically.</span>';
-        } else {
-            for (const [field, col] of entries) {
-                const label = _AI_FIELD_LABELS[field] || field;
-                const chip  = document.createElement('span');
-                chip.className = 'badge bg-body-secondary border d-inline-flex align-items-center gap-1 px-2 py-1';
-                chip.style.cssText = 'font-size:.75rem; font-weight:400; color:var(--bs-body-color);';
-                chip.innerHTML =
-                    `<span class="text-secondary">${esc(col)}</span>` +
-                    `<i class="bi bi-arrow-right" style="font-size:.62rem;opacity:.5;"></i>` +
-                    `<span class="fw-semibold">${esc(label)}</span>` +
-                    `<i class="bi bi-check-circle-fill text-success" style="font-size:.68rem;"></i>`;
-                _aiMapList.appendChild(chip);
-            }
-        }
-
-        /* Unmapped columns — grey dashed pills with "→ ?" */
-        const mappedHeaders = new Set(Object.values(mapping));
-        const unmapped = headers.filter(h => !mappedHeaders.has(h));
-        _aiUnmappedList.innerHTML = '';
-        if (unmapped.length > 0) {
-            for (const col of unmapped) {
-                const chip = document.createElement('span');
-                chip.className = 'badge bg-body-secondary border d-inline-flex align-items-center gap-1 px-2 py-1';
-                chip.style.cssText = 'font-size:.75rem; font-weight:400; color:var(--bs-secondary-color,#6c757d); border-style:dashed;';
-                chip.innerHTML =
-                    `<span>${esc(col)}</span>` +
-                    `<i class="bi bi-arrow-right" style="font-size:.62rem;opacity:.35;"></i>` +
-                    `<span class="fst-italic" style="opacity:.5;">?</span>`;
-                _aiUnmappedList.appendChild(chip);
-            }
-            _aiUnmappedNote.textContent =
-                `${unmapped.length} column${unmapped.length === 1 ? '' : 's'} not mapped — click Edit Mapping to review`;
-            _aiUnmappedList.style.display = '';
-            _aiUnmappedNote.style.display = '';
-        } else {
-            _aiUnmappedList.style.display = 'none';
-            _aiUnmappedNote.style.display = 'none';
-        }
-
-        /* Warn about missing required fields */
-        const required = ['name', 'start_date', 'end_date'];
-        const missing  = required.filter(f => !(f in mapping));
-        if (missing.length) {
-            _aiMissMsg.textContent = `Missing required: ${missing.map(f => _AI_FIELD_LABELS[f] || f).join(', ')} — use Edit Mapping to fix.`;
-            _aiMissWarn.style.display = '';
-            _aiConfirmBtn.disabled    = true;
-        } else {
-            _aiMissWarn.style.display = 'none';
-            _aiConfirmBtn.disabled    = false;
-        }
-
-        /* Build inverted mapping: col → field (matches S.mapping format) */
+        /* Build inverted mapping: col → field.
+           Detect wins on conflicts; keep suggested optional fields detect omitted
+           (esp. Actual Start/Finish — required for the 21 actual-only rescue rows). */
         const inverted = {};
-        for (const [field, col] of entries) { inverted[col] = field; }
+        for (const [field, col] of Object.entries(mapping)) {
+            if (col) inverted[col] = field;
+        }
+        for (const [field, col] of Object.entries(S.suggested || {})) {
+            if (!col) continue;
+            const fieldTaken = Object.values(inverted).includes(field);
+            const colTaken = !!inverted[col];
+            if (!fieldTaken && !colTaken) inverted[col] = field;
+        }
+        S.mapping = inverted;
+        S.mappingEditOpen = false;
+        Object.assign(_sourceS, {
+            rows: S.rows, allCols: S.allCols, visible: S.visible,
+            mapping: S.mapping, deps: S.deps, totalRows: S.totalRows,
+        });
 
-        _aiConfirmBtn.onclick = () => {
-            S.mapping = inverted;
-            _aiPanelReset();
-            /* Save new AI mapping to lookup (fire-and-forget; skip if already from lookup) */
-            if (!fromLookup && fingerprint && SAVE_LOOKUP_URL) {
-                _saveMappingLookup(fingerprint, fnPattern, mapping);
-            }
-            _submitImport(false);
-        };
+        _hideResolving();
+        if (_resolveStatus) {
+            _resolveStatus.style.display = 'none';
+            _resolveStatus.classList.remove('d-flex');
+        }
+        if (_resolveSpin) _resolveSpin.classList.add('d-none');
+        renderImportMapControls();
+        renderTable();
+        renderSummary();
+        schedulePreflight();
 
-        _aiEditBtn.onclick = () => {
-            S.mapping = inverted;
-            _aiPanelReset();
-            setWorkspaceView('table');
-            if (tableSection) tableSection.style.display = '';
-            renderTable();
+        /* Persist new non-lookup mappings after successful confirm (unchanged) */
+        window.__castorPendingLookupSave = (!fromLookup && fingerprint)
+            ? { fingerprint, fnPattern, mapping: { ...Object.fromEntries(
+                Object.entries(inverted).map(([col, field]) => [field, col])
+              ) } }
+            : null;
+    }
+
+    if (_editMappingBtn) {
+        _editMappingBtn.addEventListener('click', function () {
+            S.mappingEditOpen = !S.mappingEditOpen;
+            renderImportMapControls();
             renderSummary();
-        };
-
-        _aiResult.style.display = '';
+        });
     }
 
     function _saveMappingLookup(fingerprint, filenamePattern, mapping) {
@@ -2481,20 +2862,6 @@
             body: JSON.stringify({ fingerprint, filename_pattern: filenamePattern, mapping }),
         }).catch(() => { /* silently ignore — lookup is a best-effort cache */ });
     }
-
-    /* ── Reset button ───────────────────────────────────────────────── */
-    resetBtn.addEventListener('click', function () {
-        _aiPanelReset();
-        setWorkspaceView('table');
-        if (tableSection) tableSection.style.display = '';
-        S.mapping = {};
-        for (const [field, col] of Object.entries(S.suggested)) {
-            S.mapping[col] = field;
-        }
-        renderTable();
-        renderSummary();
-        renderGantt();
-    });
 
     const clearBtn  = document.getElementById('ds-clear-btn');
     const clearSpin = document.getElementById('ds-clear-spin');
@@ -2650,6 +3017,7 @@
             }
             S.mapping[col] = field;
         }
+        if (WS.importing) renderImportMapControls();
         renderTable();
         renderSummary();
         renderGantt();

@@ -1,0 +1,137 @@
+<!-- scheduling/tabs/link_governance.html — Applied Links workspace (queue-first; diagnostics demoted) -->
+
+<div id="link-governance-workspace" class="d-flex flex-column gap-3">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-link-45deg fs-5 text-primary"></i>
+            <h5 class="m-0">Applied Links</h5>
+            <span class="badge bg-secondary-subtle text-secondary-emphasis border" style="font-size:0.65rem;">Link coverage</span>
+            <span class="badge bg-primary-subtle text-primary-emphasis border" style="font-size:0.7rem;" data-testid="governance-authority-badge">Applied / Confirmed map</span>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#linkGovernanceHelpModal"
+                    title="How Applied Links works"
+                    aria-label="How Applied Links works">
+                <i class="bi bi-question-circle"></i>
+            </button>
+            <button type="button"
+                    class="help-pill"
+                    data-bs-toggle="modal"
+                    data-bs-target="#governanceMethodologyHelpModal"
+                    title="Link quality methodology and metrics"
+                    aria-label="Link quality methodology and metrics">
+                <i class="bi bi-calculator"></i>
+            </button>
+        </div>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis border d-none"
+              style="font-size:0.72rem;"
+              data-testid="governance-method-badge-advanced"
+              aria-hidden="true">methodology-ref</span>
+        {% if governance_capabilities.capabilities.can_approve_exact_preview %}
+        <a class="btn btn-sm btn-outline-primary ms-auto"
+           hx-get="{% url 'scheduling:schedule_link_preview_param' project.pk %}?param_name=Activity%20ID&amp;show_approval=1"
+           hx-target="#governance-exact-preview-slot"
+           hx-swap="innerHTML">
+            Exact full preview
+        </a>
+        {% else %}
+        <span class="small text-secondary ms-auto">
+            Exact full preview unavailable for this session
+        </span>
+        {% endif %}
+    </div>
+
+    <p class="small text-secondary mb-0 border rounded px-2 py-2" data-testid="links-advanced-landing">
+        Advanced link details are available here. Link actions remain scoped to selected suggestions.
+        {% if governance_capabilities and not governance_capabilities.capabilities.can_approve_individual %}
+        Some link lifecycle actions are unavailable for this session.
+        {% endif %}
+    </p>
+
+    <ul class="nav nav-tabs" role="tablist" aria-label="Applied Links workspace tabs">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="gq-tab-queue" data-bs-toggle="tab"
+                    data-bs-target="#gq-panel-queue" type="button" role="tab"
+                    aria-selected="true" aria-controls="gq-panel-queue"
+                    hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode=review&page=1"
+                    hx-target="#governance-queue-panel"
+                    hx-trigger="load once"
+                    hx-swap="innerHTML">
+                Suggested Links queue
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="gq-tab-reconciliation" data-bs-toggle="tab"
+                    data-bs-target="#gq-panel-reconciliation" type="button" role="tab"
+                    aria-selected="false" aria-controls="gq-panel-reconciliation"
+                    hx-get="{% url 'scheduling:link_governance_reconciliation' project.pk %}"
+                    hx-target="#governance-reconciliation-panel"
+                    hx-trigger="click once"
+                    hx-swap="innerHTML">
+                Reconciliation
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="gq-tab-audit" data-bs-toggle="tab"
+                    data-bs-target="#gq-panel-audit" type="button" role="tab"
+                    aria-selected="false" aria-controls="gq-panel-audit"
+                    hx-get="{% url 'scheduling:link_governance_audit' project.pk %}?page=1"
+                    hx-target="#governance-audit-panel"
+                    hx-trigger="click once"
+                    hx-swap="innerHTML">
+                Audit history
+            </button>
+        </li>
+    </ul>
+
+    <div id="governance-exact-preview-slot"></div>
+
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="gq-panel-queue" role="tabpanel"
+             aria-labelledby="gq-tab-queue">
+            <div id="governance-queue-panel">
+                <div class="text-secondary small py-3">Loading Suggested Links…</div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="gq-panel-reconciliation" role="tabpanel"
+             aria-labelledby="gq-tab-reconciliation">
+            <div id="governance-reconciliation-panel">
+                <div class="text-secondary small py-3" role="status">
+                    Open this tab to load the read-only reconciliation diagnostic.
+                </div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="gq-panel-audit" role="tabpanel"
+             aria-labelledby="gq-tab-audit">
+            <div id="governance-audit-panel">
+                <div class="text-secondary small py-3" role="status">
+                    Open this tab to load link decision history.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Demoted coverage / lifecycle diagnostics — collapsed; loads on first open -->
+    <details id="gq-link-diagnostics" class="border rounded p-2" data-testid="link-diagnostics">
+        <summary class="fw-semibold"
+                 style="cursor:pointer;"
+                 hx-get="{% url 'scheduling:link_governance_overview' project.pk %}"
+                 hx-target="#governance-overview-panel"
+                 hx-trigger="click once"
+                 hx-swap="outerHTML">
+            Link diagnostics
+            <span class="text-secondary fw-normal ms-1" style="font-size:.72rem;">
+                — Link Coverage and lifecycle counts
+            </span>
+        </summary>
+        <div id="governance-overview-panel" class="pt-2" data-testid="link-diagnostics-placeholder">
+            <div class="text-secondary small py-2" role="status">
+                Open Link diagnostics to load coverage and lifecycle details.
+            </div>
+        </div>
+    </details>
+
+    {% include "scheduling/components/link_governance_help_modal.html" %}
+    {% include "scheduling/components/governance_methodology_help_modal.html" %}
+</div>

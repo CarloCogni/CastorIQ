@@ -25,6 +25,26 @@ from .services.gap_analysis import build_gap_analysis
 
 logger = logging.getLogger(__name__)
 
+
+def _resolve_ifc_file(project, request) -> IFCFile | None:
+    """Resolve the IFC file a viewer request targets.
+
+    Honors an optional ``?ifc=<pk>`` query param so embedders with a
+    multi-file selector can pin a specific model; falls back to the latest
+    completed file (historical default of every viewer endpoint).
+    """
+    qs = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
+    ifc_pk = request.GET.get("ifc")
+    if ifc_pk:
+        try:
+            selected = qs.filter(pk=ifc_pk).first()
+        except (ValueError, ValidationError):
+            selected = None
+        if selected:
+            return selected
+    return qs.order_by("-created_at").first()
+
+
 UNITS_MAP: dict[str, str] = {
     "volume": "m³",
     "netvolume": "m³",
@@ -67,26 +87,6 @@ def _apply_units(props: dict) -> dict:
     return result
 
 
-def _resolve_ifc_file(project, request) -> IFCFile | None:
-    """Resolve the IFC file a viewer request targets.
-
-    Honors an optional ``?ifc=<pk>`` query param so embedders with a
-    multi-file selector (e.g. the Explore tab) can pin a specific model;
-    falls back to the latest completed file, matching the historical
-    behavior of every viewer endpoint.
-    """
-    qs = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-    ifc_pk = request.GET.get("ifc")
-    if ifc_pk:
-        try:
-            selected = qs.filter(pk=ifc_pk).first()
-        except (ValueError, ValidationError):
-            selected = None
-        if selected:
-            return selected
-    return qs.order_by("-created_at").first()
-
-
 class ViewerView(ProjectTabMixin, TemplateView):
     """Renders the 3D IFC viewer partial."""
 
@@ -97,19 +97,12 @@ class ViewerView(ProjectTabMixin, TemplateView):
         project = ctx["project"]
         ctx["castor_subtab"] = "viewer"
 
-        ifc_file = (
-            IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-            .order_by("-created_at")
-            .first()
-        )
+        ifc_file = _resolve_ifc_file(project, self.request)
         ctx["viewer_ifc_file"] = ifc_file
         ctx["ifc_file_url"] = ifc_file.file.url if ifc_file else None
 
-        # Deep-link "Back" affordance: callers (e.g. an asset's "View in 3D" or a
-        # Spaces pin's "Focus in 3D") pass ?return=<same-site path>&from=<label>.
-        # The viewer lives under 4D/5D, so without this the user has no one-click
-        # way back to the Facilities card they came from. Validate the return path
-        # against the current host to avoid an open redirect; ignore anything else.
+        # Deep-link "Back" affordance: callers pass ?return=<same-site path>&from=<label>.
+        # Validate against the current host to avoid an open redirect; ignore anything else.
         back = (self.request.GET.get("return") or "").strip()
         if back and url_has_allowed_host_and_scheme(
             back,
@@ -185,15 +178,11 @@ class ColormapView(ProjectAccessMixin, View):
             return JsonResponse({"error": "invalid by parameter"}, status=400)
 
         project = self.get_project()
-        ifc_file = (
-            IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
-            .order_by("-created_at")
-            .first()
-        )
+        ifc_file = _resolve_ifc_file(project, request)
         if not ifc_file:
-            return JsonResponse({"colormap": {}, "legend": []})
+            return JsonResponse({"by": by, "colormap": {}, "legend": []})
 
-        return JsonResponse(build_colormap(ifc_file, by))
+        return JsonResponse(build_colormap(ifc_file, by, project_id=str(project.pk)))
 
 
 class GapAnalysisView(ProjectAccessMixin, View):
@@ -220,7 +209,7 @@ class GapAnalysisView(ProjectAccessMixin, View):
                 {"rows": [], "by": by, "project": project},
             )
 
-        rows = build_gap_analysis(ifc_file, by)
+        rows = build_gap_analysis(ifc_file, by, project_id=str(project.pk))
 
         if request.GET.get("export"):
             return self._csv_response(rows, project.name)
@@ -427,8 +416,9 @@ class ViewerEmbedView(ProjectAccessMixin, View):
     a loading overlay, and a postMessage API for the parent tab.
 
     ``?ifc=<pk>`` pins a specific completed IFC file (defaults to latest).
-    ``?mode=inspect`` hides the 4D-specific UI (task link/unlink actions,
-    schedule block in the properties panel) for general-purpose embedding.
+    The template forwards the same pk to the fragments and colormap
+    endpoints, so the geometry, the .frag cache and the paint must all
+    resolve to one file.
     """
 
     def get(self, request, **kwargs: object) -> HttpResponse:
@@ -438,7 +428,6 @@ class ViewerEmbedView(ProjectAccessMixin, View):
             "project": project,
             "viewer_ifc_file": ifc_file,
             "ifc_file_url": ifc_file.file.url if ifc_file else None,
-            "inspect_mode": request.GET.get("mode") == "inspect",
         }
         response = render(request, "ifc_viewer/viewer_embed.html", ctx)
         response["X-Frame-Options"] = "SAMEORIGIN"
@@ -446,7 +435,11 @@ class ViewerEmbedView(ProjectAccessMixin, View):
 
 
 class ElementPropertiesView(ProjectAccessMixin, View):
-    """JSON — IFC entity properties for a GlobalId clicked in the 3D viewer."""
+    """JSON — IFC entity properties for a GlobalId clicked in the 3D viewer.
+
+    ``?ifc=<pk>`` scopes the lookup to the same file the embed is showing;
+    a GlobalId is only unique within one IFC file.
+    """
 
     def get(self, request, global_id: str, **kwargs: object) -> HttpResponse:
         from ifc_processor.models import IFCEntity
@@ -469,11 +462,15 @@ class ElementPropertiesView(ProjectAccessMixin, View):
             location = entity.spatial_container.entity.name or None
 
         from scheduling.models import TaskEntityBinding
+        from scheduling.services.governance.active_state import apply_trusted
 
+        # Package 6: only trusted bindings are schedule-model truth in the viewer.
         bindings = (
-            TaskEntityBinding.objects.filter(
-                entity_global_id=global_id,
-                task__project=project,
+            apply_trusted(
+                TaskEntityBinding.objects.filter(
+                    entity_global_id=global_id,
+                    task__project=project,
+                )
             )
             .select_related("task")
             .order_by("task__start_date")
@@ -489,6 +486,7 @@ class ElementPropertiesView(ProjectAccessMixin, View):
                 "actual_end": b.task.actual_end.isoformat() if b.task.actual_end else None,
                 "stage": b.task.stage,
                 "sub_stage": b.task.sub_stage,
+                "trust": "trusted",
             }
             for b in bindings
         ]
@@ -515,18 +513,23 @@ class TimelineView(ProjectAccessMixin, View):
     """JSON — slim weekly timeline summary (stats only; GlobalIds via detail)."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
-        from scheduling.services.timeline_payload import TimelinePayloadService
+        from scheduling.services.timeline_payload import (
+            TimelinePayloadService,
+            parse_mode,
+        )
 
         project = self.get_project()
-        return JsonResponse(TimelinePayloadService(project).build_summary())
+        mode = parse_mode(request.GET.get("mode"))
+        return JsonResponse(TimelinePayloadService(project).build_summary(mode=mode))
 
 
 class TimelineIntervalDetailView(ProjectAccessMixin, View):
-    """JSON — applied/confirmed GlobalId buckets for one timeline snapshot date."""
+    """JSON — trusted GlobalId buckets for one timeline snapshot date + mode."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
         from scheduling.services.timeline_payload import (
             TimelinePayloadService,
+            parse_mode,
             parse_snapshot_date,
         )
 
@@ -538,8 +541,9 @@ class TimelineIntervalDetailView(ProjectAccessMixin, View):
                 status=400,
             )
         include_no_task = request.GET.get("include_no_task", "1") != "0"
+        mode = parse_mode(request.GET.get("mode"))
         payload = TimelinePayloadService(project).build_interval_detail(
-            snapshot, include_no_task=include_no_task
+            snapshot, mode=mode, include_no_task=include_no_task
         )
         return JsonResponse(payload)
 

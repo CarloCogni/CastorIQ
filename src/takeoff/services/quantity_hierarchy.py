@@ -1357,6 +1357,22 @@ def attach_hierarchy_to_qty_prep(
         attach_unit_basis_display,
     )
 
+    export_rows = build_export_instance_rows(hierarchy)
+    intents = dict(qty_prep.get("source_mapping_intents") or {})
+    show = dict(qty_prep.get("show") or {})
+
+    def _stamp_mapping_sources(row: dict[str, Any]) -> None:
+        """Copy table-level source intents onto hierarchy rows for export provenance."""
+        row["classification_source"] = (
+            str(intents.get("classification_code") or "") if show.get("classification_code") else ""
+        )
+        row["package_boq_mapping_source"] = (
+            str(intents.get("package_boq_mapping") or "") if show.get("package_boq_mapping") else ""
+        )
+        row["work_package_source"] = (
+            str(intents.get("work_package") or "") if show.get("work_package") else ""
+        )
+
     for row in visible:
         if row.get("is_load_more"):
             continue
@@ -1366,6 +1382,7 @@ def attach_hierarchy_to_qty_prep(
         row.setdefault("missing_classification", False)
         row.setdefault("missing_package", False)
         row.setdefault("missing_work_package", False)
+        _stamp_mapping_sources(row)
         row["review_status"] = _review_status(row)
         row["computed_review_status"] = row["review_status"]
         row["review_status_display"] = row["review_status"]
@@ -1374,7 +1391,6 @@ def attach_hierarchy_to_qty_prep(
         row["ready_for_handoff"] = row["eligible_for_handoff"]
         attach_unit_basis_display(row)
 
-    export_rows = build_export_instance_rows(hierarchy)
     for row in export_rows:
         row.setdefault("classification_code", "")
         row.setdefault("package_boq_mapping", "")
@@ -1382,6 +1398,7 @@ def attach_hierarchy_to_qty_prep(
         row.setdefault("missing_classification", False)
         row.setdefault("missing_package", False)
         row.setdefault("missing_work_package", False)
+        _stamp_mapping_sources(row)
         row["review_status"] = _review_status(row)
         row["computed_review_status"] = row["review_status"]
         row["review_status_display"] = row["review_status"]
@@ -1405,11 +1422,12 @@ def attach_hierarchy_to_qty_prep(
     counts = hierarchy.get("counts") or {}
     eng = int(counts.get("matching_engineering_groups") or counts.get("matching_types") or 0)
     tech = int(counts.get("matching_types") or 0)
+    class_n = int(counts.get("matching_classes") or 0)
     qty_prep["hierarchy_footnote"] = (
         f"{int(counts.get('matching_elements') or 0)} elements · "
-        f"{eng} engineering groups"
-        + (f" · {tech} technical types" if tech and tech != eng else "")
-        + f" · {int(counts.get('matching_classes') or 0)} classes"
+        f"{eng} engineering group{'s' if eng != 1 else ''}"
+        + (f" · {tech} technical type{'s' if tech != 1 else ''}" if tech and tech != eng else "")
+        + f" · {class_n} class{'es' if class_n != 1 else ''}"
     )
     # Preserve full tree for child APIs / selection expansion (request-local only).
     qty_prep["_hierarchy_tree"] = hierarchy

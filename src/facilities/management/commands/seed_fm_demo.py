@@ -14,7 +14,9 @@ import datetime as dt
 import logging
 from pathlib import Path
 
+from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
+from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
@@ -36,8 +38,6 @@ from facilities.models import (
     WorkOrderStatusEvent,
 )
 from ifc_processor.models import IFCEntity, IFCSpatialElement
-from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand
 
 logger = logging.getLogger(__name__)
 
@@ -502,7 +502,6 @@ class Command(BaseCommand):
     def _spaces_point(self, project, user, floor, rooms, assets):
         # ensure a phase palette exists
         phase = ExplorePhase.objects.filter(project=project, name="Occupied").first()
-        hero_gid = ROOM_1A01_GID
 
         # reuse the existing 1A01 point if present, else create one
         pt = ExplorePoint.objects.filter(project=project, floor=floor, label="1A01").first()

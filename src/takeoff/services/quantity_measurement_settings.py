@@ -20,6 +20,9 @@ import logging
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from typing import Any
+from urllib.parse import parse_qsl
+
+from django.core import signing
 
 from takeoff.services.measurement_resolver import (
     COMPATIBLE_SOURCES,
@@ -28,6 +31,10 @@ from takeoff.services.measurement_resolver import (
     inventory_from_aggregate_row,
     inventory_has_source,
     normalize_measurement_type,
+)
+from takeoff.services.measurement_target import (
+    build_measurement_target_key,
+    parse_measurement_target_key,
 )
 from takeoff.services.quantity_output_units import QuantityOutputUnitsService
 from takeoff.services.quantity_prep_row_measurement import QuantityPrepRowMeasurementService
@@ -41,6 +48,192 @@ from takeoff.services.quantity_unit_conversion import (
 )
 
 logger = logging.getLogger(__name__)
+
+# PERF-15B-SAFETY: server-authenticated Measurement Apply scope (not browser JSON).
+MEASUREMENT_APPLY_SCOPE_SALT = "takeoff.qty.measurement_apply_scope.v1"
+MEASUREMENT_APPLY_SCOPE_MAX_AGE_SECONDS = 2 * 60 * 60
+MEASUREMENT_APPLY_SCOPE_VERSION = 1
+# Filter params that change which targets/coverage the modal issued.
+_MEASUREMENT_FILTER_SCOPE_KEYS: frozenset[str] = frozenset(
+    {
+        "semantic_classes",
+        "semantic_field",
+        "semantic_value",
+        "semantic_op",
+        "semantic_value_type",
+    }
+)
+
+
+def canonicalize_measurement_filter_scope(query: Mapping[str, Any] | str | None) -> str:
+    """Stable identity for filter state that affects Measurement Apply targets."""
+    pairs: list[tuple[str, str]] = []
+    if query is None:
+        return ""
+    if isinstance(query, str):
+        for key, value in parse_qsl(query, keep_blank_values=False):
+            if key in _MEASUREMENT_FILTER_SCOPE_KEYS and str(value).strip():
+                pairs.append((key, str(value).strip()))
+    elif hasattr(query, "lists"):
+        for key, values in query.lists():  # type: ignore[attr-defined]
+            if key not in _MEASUREMENT_FILTER_SCOPE_KEYS:
+                continue
+            for value in values:
+                if str(value).strip():
+                    pairs.append((str(key), str(value).strip()))
+    else:
+        for key in _MEASUREMENT_FILTER_SCOPE_KEYS:
+            raw = query.get(key) if hasattr(query, "get") else None
+            if raw is None:
+                continue
+            if isinstance(raw, (list, tuple)):
+                for value in raw:
+                    if str(value).strip():
+                        pairs.append((str(key), str(value).strip()))
+            elif str(raw).strip():
+                pairs.append((str(key), str(raw).strip()))
+    # Normalize multi-class lists to sorted unique CSV for stable compare.
+    by_key: dict[str, list[str]] = {}
+    for key, value in pairs:
+        by_key.setdefault(key, [])
+        if key == "semantic_classes":
+            for piece in value.split(","):
+                cls = piece.strip()
+                if cls and cls not in by_key[key]:
+                    by_key[key].append(cls)
+        else:
+            if value not in by_key[key]:
+                by_key[key].append(value)
+    if "semantic_classes" in by_key:
+        by_key["semantic_classes"] = sorted(by_key["semantic_classes"])
+    parts: list[str] = []
+    for key in sorted(by_key):
+        parts.append(f"{key}={','.join(by_key[key])}")
+    return "&".join(parts)
+
+
+def issue_measurement_apply_scope_token(
+    *,
+    user_id: Any,
+    project_id: Any,
+    ifc_file_id: Any,
+    ifc_file_hash: str,
+    ifc_class: str,
+    filter_scope: str,
+    target_keys: Sequence[str],
+    source_coverage: Mapping[str, Any],
+) -> str:
+    """Build a timestamped, tamper-evident scope token for one class Apply form."""
+    keys = _unique_preserve([str(k) for k in target_keys])
+    coverage = {
+        str(mt): {
+            str(src): {
+                "present": int((stats or {}).get("present") or 0),
+                "missing": int((stats or {}).get("missing") or 0),
+                "total": int((stats or {}).get("total") or 0)
+                if isinstance(stats, Mapping) and "total" in stats
+                else int((stats or {}).get("present") or 0)
+                + int((stats or {}).get("missing") or 0),
+                "partial": bool((stats or {}).get("partial"))
+                if isinstance(stats, Mapping) and "partial" in stats
+                else (
+                    int((stats or {}).get("present") or 0) > 0
+                    and int((stats or {}).get("missing") or 0) > 0
+                ),
+            }
+            for src, stats in (mt_map or {}).items()
+            if str(src).strip() and isinstance(stats, Mapping)
+        }
+        for mt, mt_map in (source_coverage or {}).items()
+        if str(mt).strip() and isinstance(mt_map, Mapping)
+    }
+    payload = {
+        "v": MEASUREMENT_APPLY_SCOPE_VERSION,
+        "uid": str(user_id),
+        "pid": str(project_id),
+        "fid": str(ifc_file_id),
+        "fh": str(ifc_file_hash or ""),
+        "cls": str(ifc_class or "").strip(),
+        "scope": str(filter_scope or ""),
+        "keys": keys,
+        "cov": coverage,
+    }
+    return signing.dumps(payload, salt=MEASUREMENT_APPLY_SCOPE_SALT, compress=True)
+
+
+def verify_measurement_apply_scope_token(
+    token: str,
+    *,
+    user: Any,
+    project: Any,
+    ifc_file: Any,
+    ifc_class: str,
+    filter_scope: str,
+    max_age: int = MEASUREMENT_APPLY_SCOPE_MAX_AGE_SECONDS,
+) -> dict[str, Any]:
+    """Verify signed Apply scope; return authoritative keys/coverage or an error."""
+    raw = str(token or "").strip()
+    if not raw:
+        return {"ok": False, "error": "Measurement apply scope is missing or expired."}
+    try:
+        payload = signing.loads(
+            raw,
+            salt=MEASUREMENT_APPLY_SCOPE_SALT,
+            max_age=max_age,
+        )
+    except signing.SignatureExpired:
+        return {"ok": False, "error": "Measurement apply scope expired. Re-open settings."}
+    except signing.BadSignature:
+        return {"ok": False, "error": "Measurement apply scope is invalid."}
+    if (
+        not isinstance(payload, dict)
+        or int(payload.get("v") or 0) != MEASUREMENT_APPLY_SCOPE_VERSION
+    ):
+        return {"ok": False, "error": "Measurement apply scope is invalid."}
+
+    if str(payload.get("uid") or "") != str(getattr(user, "pk", "") or ""):
+        return {"ok": False, "error": "Measurement apply scope does not match this user."}
+    if str(payload.get("pid") or "") != str(getattr(project, "pk", "") or ""):
+        return {"ok": False, "error": "Measurement apply scope does not match this project."}
+    if ifc_file is None:
+        return {"ok": False, "error": "No IFC source is available for measurement apply."}
+    if str(payload.get("fid") or "") != str(getattr(ifc_file, "pk", "") or ""):
+        return {"ok": False, "error": "Measurement apply scope does not match this IFC file."}
+    if str(payload.get("fh") or "") != str(getattr(ifc_file, "file_hash", "") or ""):
+        return {
+            "ok": False,
+            "error": "Measurement apply scope does not match the current IFC revision.",
+        }
+    token_class = str(payload.get("cls") or "").strip()
+    posted_class = str(ifc_class or "").strip()
+    if not token_class or token_class != posted_class:
+        return {"ok": False, "error": "Measurement apply scope does not match this IFC class."}
+    if str(payload.get("scope") or "") != str(filter_scope or ""):
+        return {
+            "ok": False,
+            "error": "Measurement apply scope does not match the current filter.",
+        }
+
+    keys = _unique_preserve([str(k) for k in (payload.get("keys") or [])])
+    if not keys:
+        return {"ok": False, "error": f"No measurement targets for class {posted_class}."}
+    cov_raw = payload.get("cov") if isinstance(payload.get("cov"), Mapping) else {}
+    coverage = {
+        str(mt): {
+            str(src): dict(stats)
+            for src, stats in (mt_map or {}).items()
+            if str(src).strip() and isinstance(stats, Mapping)
+        }
+        for mt, mt_map in cov_raw.items()
+        if str(mt).strip() and isinstance(mt_map, Mapping)
+    }
+    return {
+        "ok": True,
+        "error": None,
+        "ifc_class": token_class,
+        "target_keys": keys,
+        "source_coverage": coverage,
+    }
 
 
 def _unique_preserve(items: list[str]) -> list[str]:
@@ -127,6 +320,10 @@ def build_class_settings_rows(
     class_units: dict[str, dict[str, str]] | None = None,
     global_effective: dict[str, str] | None = None,
     project: Any | None = None,
+    user: Any | None = None,
+    ifc_file_id: Any | None = None,
+    ifc_file_hash: str = "",
+    filter_scope: str = "",
 ) -> list[dict[str, Any]]:
     """One settings card per IFC class in the current working filter scope."""
     from takeoff.services.quantity_output_units import (
@@ -202,6 +399,18 @@ def build_class_settings_rows(
                 if (r.get("parent_key") or r.get("type_key") or r.get("element_type_id"))
             }
             type_count = len(type_ids)
+        eng_count = type_count
+        tech_count = 0
+        if class_nodes:
+            eng_count = int(
+                class_nodes[0].get("engineering_group_count")
+                or class_nodes[0].get("type_count")
+                or type_count
+                or 0
+            )
+            tech_count = int(class_nodes[0].get("technical_type_count") or 0)
+        if tech_count == 0 and types:
+            tech_count = sum(int(r.get("technical_type_count") or 1) for r in types)
 
         coverage = discover_class_source_coverage(rows_scope)
         compatible: dict[str, list[str]] = {
@@ -281,18 +490,32 @@ def build_class_settings_rows(
             )
 
         visible_row_count = len(rows_visible)
+        target_keys = _unique_preserve(
+            [
+                str(r.get("measurement_target_key") or "")
+                for r in rows_scope
+                if r.get("measurement_target_key")
+            ]
+        )
         out.append(
             {
                 "ifc_class": cls,
                 "row_count": element_count or visible_row_count,
                 "visible_row_count": visible_row_count,
                 "element_count": element_count,
-                "type_count": type_count,
+                "type_count": eng_count or type_count,
+                "engineering_group_count": eng_count,
+                "technical_type_count": tech_count,
                 "count_label": (
                     f"{element_count} element{'' if element_count == 1 else 's'}"
                     + (
-                        f" · {type_count} type{'' if type_count == 1 else 's'}"
-                        if type_count
+                        f" · {eng_count} engineering group{'' if eng_count == 1 else 's'}"
+                        if eng_count
+                        else ""
+                    )
+                    + (
+                        f" · {tech_count} technical type{'' if tech_count == 1 else 's'}"
+                        if tech_count and tech_count != eng_count
                         else ""
                     )
                 ),
@@ -330,12 +553,21 @@ def build_class_settings_rows(
                 "class_output_override": bool(class_override),
                 "inherited_output": bool(not class_override and family and family != FAMILY_COUNT),
                 "measurement_type_labels": dict(MEASUREMENT_TYPE_LABELS),
-                "target_keys": _unique_preserve(
-                    [
-                        str(r.get("measurement_target_key") or "")
-                        for r in rows_scope
-                        if r.get("measurement_target_key")
-                    ]
+                "target_keys": target_keys,
+                # PERF-15B-SAFETY: opaque signed scope — never emit raw keys/coverage as form fields.
+                "apply_scope_token": (
+                    issue_measurement_apply_scope_token(
+                        user_id=getattr(user, "pk", None),
+                        project_id=getattr(project, "pk", None),
+                        ifc_file_id=ifc_file_id,
+                        ifc_file_hash=ifc_file_hash,
+                        ifc_class=cls,
+                        filter_scope=filter_scope,
+                        target_keys=target_keys,
+                        source_coverage=source_coverage,
+                    )
+                    if user is not None and project is not None and ifc_file_id and target_keys
+                    else ""
                 ),
             }
         )
@@ -439,6 +671,9 @@ def attach_measurement_settings_to_qty_prep(
     project: Any,
     user: Any,
     session: Any,
+    ifc_file_id: Any | None = None,
+    ifc_file_hash: str = "",
+    filter_scope: str = "",
 ) -> None:
     """Attach combined settings panel context onto ``qty_prep``."""
     units_svc = QuantityOutputUnitsService(project, user, session)
@@ -465,6 +700,8 @@ def attach_measurement_settings_to_qty_prep(
                 [r for r in rows if isinstance(r, dict)],
                 inventory_rows=inventory_rows,
             )
+    fid = ifc_file_id or (qty_prep.get("ifc_file_id") if isinstance(qty_prep, dict) else None)
+    fhash = ifc_file_hash or str(qty_prep.get("ifc_file_hash") or "")
     rows = build_class_settings_rows(
         prep_rows=list(qty_prep.get("prep_rows") or []),
         inventory_rows=inventory_rows,
@@ -472,6 +709,10 @@ def attach_measurement_settings_to_qty_prep(
         class_units=units_svc.get_class_units(),
         global_effective=units_svc.effective_output_units(),
         project=project,
+        user=user,
+        ifc_file_id=fid,
+        ifc_file_hash=fhash,
+        filter_scope=filter_scope,
     )
     qty_prep["measurement_settings"] = {
         "class_rows": rows,
@@ -541,6 +782,167 @@ def collect_class_apply_scope(
     return list(by_key.values())
 
 
+def _grain_of_measurement_key(key: str) -> str:
+    """Return measurement-target grain or empty string when unparseable."""
+    parsed = parse_measurement_target_key(key)
+    return str((parsed or {}).get("grain") or "")
+
+
+def _leaf_instance_keys(keys: Sequence[str]) -> list[str]:
+    """Instance-grain keys only (leaf elements for toast/affected counts)."""
+    return [str(k) for k in keys if _grain_of_measurement_key(str(k)) == "instance"]
+
+
+def resolve_class_hierarchy_display_keys(
+    *,
+    project: Any,
+    ifc_class: str,
+    leaf_instance_keys: Sequence[str],
+    hierarchy_tree: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Resolve class + descendant type measurement keys for hierarchy display.
+
+    Type keys come from the server hierarchy (including engineering-group
+    collapse), not from browser-visible rows. When ``leaf_instance_keys`` is
+    non-empty, only types that own at least one of those instances are
+    returned (affected descendants). When empty, all types under the class
+    are returned.
+    """
+    cls = str(ifc_class or "").strip()
+    class_key = build_measurement_target_key(grain="ifc_class", ifc_class=cls)
+    leaf_set = {str(k).strip() for k in leaf_instance_keys if str(k).strip()}
+
+    tree: Mapping[str, Any]
+    if isinstance(hierarchy_tree, Mapping) and (
+        hierarchy_tree.get("classes") or hierarchy_tree.get("type_by_key")
+    ):
+        tree = hierarchy_tree
+    else:
+        from takeoff.services.quantity_hierarchy import build_quantity_hierarchy
+
+        tree = build_quantity_hierarchy(project=project)
+
+    type_by_key = tree.get("type_by_key") if isinstance(tree.get("type_by_key"), Mapping) else {}
+    instances_by_type = (
+        tree.get("instances_by_type_key")
+        if isinstance(tree.get("instances_by_type_key"), Mapping)
+        else {}
+    )
+    technical_by_key = (
+        tree.get("technical_type_by_key")
+        if isinstance(tree.get("technical_type_by_key"), Mapping)
+        else {}
+    )
+
+    class_node: Mapping[str, Any] | None = None
+    for node in tree.get("classes") or []:
+        if isinstance(node, Mapping) and str(node.get("ifc_class") or "").strip() == cls:
+            class_node = node
+            break
+    if class_node is None and isinstance(tree.get("class_by_key"), Mapping):
+        for node in (tree.get("class_by_key") or {}).values():
+            if isinstance(node, Mapping) and str(node.get("ifc_class") or "").strip() == cls:
+                class_node = node
+                break
+
+    type_keys: list[str] = []
+    type_node_keys = list(class_node.get("type_keys") or []) if class_node else []
+    if not type_node_keys and isinstance(type_by_key, Mapping):
+        type_node_keys = [
+            tk
+            for tk, tnode in type_by_key.items()
+            if isinstance(tnode, Mapping) and str(tnode.get("ifc_class") or "").strip() == cls
+        ]
+
+    def _append_type_display_keys(tnode: Mapping[str, Any]) -> None:
+        """Collect every measurement key the UI may bind for this type/group row."""
+        mt_key = str(tnode.get("measurement_target_key") or "").strip()
+        if not mt_key:
+            mt_key = build_measurement_target_key(
+                grain="type",
+                ifc_class=cls,
+                element_type_id=tnode.get("element_type_id"),
+                type_name=tnode.get("type_name") or tnode.get("display_name"),
+            )
+        if mt_key:
+            type_keys.append(mt_key)
+        # UI rows sometimes bind name: tokens even when an id: key also exists.
+        name_token_key = build_measurement_target_key(
+            grain="type",
+            ifc_class=cls,
+            element_type_id=None,
+            type_name=tnode.get("type_name") or tnode.get("display_name"),
+        )
+        if name_token_key and name_token_key != mt_key:
+            type_keys.append(name_token_key)
+        for member_mt in tnode.get("member_measurement_target_keys") or []:
+            member_s = str(member_mt or "").strip()
+            if member_s:
+                type_keys.append(member_s)
+        for ttk in tnode.get("technical_type_keys") or []:
+            tech = technical_by_key.get(ttk) if isinstance(technical_by_key, Mapping) else None
+            if not isinstance(tech, Mapping):
+                continue
+            tech_mt = str(tech.get("measurement_target_key") or "").strip()
+            if tech_mt:
+                type_keys.append(tech_mt)
+            built_id = build_measurement_target_key(
+                grain="type",
+                ifc_class=cls,
+                element_type_id=tech.get("element_type_id"),
+                type_name=tech.get("type_name") or tech.get("display_name"),
+            )
+            if built_id:
+                type_keys.append(built_id)
+            built_name = build_measurement_target_key(
+                grain="type",
+                ifc_class=cls,
+                element_type_id=None,
+                type_name=tech.get("type_name") or tech.get("display_name"),
+            )
+            if built_name:
+                type_keys.append(built_name)
+
+    for tk in type_node_keys:
+        tnode = type_by_key.get(tk) if isinstance(type_by_key, Mapping) else None
+        if not isinstance(tnode, Mapping):
+            continue
+        if leaf_set:
+            owned = False
+            for inst in instances_by_type.get(tk) or []:
+                if not isinstance(inst, Mapping):
+                    continue
+                inst_mt = str(inst.get("measurement_target_key") or "").strip()
+                if inst_mt and inst_mt in leaf_set:
+                    owned = True
+                    break
+            if not owned:
+                continue
+        _append_type_display_keys(tnode)
+
+    return {
+        "class_key": class_key,
+        "type_keys": _unique_preserve(type_keys),
+    }
+
+
+def _verify_session_choice(
+    choices: Mapping[str, Mapping[str, str]],
+    key: str,
+    *,
+    measurement_type: str,
+    selected_source: str,
+) -> bool:
+    """True when session choice for ``key`` matches the applied setting."""
+    raw = choices.get(key)
+    if not isinstance(raw, Mapping):
+        return False
+    return (
+        str(raw.get("measurement_type") or "") == measurement_type
+        and str(raw.get("selected_source") or "") == selected_source
+    )
+
+
 def apply_class_settings(
     *,
     project: Any,
@@ -554,11 +956,21 @@ def apply_class_settings(
     known_target_keys: set[str] | None = None,
     inventory_rows: list[dict[str, Any]] | None = None,
     hierarchy_tree: Mapping[str, Any] | None = None,
+    target_keys: Sequence[str] | None = None,
+    source_coverage: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Apply measurement (+ optional output unit) to all targets of one IFC class.
 
     Uses full inventory/export + hierarchy tree so unloaded descendants receive
-    the same class choice. Instance, type, and class grains are all written.
+    the same class choice. Instance keys from the signed scope are preserved;
+    class-grain and all affected type-grain display keys are written as well.
+
+    PERF-15B / SAFETY: when ``target_keys`` is provided they must already be
+    server-authoritative (verified signed scope). Raw client key lists are never
+    unioned into ``known_target_keys``.
+
+    ``affected_targets`` is the leaf element (instance) count, not the total
+    number of session keys written.
     """
     cls = str(ifc_class or "").strip()
     mt = normalize_measurement_type(measurement_type)
@@ -600,48 +1012,119 @@ def apply_class_settings(
                 "error": f"Output unit {token!r} is not allowed for {mt}.",
             }
 
-    class_rows = collect_class_apply_scope(
-        prep_rows=prep_rows,
-        inventory_rows=inventory_rows,
-        hierarchy_tree=hierarchy_tree,
-        ifc_class=cls,
-    )
-    if not class_rows:
-        return {"ok": False, "error": f"No measurement targets for class {cls}."}
-
-    coverage = discover_class_source_coverage(class_rows)
-    available = list(coverage.get(mt, {}).get("available") or [])
-    if mt != "count" and source not in available:
-        return {
-            "ok": False,
-            "error": (
-                f"No compatible {mt} source {source!r} found on indexed "
-                f"{cls} instances in the current filter scope."
-            ),
+    posted_keys = _unique_preserve([str(k) for k in (target_keys or [])])
+    class_rows: list[dict[str, Any]] = []
+    src_stats: Mapping[str, Any] = {}
+    if posted_keys:
+        keys = posted_keys
+        # Authoritative coverage from verified scope (never raw browser JSON).
+        coverage_sources = {
+            str(k): dict(v) if isinstance(v, Mapping) else {}
+            for k, v in (source_coverage or {}).items()
+            if str(k or "").strip()
         }
-
-    keys = _unique_preserve(
-        [
-            str(r.get("measurement_target_key") or "")
-            for r in class_rows
-            if r.get("measurement_target_key")
+        mt_sources = coverage_sources.get(mt) or {}
+        available = [
+            src
+            for src, stats in mt_sources.items()
+            if isinstance(stats, Mapping) and int(stats.get("present") or 0) > 0
         ]
-    )
-    if not keys:
-        return {"ok": False, "error": f"No measurement targets for class {cls}."}
+        if mt != "count" and source not in available:
+            return {
+                "ok": False,
+                "error": (
+                    f"No compatible {mt} source {source!r} found on indexed "
+                    f"{cls} instances in the current filter scope."
+                ),
+            }
+        src_stats = mt_sources.get(source) if isinstance(mt_sources.get(source), Mapping) else {}
+    else:
+        class_rows = collect_class_apply_scope(
+            prep_rows=prep_rows,
+            inventory_rows=inventory_rows,
+            hierarchy_tree=hierarchy_tree,
+            ifc_class=cls,
+        )
+        if not class_rows:
+            return {"ok": False, "error": f"No measurement targets for class {cls}."}
 
-    known = set(known_target_keys or [])
-    known |= set(keys)
+        coverage = discover_class_source_coverage(class_rows)
+        available = list(coverage.get(mt, {}).get("available") or [])
+        if mt != "count" and source not in available:
+            return {
+                "ok": False,
+                "error": (
+                    f"No compatible {mt} source {source!r} found on indexed "
+                    f"{cls} instances in the current filter scope."
+                ),
+            }
+
+        keys = _unique_preserve(
+            [
+                str(r.get("measurement_target_key") or "")
+                for r in class_rows
+                if r.get("measurement_target_key")
+            ]
+        )
+        if not keys:
+            return {"ok": False, "error": f"No measurement targets for class {cls}."}
+        src_stats = (coverage.get(mt, {}).get("sources") or {}).get(source) or {}
+
+    leaf_keys = _leaf_instance_keys(keys)
+    display = resolve_class_hierarchy_display_keys(
+        project=project,
+        ifc_class=cls,
+        leaf_instance_keys=leaf_keys,
+        hierarchy_tree=hierarchy_tree,
+    )
+    class_key = str(display.get("class_key") or "")
+    type_keys = list(display.get("type_keys") or [])
+    keys_to_write = _unique_preserve([*keys, class_key, *type_keys])
+
+    # Signed/authoritative target_keys: known == keys written (never union client extras
+    # into the signed set). Rebuild path may widen with prior known allow-list.
+    known = set(keys_to_write)
+    if not posted_keys and known_target_keys is not None:
+        known |= {str(k).strip() for k in known_target_keys if str(k).strip()}
 
     meas_svc = QuantityPrepRowMeasurementService(project, user, session)
     result = meas_svc.apply_batch(
-        measurement_target_keys=keys,
+        measurement_target_keys=keys_to_write,
         measurement_type=mt,
         selected_source=source,
         known_target_keys=known,
     )
     if result.get("error"):
         return {"ok": False, "error": result["error"]}
+
+    choices = meas_svc.get_choices()
+    verify_keys = _unique_preserve([class_key, *type_keys, *leaf_keys])
+    failed = [
+        key
+        for key in verify_keys
+        if key
+        and not _verify_session_choice(choices, key, measurement_type=mt, selected_source=source)
+    ]
+    if (
+        failed
+        or not class_key
+        or not _verify_session_choice(
+            choices, class_key, measurement_type=mt, selected_source=source
+        )
+    ):
+        logger.error(
+            "measurement class apply session verify failed project=%s class=%s failed=%s",
+            getattr(project, "pk", None),
+            cls,
+            failed[:12],
+        )
+        return {
+            "ok": False,
+            "error": (
+                "Measurement settings were not fully written for hierarchy display "
+                f"keys on {cls}. Re-open Measurement settings and try again."
+            ),
+        }
 
     if token and family and family != FAMILY_COUNT:
         units_svc = QuantityOutputUnitsService(project, user, session)
@@ -658,25 +1141,36 @@ def apply_class_settings(
                 ),
             }
 
-    src_stats = (coverage.get(mt, {}).get("sources") or {}).get(source) or {}
-    applied = (result.get("result") or {}).get("applied") or len(keys)
-    element_count = 0
-    for r in class_rows:
-        if str(r.get("level") or "") == "class" and r.get("element_count"):
-            element_count = int(r.get("element_count") or 0)
-            break
+    # Leaf element count for toast honesty (not total session keys written).
+    element_count = len(leaf_keys)
+    if not element_count:
+        for r in class_rows:
+            if str(r.get("level") or "") == "class" and r.get("element_count"):
+                element_count = int(r.get("element_count") or 0)
+                break
     if not element_count:
         element_count = len([r for r in class_rows if str(r.get("level") or "") == "instance"])
     if not element_count:
         element_count = sum(int(r.get("element_count") or 0) for r in class_rows)
+    if not element_count and posted_keys:
+        element_count = (
+            int(src_stats.get("total") or 0)
+            or len([k for k in posted_keys if _grain_of_measurement_key(k) == "instance"])
+            or len(posted_keys)
+        )
+
     return {
         "ok": True,
         "ifc_class": cls,
         "measurement_type": mt,
         "selected_source": source,
         "output_unit": unit,
-        "affected_targets": applied,
+        "affected_targets": element_count,
         "element_count": element_count,
+        "class_key": class_key,
+        "type_keys_written": type_keys,
+        "instance_keys_written": leaf_keys,
+        "session_keys_written": len(keys_to_write),
         "source_coverage": {
             "present": int(src_stats.get("present") or 0),
             "missing": int(src_stats.get("missing") or 0),

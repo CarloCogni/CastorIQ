@@ -4,10 +4,10 @@ from django.db import migrations
 def backfill_project(apps, schema_editor):
     """Existing document folders were all asset folders; set their new project
     field from the asset so the central Documents tab can list them."""
-    Folder = apps.get_model("facilities", "AssetDocumentFolder")
-    for folder in Folder.objects.filter(project__isnull=True, asset__isnull=False).select_related(
-        "asset"
-    ):
+    asset_document_folder = apps.get_model("facilities", "AssetDocumentFolder")
+    for folder in asset_document_folder.objects.filter(
+        project__isnull=True, asset__isnull=False
+    ).select_related("asset"):
         folder.project_id = folder.asset.project_id
         folder.save(update_fields=["project"])
 

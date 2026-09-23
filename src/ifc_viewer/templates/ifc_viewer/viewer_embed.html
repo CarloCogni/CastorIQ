@@ -85,13 +85,10 @@ html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
         <button id="sel-ctx-hide"     style="display:block;width:100%;background:none;border:none;color:#e2e8f0;text-align:left;padding:6px 12px;cursor:pointer;">Hide</button>
         <div style="border-top:1px solid #475569;margin:4px 0;"></div>
         <button id="sel-ctx-deselect" style="display:block;width:100%;background:none;border:none;color:#94a3b8;text-align:left;padding:6px 12px;cursor:pointer;">Deselect</button>
-        <!-- 4D task actions — hidden in general-purpose inspect mode -->
-        {% if not inspect_mode %}
         <div style="border-top:1px solid #475569;margin:4px 0;"></div>
         <button id="sel-ctx-link"     data-action="link"     style="display:block;width:100%;background:none;border:none;color:#e2e8f0;text-align:left;padding:6px 12px;cursor:pointer;">🔗 Link to selected task</button>
         <button id="sel-ctx-unlink"   data-action="unlink"   style="display:block;width:100%;background:none;border:none;color:#e2e8f0;text-align:left;padding:6px 12px;cursor:pointer;">✂️ Unlink from task</button>
         <button id="sel-ctx-addtask"  data-action="add-task" style="display:block;width:100%;background:none;border:none;color:#e2e8f0;text-align:left;padding:6px 12px;cursor:pointer;">➕ Add another task</button>
-        {% endif %}
     </div>
 
     <!-- Element selection — properties float panel -->
@@ -113,24 +110,22 @@ html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
 <script type="importmap">
 {
   "imports": {
-    "three":                "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
-    "@thatopen/components": "https://cdn.jsdelivr.net/npm/@thatopen/components@2.4.11/+esm",
-    "@thatopen/fragments":  "https://cdn.jsdelivr.net/npm/@thatopen/fragments@2.4.0/+esm",
-    "web-ifc":              "{% static 'vendor/web-ifc/web-ifc-api.js' %}?v=2"
+    "three":               "{% static 'vendor/three/build/three.module.js' %}",
+    "@thatopen/fragments": "{% static 'vendor/thatopen-fragments/dist/index.min.mjs' %}",
+    "web-ifc":             "{% static 'vendor/web-ifc/web-ifc-api.js' %}?v=2"
   }
 }
 </script>
 
 <script type="module">
-import * as OBC   from "@thatopen/components";
+import * as OBC   from "{% static 'vendor/thatopen-components/dist/index.min.mjs' %}";
 import * as THREE from "three";
 
 {% if ifc_file_url %}
 const IFC_URL      = "{{ ifc_file_url }}";
 const FRAG_URL     = "{% url 'ifc_viewer:viewer_fragments' project.pk %}?ifc={{ viewer_ifc_file.pk }}";
-const COLORMAP_URL = "{% url 'ifc_viewer:viewer_colormap' project.pk %}";
+const COLORMAP_URL = "{% url 'ifc_viewer:viewer_colormap' project.pk %}?ifc={{ viewer_ifc_file.pk }}";
 const CSRF_TOKEN   = "{{ csrf_token }}";
-const INSPECT_MODE = {{ inspect_mode|yesno:"true,false" }};
 
 const container = document.getElementById("embed-canvas-wrap");
 const loadingEl = document.getElementById("embed-loading");
@@ -147,11 +142,18 @@ const meshToFragment      = new Map();   // InstancedMesh → Fragment (raycaste
 const expressIdToGlobalId = new Map();   // expressId → globalId (reverse of globalIdIndex)
 
 const C = {
-    tl_complete:    new THREE.Color('#10B981'),
-    tl_in_progress: new THREE.Color('#F59E0B'),
-    tl_delayed:     new THREE.Color('#EF4444'),
-    tl_no_task:     new THREE.Color('#D1D5DB'),
-    // not_started → hidden via fragment.setVisibility(false)
+    tl_complete:         new THREE.Color('#10B981'),
+    tl_in_progress:      new THREE.Color('#3B82F6'),
+    tl_in_progress_act:  new THREE.Color('#F59E0B'), /* Planned active-window only */
+    tl_delayed:          new THREE.Color('#EF4444'),
+    tl_delayed_late:     new THREE.Color('#B91C1C'),
+    tl_delayed_progress: new THREE.Color('#F97316'),
+    tl_no_actual_mid:    new THREE.Color('#F59E0B'),
+    tl_not_due:          new THREE.Color('#CBD5E1'),
+    tl_no_actual_data:   new THREE.Color('#7C3AED'),
+    tl_insufficient:     new THREE.Color('#A855F7'),
+    tl_no_task:          new THREE.Color('#64748B'),
+    // Truth+Context: future/not-due stay visible as muted grey (no hide by default)
 };
 
 // ── 1. Init ──────────────────────────────────────────────────────────
@@ -168,30 +170,18 @@ async function init() {
         components.init();
         world.scene.setup();
 
-        // Geometry cache disabled: the current @thatopen/fragments build does not
-        // reliably round-trip a saved .frag (load hangs/throws), so we always parse
-        // the IFC below. Correctness over the cache speed-up until versions are pinned.
-        const fragResp = { ok: false };
+        loadMsg.textContent = "Checking geometry cache…";
+        const fragResp = await fetch(FRAG_URL);
 
         if (fragResp.ok) {
-            // A stale or version-incompatible cache must not brick the viewer:
-            // any failure here clears the model so the IFC-parse path below runs.
-            try {
-                loadMsg.textContent = "Loading cached model…";
-                const fragData = new Uint8Array(await fragResp.arrayBuffer());
-                const fragmentsManager = components.get(OBC.FragmentsManager);
-                model = fragmentsManager.load(fragData);
-                world.scene.three.add(model);
-                buildIndex();
-                if (globalIdIndex.size === 0) {
-                    world.scene.three.remove(model);
-                    globalIdIndex.clear();
-                    fragmentIndex.clear();
-                    model = null;
-                }
-            } catch (fragErr) {
-                console.warn("[embed] Cached fragments failed — falling back to IFC parse:", fragErr);
-                try { if (model) world.scene.three.remove(model); } catch (_) { /* ignore */ }
+            loadMsg.textContent = "Loading cached model…";
+            const fragData = new Uint8Array(await fragResp.arrayBuffer());
+            const fragmentsManager = components.get(OBC.FragmentsManager);
+            model = fragmentsManager.load(fragData);
+            world.scene.three.add(model);
+            buildIndex();
+            if (globalIdIndex.size === 0) {
+                world.scene.three.remove(model);
                 globalIdIndex.clear();
                 fragmentIndex.clear();
                 model = null;
@@ -215,33 +205,18 @@ async function init() {
             const data = new Uint8Array(await resp.arrayBuffer());
             model = await ifcLoader.load(data);
             world.scene.three.add(model);
-            // Cache save disabled — see the note where the cache read is skipped.
+            _saveFragments(components, model);
             buildIndex();
         }
 
         loadingEl.style.display = "none";
         _initSelector();
         _captureHomeCamera();
+        window.__castorCameraPose = _cameraPose;
         window.parent.postMessage({ type: "castor:viewer-ready" }, "*");
         if (window.__castorPendingTimeline) {
             window.postMessage(window.__castorPendingTimeline, "*");
         }
-
-        // Standalone deep-link: /embed/?focus=<GlobalID> highlights + zooms the
-        // element on load. Used by "View in 3D" / "Focus in 3D", which open this
-        // page in a new tab (a top-level page loads reliably — a nested iframe
-        // can hang/throttle in a modal).
-        try {
-            const _focusGid = new URLSearchParams(location.search).get("focus");
-            if (_focusGid && globalIdIndex.has(_focusGid)) {
-                _lastHighlightIds = [_focusGid];
-                resetAllColors();
-                colorByGlobalIds([_focusGid], new THREE.Color("#f59e0b"));
-                _selectedGlobalId = _focusGid;
-                _syncFocusBtn();
-                focusOnGlobalId(_focusGid);
-            }
-        } catch (e) { console.warn("[embed] focus-on-load failed:", e); }
 
     } catch (err) {
         console.error("[embed] IFC init failed:", err);
@@ -410,6 +385,68 @@ function _captureHomeCamera() {
     _homeCameraTarget = (controls.target ?? new THREE.Vector3()).clone();
 }
 
+function _cameraPose() {
+    const cam = world?.camera?.three;
+    if (!cam) return null;
+    const target = world.camera.controls?.target;
+    return {
+        x: cam.position.x,
+        y: cam.position.y,
+        z: cam.position.z,
+        dist: target ? cam.position.distanceTo(target) : null,
+    };
+}
+
+function _applyViewerZoom(direction) {
+    const cam = world?.camera?.three;
+    const controls = world?.camera?.controls;
+    if (!cam) return;
+    const look = (controls && controls.target)
+        ? new THREE.Vector3(controls.target.x, controls.target.y, controls.target.z)
+        : new THREE.Vector3(0, 0, 0);
+    const offset = cam.position.clone().sub(look);
+    if (offset.lengthSq() < 1e-8) offset.set(10, 10, 10);
+    offset.multiplyScalar(direction === "in" ? 0.75 : 1.33);
+    const next = look.clone().add(offset);
+    if (controls && typeof controls.setLookAt === "function") {
+        controls.setLookAt(next.x, next.y, next.z, look.x, look.y, look.z, true);
+        return;
+    }
+    cam.position.copy(next);
+    cam.lookAt(look);
+}
+
+function _resetCameraView() {
+    const controls = world?.camera?.controls;
+    if (!controls) return;
+    _disableSectionBox();
+    if (model) {
+        for (const fragment of model.items) {
+            fragment.setVisibility(true);
+        }
+    }
+    if (_lastHighlightIds && _lastHighlightIds.length) {
+        enableWireframe(_lastHighlightIds);
+        _applyLastHighlightColors();
+    }
+    if (_homeCameraPos && _homeCameraTarget) {
+        controls.setLookAt(
+            _homeCameraPos.x, _homeCameraPos.y, _homeCameraPos.z,
+            _homeCameraTarget.x, _homeCameraTarget.y, _homeCameraTarget.z,
+            true
+        );
+        return;
+    }
+    if (model && typeof controls.fitToBox === "function") {
+        const box = new THREE.Box3().setFromObject(model);
+        if (!box.isEmpty()) {
+            controls.fitToBox(box, true);
+            return;
+        }
+    }
+    controls.setLookAt(10, 10, 10, 0, 0, 0, true);
+}
+
 function _restoreCameraState() {
     const controls = world?.camera?.controls;
     if (!controls || !_savedCameraPos || !_savedCameraTarget) return;
@@ -429,8 +466,21 @@ function resetAllColors() {
     _lastHighlightIds  = [];
     _lastHighlightColorMap = null;
     for (const fragment of model.items) {
+        if (fragment.mesh && fragment.mesh.userData && fragment.mesh.userData._tvOrigMat) {
+            fragment.mesh.material = fragment.mesh.userData._tvOrigMat;
+            delete fragment.mesh.userData._tvOrigMat;
+        }
         fragment.resetColor();
         fragment.setVisibility(true);
+        const mat = fragment.mesh && fragment.mesh.material;
+        const mats = Array.isArray(mat) ? mat : (mat ? [mat] : []);
+        mats.forEach((m) => {
+            m.transparent = false;
+            m.opacity = 1;
+            if (m.depthWrite === false) m.depthWrite = true;
+            if (m.emissive) m.emissive.setHex(0x000000);
+            if (m.emissiveIntensity != null) m.emissiveIntensity = 0;
+        });
     }
 }
 
@@ -442,6 +492,80 @@ function hideGlobalIds(globalIds) {
         if (!fragment) continue;
         fragment.setVisibility(false, [expressId]);
     }
+}
+
+function _ensureTvGhostMat() {
+    if (!window.__tvGhostMat) {
+        window.__tvGhostMat = new THREE.MeshLambertMaterial({
+            color: 0x94a3b8,
+            transparent: true,
+            opacity: 0.14,
+            depthWrite: false,
+        });
+    }
+    return window.__tvGhostMat;
+}
+
+/**
+ * Ghost future/unlinked context so solid status colours stay readable.
+ * Fragments that also carry status expressIds stay opaque.
+ */
+function ghostContextFragments(ghostGids, solidGids) {
+    if (!model) return;
+    _ensureTvGhostMat();
+    const solidEids = new Set();
+    for (const gid of solidGids || []) {
+        const eid = globalIdIndex.get(gid);
+        if (eid !== undefined) solidEids.add(eid);
+    }
+    const ghostEids = new Set();
+    for (const gid of ghostGids || []) {
+        const eid = globalIdIndex.get(gid);
+        if (eid !== undefined) ghostEids.add(eid);
+    }
+    let ghosted = 0;
+    for (const frag of model.items) {
+        if (!frag.mesh) continue;
+        let hasSolid = false;
+        let hasGhost = false;
+        for (const eid of frag.ids) {
+            if (solidEids.has(eid)) hasSolid = true;
+            if (ghostEids.has(eid)) hasGhost = true;
+            if (hasSolid && hasGhost) break;
+        }
+        if (hasSolid || !hasGhost) continue;
+        if (!frag.mesh.userData._tvOrigMat) {
+            frag.mesh.userData._tvOrigMat = frag.mesh.material;
+        }
+        frag.mesh.material = window.__tvGhostMat;
+        ghosted++;
+    }
+    return ghosted;
+}
+
+function clearTimelineEmphasize() {
+    /* Remove any leftover helpers from prior broken emphasize paths. */
+    const helpers = window.__tvEmphasizeHelpers;
+    if (helpers && helpers.length) {
+        for (const h of helpers) {
+            if (h.parent) h.parent.remove(h);
+            if (h.geometry) h.geometry.dispose();
+            if (h.material) h.material.dispose();
+        }
+    }
+    window.__tvEmphasizeHelpers = [];
+    window.__tvEmphasizeGids = [];
+}
+
+/**
+ * Exact-element selection colour only — no boxes, lines, or helpers.
+ * Parent restores cumulative paint before calling with new/empty GIDs.
+ */
+function applyTimelineEmphasize(gids) {
+    clearTimelineEmphasize();
+    if (!model || !gids || !gids.length) return;
+    colorByGlobalIds(gids, new THREE.Color("#facc15"));
+    window.__tvEmphasizeGids = gids.slice();
 }
 
 function wireframeNoTaskFragments(noTaskIds, solidIds) {
@@ -499,6 +623,8 @@ function _applyLastHighlightColors() {
     _applyHighlightColors(_lastHighlightIds, _lastHighlightColorMap);
 }
 
+// ── 3b. Focus helpers ────────────────────────────────────────────────
+
 function _isolateHighlighted(globalId) {
     if (!model) return;
     if (!_sectionEnabled) {
@@ -520,37 +646,6 @@ function _isolateHighlighted(globalId) {
     }
     _syncFocusBtn();
 }
-
-function _applyViewerZoom(direction) {
-    const controls = world?.camera?.controls;
-    if (!controls) return;
-    if (direction === "in") controls.dollyIn(0.5, true);
-    else if (direction === "out") controls.dollyOut(0.5, true);
-}
-
-function _resetCameraView() {
-    const controls = world?.camera?.controls;
-    if (!controls) return;
-    _disableSectionBox();
-    if (model) {
-        for (const fragment of model.items) {
-            fragment.setVisibility(true);
-        }
-    }
-    if (_lastHighlightIds && _lastHighlightIds.length) {
-        enableWireframe(_lastHighlightIds);
-        _applyLastHighlightColors();
-    }
-    if (_homeCameraPos && _homeCameraTarget) {
-        controls.setLookAt(
-            _homeCameraPos.x, _homeCameraPos.y, _homeCameraPos.z,
-            _homeCameraTarget.x, _homeCameraTarget.y, _homeCameraTarget.z,
-            true
-        );
-    }
-}
-
-// ── 3b. Focus helpers ────────────────────────────────────────────────
 
 function focusOnGlobalId(gid) {
     if (!gid || !model) return;
@@ -599,48 +694,138 @@ window.addEventListener("message", async (e) => {
     if (!msg || !msg.type) return;
 
     if (msg.type === "castor:timeline-colors") {
-        /* Time View programme playback — pending reapply if model not ready yet. */
         if (!model) {
             window.__castorPendingTimeline = msg;
             return;
         }
+        const incomingGen = msg.generation != null ? Number(msg.generation) : null;
+        const lastGen = window.__castorTlPaintGen != null ? Number(window.__castorTlPaintGen) : null;
+        if (incomingGen != null && lastGen != null && incomingGen < lastGen) {
+            /* Late/stale mode paint — do not overwrite a newer generation. */
+            return;
+        }
+        if (incomingGen != null) window.__castorTlPaintGen = incomingGen;
         window.__castorPendingTimeline = null;
-        const { not_started = [], in_progress = [], complete = [], no_task = [], delayed = [] } = msg;
+
+        /* Truth+Context fine paints (preferred) + legacy 4-bucket fallback. */
+        const paint = msg.paint || {};
+        const complete = paint.complete || msg.complete || [];
+        const in_progress = paint.in_progress || msg.in_progress || [];
+        const delayed = paint.delayed || msg.delayed || [];
+        const delayed_late = paint.delayed_late || [];
+        const delayed_progress = paint.delayed_progress || [];
+        const no_actual_mid = paint.no_actual_mid || [];
+        const not_due = paint.not_due || msg.not_started || [];
+        const no_actual_data = paint.no_actual_data || [];
+        const insufficient = paint.insufficient || [];
+        const no_task = paint.no_task || msg.no_task || [];
+        const hideFuture = !!msg.hide_future;
+
+        /* Actual uses shared blue; Planned may request amber via in_progress_amber. */
+        const inProgColor = (msg.mode === "planned" || msg.in_progress_amber)
+            ? C.tl_in_progress_act
+            : C.tl_in_progress;
 
         resetAllColors();
-        /* Per-expressId paint (same approach as package Time View / standalone viewer).
-           Fragment-wide setColor hid date-to-date differences when many GIDs
-           shared geometry and one stale "complete" state won the fragment. */
-        colorByGlobalIds(no_task || [], C.tl_no_task);
-        colorByGlobalIds(complete || [], C.tl_complete);
-        colorByGlobalIds(in_progress || [], C.tl_in_progress);
-        colorByGlobalIds(delayed || [], C.tl_delayed);
-        hideGlobalIds(not_started || []);
-        wireframeNoTaskFragments(no_task, [...in_progress, ...complete, ...delayed, ...not_started]);
+        clearTimelineEmphasize();
+        /* Paint order: muted context first, then status, then no-task wireframe last. */
+        colorByGlobalIds(not_due, C.tl_not_due);
+        colorByGlobalIds(insufficient, C.tl_insufficient);
+        colorByGlobalIds(no_actual_data, C.tl_no_actual_data);
+        colorByGlobalIds(no_actual_mid, C.tl_no_actual_mid);
+        colorByGlobalIds(complete, C.tl_complete);
+        colorByGlobalIds(in_progress, inProgColor);
+        colorByGlobalIds(delayed_progress, C.tl_delayed_progress);
+        colorByGlobalIds(delayed_late, C.tl_delayed_late);
+        colorByGlobalIds(delayed, C.tl_delayed);
+        colorByGlobalIds(no_task, C.tl_no_task);
+
+        const statusGids = [
+            ...complete, ...in_progress, ...delayed, ...delayed_late, ...delayed_progress,
+            ...no_actual_mid, ...no_actual_data, ...insufficient,
+        ];
+        /* Ghost future/unlinked context so status geometry stays readable through it. */
+        const ghostedFrags = (!hideFuture)
+            ? ghostContextFragments([...not_due, ...no_task], statusGids)
+            : 0;
+
+        if (hideFuture) {
+            hideGlobalIds(not_due);
+        }
+        wireframeNoTaskFragments(no_task, [
+            ...not_due, ...insufficient, ...no_actual_data, ...no_actual_mid,
+            ...in_progress, ...complete, ...delayed, ...delayed_late, ...delayed_progress,
+        ]);
 
         let mapped = 0;
-        const linkedBuckets = [...complete, ...in_progress, ...delayed];
+        const linkedBuckets = statusGids;
         for (const gid of linkedBuckets) {
             if (globalIdIndex.has(gid)) mapped++;
         }
-        let hiddenMapped = 0;
-        for (const gid of not_started) {
-            if (globalIdIndex.has(gid)) hiddenMapped++;
+        let mutedMapped = 0;
+        for (const gid of not_due) {
+            if (globalIdIndex.has(gid)) mutedMapped++;
         }
         const applied = {
             type: "castor:timeline-applied",
+            mode: msg.mode || null,
+            date: msg.date || null,
+            generation: incomingGen,
             linkedColoured: mapped,
-            hiddenMapped,
+            hiddenMapped: hideFuture ? mutedMapped : 0,
+            mutedMapped: hideFuture ? 0 : mutedMapped,
+            ghostedFragments: ghostedFrags || 0,
+            ghost_context: !hideFuture,
             complete: complete.length,
             in_progress: in_progress.length,
-            delayed: delayed.length,
-            not_started: not_started.length,
+            delayed: delayed.length + delayed_late.length + delayed_progress.length,
+            delayed_late: delayed_late.length,
+            delayed_progress: delayed_progress.length,
+            no_actual_mid: no_actual_mid.length,
+            not_started: not_due.length,
+            no_actual_data: no_actual_data.length,
+            insufficient: insufficient.length,
             no_task: no_task.length,
+            hide_future: hideFuture,
             gidIndexSize: globalIdIndex.size,
+            bucket_counts: {
+                complete: complete.length,
+                in_progress: in_progress.length,
+                delayed: delayed.length,
+                delayed_late: delayed_late.length,
+                delayed_progress: delayed_progress.length,
+                no_actual_mid: no_actual_mid.length,
+                not_due: not_due.length,
+                no_actual_data: no_actual_data.length,
+                insufficient: insufficient.length,
+                no_task: no_task.length,
+            },
         };
         window.__castorLastTlApplied = applied;
-        window.parent.postMessage(applied, "*");
+        /* Two rAFs so instance colours commit before parent/proof treat paint as settled. */
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (incomingGen != null
+                    && window.__castorTlPaintGen != null
+                    && incomingGen < window.__castorTlPaintGen) {
+                    return;
+                }
+                window.parent.postMessage(applied, "*");
+            });
+        });
         if (legendEl) legendEl.style.display = "none";
+        return;
+    }
+
+    if (msg.type === "castor:timeline-emphasize") {
+        if (!model) return;
+        applyTimelineEmphasize(msg.global_ids || []);
+        window.parent.postMessage({
+            type: "castor:timeline-emphasized",
+            count: (window.__tvEmphasizeGids || []).length,
+            gids: (window.__tvEmphasizeGids || []).slice(),
+            helperCount: (window.__tvEmphasizeHelpers || []).length,
+        }, "*");
         return;
     }
 
@@ -653,9 +838,13 @@ window.addEventListener("message", async (e) => {
             return;
         }
         try {
-            const resp = await fetch(`${COLORMAP_URL}?by=${by}`);
+            const resp = await fetch(`${COLORMAP_URL}&by=${encodeURIComponent(by)}`);
             if (!resp.ok) return;
             const data = await resp.json();
+            if (data.by && data.by !== by) {
+                console.warn("[embed] Colormap scheme mismatch:", data.by, "!=", by);
+                return;
+            }
             const colormap = data.colormap || {};
             const legend   = data.legend   || [];
             const byHex = {};
@@ -685,13 +874,63 @@ window.addEventListener("message", async (e) => {
 
     if (msg.type === "castor:highlight") {
         if (!model) return;
-        resetAllColors();
         _selectedGlobalId = null;
         const ids = msg.global_ids || [];
         _lastHighlightIds = ids;
         _lastHighlightColorMap = (msg.color_map && typeof msg.color_map === "object")
             ? msg.color_map
             : null;
+        /* Time View Now Playing: solid bright-yellow current activity +
+           ghosted / x-ray context so current geometry stays readable.
+           Dedicated materials avoid shared-material opacity leaks.
+           No camera move, no isolate/fit. */
+        if (msg.style === "now-playing") {
+            disableWireframe();
+            _disableSectionBox();
+            if (!window.__tvGhostMat) {
+                window.__tvGhostMat = new THREE.MeshLambertMaterial({
+                    color: 0x94a3b8,
+                    transparent: true,
+                    opacity: 0.06,
+                    depthWrite: false,
+                });
+            }
+            if (!window.__tvAccentMat) {
+                window.__tvAccentMat = new THREE.MeshLambertMaterial({
+                    color: 0xfacc15,
+                    emissive: 0xfde047,
+                    emissiveIntensity: 0.9,
+                    transparent: false,
+                    opacity: 1,
+                    depthWrite: true,
+                });
+            }
+            const accentEids = new Set();
+            for (const gid of ids) {
+                const eid = globalIdIndex.get(gid);
+                if (eid !== undefined) accentEids.add(eid);
+            }
+            for (const frag of model.items) {
+                if (!frag.mesh) continue;
+                if (!frag.mesh.userData._tvOrigMat) {
+                    frag.mesh.userData._tvOrigMat = frag.mesh.material;
+                }
+                let hasAccent = false;
+                for (const eid of frag.ids) {
+                    if (accentEids.has(eid)) { hasAccent = true; break; }
+                }
+                frag.mesh.material = hasAccent
+                    ? window.__tvAccentMat
+                    : window.__tvGhostMat;
+            }
+            if (ids.length) {
+                colorByGlobalIds(ids, new THREE.Color("#facc15"));
+                _selectedGlobalId = ids[0];
+            }
+            _syncFocusBtn();
+            return;
+        }
+        resetAllColors();
         if (ids.length) {
             enableWireframe(ids);
             _applyHighlightColors(ids, _lastHighlightColorMap);
@@ -752,40 +991,12 @@ window.addEventListener("message", async (e) => {
 
     if (msg.type === "castor:focus-element") {
         if (!model || !msg.global_id) return;
-        /* Links Focus Highlighted: camera only when isolate is explicitly false. */
-        if (msg.isolate === false) {
-            focusOnGlobalId(msg.global_id);
-            _syncFocusBtn();
-            return;
-        }
         if (msg.isolate === true) {
             _isolateHighlighted(msg.global_id);
             return;
         }
-        /* Default (Explore/FM): toggle section isolate when isolate omitted. */
-        if (!_sectionEnabled) {
-            /* An unresolvable GID (stale link, GID from another file) must be
-               a no-op: ghosting everything with nothing highlighted leaves the
-               model uniformly grey with no exit-focus button to recover. */
-            if (!globalIdIndex.has(msg.global_id) || !_lastHighlightIds.length) return;
-            /* First click: save camera, ghost all, highlight selected, section box, zoom in */
-            _saveCameraState();
-            disableWireframe();
-            for (const fragment of model.items) {
-                fragment.resetColor();
-                fragment.setVisibility(true);
-            }
-            colorByGlobalIds([...globalIdIndex.keys()], C.tl_no_task);
-            _applyLastHighlightColors();
-            _enableSectionBoxAroundElements(_lastHighlightIds);
-            focusOnGlobalId(msg.global_id);
-        } else {
-            /* Second click: exit focus mode, restore camera, re-apply wireframe */
-            _disableSectionBox();
-            _restoreCameraState();
-            enableWireframe(_lastHighlightIds);
-            _applyLastHighlightColors();
-        }
+        /* Camera focus only — do not hide or dim unrelated geometry. */
+        focusOnGlobalId(msg.global_id);
         _syncFocusBtn();
         return;
     }
@@ -894,7 +1105,7 @@ function _initSelector() {
             if (!_wireframeActive) {
                 resetAllColors();
             } else {
-                colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+                _applyLastHighlightColors();
             }
             _multiSelectedIds = idsToColor;
             if (_multiSelectedIds.length) {
@@ -909,7 +1120,7 @@ function _initSelector() {
                 if (!_wireframeActive) {
                     resetAllColors();
                 } else {
-                    colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+                    _applyLastHighlightColors();
                 }
                 _selectedGlobalId = null;
                 window.parent.postMessage({ type: "castor:element-selected", global_id: null }, "*");
@@ -923,7 +1134,7 @@ function _initSelector() {
             if (!_wireframeActive) {
                 resetAllColors();
             } else {
-                colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+                _applyLastHighlightColors();
             }
             _selectedGlobalId = null;
             window.parent.postMessage({ type: "castor:element-selected", global_id: null }, "*");
@@ -934,7 +1145,7 @@ function _initSelector() {
             if (!_wireframeActive) {
                 resetAllColors();
             } else {
-                colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+                _applyLastHighlightColors();
             }
         }
         _selectedGlobalId = globalId;
@@ -973,7 +1184,7 @@ function _initSelector() {
 
 // ── 6. Context menu & Properties panel ──────────────────────────────
 
-const ELEM_PROPS_URL_TMPL = "{% url 'ifc_viewer:viewer_element_props' project.pk 'ELEM_PH' %}?ifc={{ viewer_ifc_file.pk }}";
+const ELEM_PROPS_URL_TMPL = "{% url 'ifc_viewer:viewer_element_props' project.pk 'ELEM_PH' %}";
 
 const _ctxMenuEl    = document.getElementById("sel-ctx-menu");
 const _propsPanelEl = document.getElementById("sel-props-panel");
@@ -1030,8 +1241,7 @@ function _renderProps(data) {
         html += `</table>`;
     }
 
-    /* ── 4D linked tasks — suppressed in general-purpose inspect mode ── */
-    if (INSPECT_MODE) return html;
+    /* ── 4D linked tasks ─────────────────────────────────────────────── */
     const _4dTasks = data.linked_tasks || [];
     const _SC = {
         complete: { icon: "✅", color: "#10B981", label: "complete" },
@@ -1130,7 +1340,7 @@ document.getElementById("embed-focus-btn")?.addEventListener("click", () => {
 document.getElementById("embed-wireframe-btn")?.addEventListener("click", () => {
     if (_wireframeActive) disableWireframe();
     else                  enableWireframe(_lastHighlightIds);
-    colorByGlobalIds(_lastHighlightIds, new THREE.Color('#f59e0b'));
+    _applyLastHighlightColors();
 });
 
 document.addEventListener("click", (e) => {

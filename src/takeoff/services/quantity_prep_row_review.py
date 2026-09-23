@@ -68,6 +68,54 @@ def build_row_key(
     return f"v1|{grain_norm}|{ifc}|{type_part}|{basis_part}"
 
 
+def resolve_session_annotation_for_row(
+    annotations: Mapping[str, Any],
+    row: Mapping[str, Any],
+) -> Any | None:
+    """Resolve a session annotation with class → type → instance inheritance.
+
+    Exact ``row_key`` wins. Otherwise inherit from coarser grains so hierarchy
+    class/type working-row overrides apply to instance export/display rows
+    (TABLE-04 Measurement Settings / Assign values propagation contract).
+    """
+    if not annotations:
+        return None
+    key = str(row.get("row_key") or "").strip()
+    if key and key in annotations:
+        return annotations[key]
+
+    ifc = str(row.get("ifc_class") or "").strip()
+    if not ifc:
+        return None
+    basis = str(row.get("quantity_basis") or "").strip()
+    type_name = str(row.get("type_name") or "").strip()
+    # Prefer matching quantity basis, then dash-basis class defaults.
+    basis_candidates = [b for b in (basis, "") if b is not None]
+    seen_basis: set[str] = set()
+    for cand in basis_candidates:
+        if cand in seen_basis:
+            continue
+        seen_basis.add(cand)
+        if type_name:
+            type_key = build_row_key(
+                grain="type",
+                ifc_class=ifc,
+                type_name=type_name,
+                quantity_basis=cand,
+            )
+            if type_key in annotations:
+                return annotations[type_key]
+        class_key = build_row_key(
+            grain="ifc_class",
+            ifc_class=ifc,
+            type_name="",
+            quantity_basis=cand,
+        )
+        if class_key in annotations:
+            return annotations[class_key]
+    return None
+
+
 def sanitize_note(raw: str | None) -> str:
     """Strip tags/control chars and cap note length."""
     text = html.unescape(str(raw or ""))
@@ -229,9 +277,10 @@ def apply_session_reviews_to_ui(
         row["session_review_note"] = ""
         row["review_status_display"] = computed or "—"
 
-        hit = ann_map.get(key)
-        if not hit:
+        hit_raw = resolve_session_annotation_for_row(ann_map, row)
+        if not isinstance(hit_raw, Mapping):
             continue
+        hit = dict(hit_raw)
         status = str(hit.get("review_status") or "").strip()
         if status not in ALLOWED_REVIEW_STATUSES:
             continue

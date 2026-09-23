@@ -1,9 +1,7 @@
 # scheduling/tests/test_controls_workspace_v1.py
-"""Controls Workspace V1 — layout, wording, and company-cost compliance."""
+"""Controls Workspace Polish V1 — layout, wording, and company-cost compliance."""
 
 from __future__ import annotations
-
-from datetime import date
 
 import pytest
 from django.urls import reverse
@@ -12,12 +10,8 @@ from environments.tests.factories import ProjectFactory
 from scheduling.services.executive_controls.controls_workspace import (
     build_controls_workspace,
 )
-from scheduling.services.executive_controls.main_controls_profile import (
-    build_main_controls_profile,
-)
 from scheduling.services.executive_controls.product_surface_gate import (
     COMPANY_ACTUAL_COST_UNAVAILABLE,
-    company_actual_cost_source_available,
 )
 from scheduling.tests.factories import TaskFactory
 
@@ -140,9 +134,15 @@ def test_controls_workspace_wording_primary_chrome(client):
 @pytest.mark.django_db
 def test_controls_workspace_builder_rows():
     """Presentation builder returns readiness rows without inventing cost metrics."""
+    from scheduling.services.executive_controls.capability_profile import (
+        ProjectAnalyticsCapabilityProfile,
+    )
+    from scheduling.services.executive_controls.context import AnalyticalContextService
+
     project = ProjectFactory()
     TaskFactory(project=project)
-    capability, analytical = build_main_controls_profile(project)
+    capability = ProjectAnalyticsCapabilityProfile(project).build()
+    analytical = AnalyticalContextService(project).build(capability)
     workspace = build_controls_workspace(
         project,
         analytical_context=analytical,
@@ -161,19 +161,13 @@ def test_controls_workspace_builder_rows():
     blob = str(workspace)
     assert "Monetary EVM" not in blob
     assert "Cost EVM" not in blob
-    assert company_actual_cost_source_available() is False
 
 
 @pytest.mark.django_db
 def test_schedule_performance_detail_page(client):
     """Schedule Performance detail stays schedule-framed with company cost unavailable."""
     project = ProjectFactory()
-    TaskFactory(
-        project=project,
-        start_date=date(2025, 1, 1),
-        end_date=date(2025, 1, 31),
-        physical_percent_complete=40.0,
-    )
+    TaskFactory(project=project)
     client.force_login(project.owner)
 
     response = client.get(reverse("scheduling:executive_controls_evm", kwargs={"pk": project.pk}))

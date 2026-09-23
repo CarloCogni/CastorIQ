@@ -204,3 +204,131 @@ def field_meta_json_by_key(fields: Sequence[Mapping[str, Any]]) -> str:
             "sample_cap": len(list(raw.get("sample_values") or [])),
         }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+def build_lazy_field_catalogue_context(
+    *,
+    project: Any,
+    query: Mapping[str, Any],
+    ifc_file: Any | None = None,
+    selected_classes: Sequence[str] | None = None,
+    mode: str = "filter",
+    mark_added_keys: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """Authoritative grouped picker catalogue for the lazy HTMX endpoint.
+
+    Runs a full discover_catalogue scan once. Does not mutate prep rows or
+    session state. ``mode`` is ``filter`` or ``column`` (column includes table
+    optional fields).
+    """
+    from takeoff.services.ifc_semantic_fields import (
+        discover_semantic_fields,
+        enrich_prep_rows_with_entity_semantics,
+    )
+    from takeoff.services.quantity_entity_filter import parse_selected_classes
+    from takeoff.services.quantity_table_layout import OPTIONAL_TABLE_COLUMNS
+
+    # Prefer explicit classes; else parse from query (same as Quantities GET).
+    classes = [str(c) for c in (selected_classes or []) if str(c).strip()]
+    if not classes:
+        try:
+            classes = list(parse_selected_classes(query) or [])
+        except Exception:
+            classes = []
+
+    # Minimal prep stub — discovery only needs enrichment meta from the scan.
+    enrichment = enrich_prep_rows_with_entity_semantics(
+        project,
+        [{"ifc_class": "", "type_name": "", "level": "class", "row_key": "_catalogue"}],
+        selected_prop_columns=[],
+        ifc_file=ifc_file,
+        discover_catalogue=True,
+    )
+    discovery = discover_semantic_fields(
+        project,
+        [],
+        enrichment_meta=enrichment,
+    )
+    catalogue_fields = list(discovery.get("filter_catalogue") or [])
+    if classes:
+        selected_set = set(classes)
+        scoped: list[dict[str, Any]] = []
+        for f in catalogue_fields:
+            entry = dict(f)
+            present = {str(c) for c in (entry.get("classes_present") or []) if str(c)}
+            if not present and not str(entry.get("key") or "").startswith("prop:"):
+                entry["scope_note"] = ""
+                scoped.append(entry)
+                continue
+            if not present:
+                entry["scope_note"] = "Class coverage unknown"
+                scoped.append(entry)
+                continue
+            overlap = present & selected_set
+            if not overlap:
+                continue
+            if selected_set - present:
+                entry["scope_note"] = "Present in some selected classes only: " + ", ".join(
+                    sorted(overlap)
+                )
+                entry["partial_in_scope"] = True
+            else:
+                entry["scope_note"] = ""
+                entry["partial_in_scope"] = False
+            scoped.append(entry)
+        catalogue_fields = scoped
+
+        scoped_props: list[dict[str, Any]] = []
+        for d in enrichment.get("property_columns_available") or []:
+            entry = dict(d)
+            present = {str(c) for c in (entry.get("classes_present") or []) if str(c)}
+            if present and not (present & selected_set):
+                continue
+            if present and (selected_set - present):
+                entry["partial_in_scope"] = True
+                entry["scope_note"] = "Present in some selected classes only: " + ", ".join(
+                    sorted(present & selected_set)
+                )
+            scoped_props.append(entry)
+        prop_cols = scoped_props
+    else:
+        prop_cols = list(enrichment.get("property_columns_available") or [])
+
+    picker_fields = list(catalogue_fields)
+    seen = {str(f.get("key")) for f in picker_fields if f.get("key")}
+    for d in (
+        *prop_cols,
+        *(enrichment.get("structure_columns_available") or []),
+        *(enrichment.get("classref_available") or []),
+    ):
+        k = str(d.get("key") or "")
+        if k and k not in seen:
+            picker_fields.append(dict(d))
+            seen.add(k)
+
+    mode_key = _str(mode).lower() or "filter"
+    if mode_key == "column":
+        hierarchy = build_picker_hierarchy(
+            picker_fields,
+            include_table_fields=list(OPTIONAL_TABLE_COLUMNS),
+        )
+    else:
+        hierarchy = build_picker_hierarchy(picker_fields)
+
+    scope_label = (
+        ", ".join(classes)
+        if classes
+        else ("All classes in this model" if mode_key == "column" else "All classes")
+    )
+    return {
+        "hierarchy": hierarchy,
+        "field_meta_json": field_meta_json_by_key(catalogue_fields),
+        "field_samples_json": samples_json_by_key(picker_fields),
+        "scope_label": scope_label,
+        "selected_classes": classes,
+        "mode": mode_key,
+        "mark_added_keys": list(mark_added_keys or []),
+        "entity_count_scanned": int(enrichment.get("entity_count_scanned") or 0),
+        "field_count": sum(int(f.get("count") or 0) for f in hierarchy),
+        "catalogue_empty": not hierarchy,
+    }

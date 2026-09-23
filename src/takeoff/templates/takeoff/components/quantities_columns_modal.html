@@ -33,10 +33,10 @@
 
         {% if sem.selected_classes %}
           {% with scope_label=sem.selected_classes|join:", " %}
-          {% include "takeoff/components/quantities_field_picker.html" with picker_id="qty-column-field" hierarchy=sem.column_picker_hierarchy|default:sem.picker_hierarchy mode="column" exclude_keys=None scope_label=scope_label option_testid="qty-column-field-option" tree_testid="qty-column-field-list" no_matches_testid="qty-column-field-empty" mark_added_keys=layout.visible %}
+          {% include "takeoff/components/quantities_field_picker_shell.html" with picker_id="qty-column-field" mode="column" selected_key="" exclude_keys=None scope_label=scope_label option_testid="qty-column-field-option" tree_testid="qty-column-field-list" no_matches_testid="qty-column-field-empty" mark_added=layout.col_order_param %}
           {% endwith %}
         {% else %}
-          {% include "takeoff/components/quantities_field_picker.html" with picker_id="qty-column-field" hierarchy=sem.column_picker_hierarchy|default:sem.picker_hierarchy mode="column" exclude_keys=None scope_label="All classes in this model" option_testid="qty-column-field-option" tree_testid="qty-column-field-list" no_matches_testid="qty-column-field-empty" mark_added_keys=layout.visible %}
+          {% include "takeoff/components/quantities_field_picker_shell.html" with picker_id="qty-column-field" mode="column" selected_key="" exclude_keys=None scope_label="All classes in this model" option_testid="qty-column-field-option" tree_testid="qty-column-field-list" no_matches_testid="qty-column-field-empty" mark_added=layout.col_order_param %}
         {% endif %}
 
         <div class="mt-2 d-none" id="qty-column-calc-wrap" data-testid="qty-column-calc-wrap">
@@ -72,16 +72,16 @@
               </span>
               <a class="btn btn-sm btn-outline-secondary py-0 {% if not col.can_move_up %}disabled{% endif %}"
                  data-testid="qty-col-move-up"
-                 href="?{% for key, values in request.GET.lists %}{% if key != 'col_order' and key != 'col_order_add' and key != 'col_order_remove' and key != 'col_order_move' and key != 'sem_cols' and key != 'sem_cols_add' and key != 'table_layout' %}{% for value in values %}{{ key }}={{ value|urlencode }}&amp;{% endfor %}{% endif %}{% endfor %}table_layout=v2&amp;col_order={{ layout.col_order_param|urlencode }}&amp;col_order_move={{ col.key|urlencode }}:up"
+                 href="{{ col.move_up_href }}"
                  title="Move up">↑</a>
               <a class="btn btn-sm btn-outline-secondary py-0 {% if not col.can_move_down %}disabled{% endif %}"
                  data-testid="qty-col-move-down"
-                 href="?{% for key, values in request.GET.lists %}{% if key != 'col_order' and key != 'col_order_add' and key != 'col_order_remove' and key != 'col_order_move' and key != 'sem_cols' and key != 'sem_cols_add' and key != 'table_layout' %}{% for value in values %}{{ key }}={{ value|urlencode }}&amp;{% endfor %}{% endif %}{% endfor %}table_layout=v2&amp;col_order={{ layout.col_order_param|urlencode }}&amp;col_order_move={{ col.key|urlencode }}:down"
+                 href="{{ col.move_down_href }}"
                  title="Move down">↓</a>
-              {% if col.removable %}
+              {% if col.removable and col.remove_href %}
               <a class="btn btn-sm btn-outline-danger py-0"
                  data-testid="qty-col-remove"
-                 href="?{% for key, values in request.GET.lists %}{% if key != 'col_order' and key != 'col_order_add' and key != 'col_order_remove' and key != 'col_order_move' and key != 'sem_cols' and key != 'sem_cols_add' and key != 'table_layout' %}{% for value in values %}{{ key }}={{ value|urlencode }}&amp;{% endfor %}{% endif %}{% endfor %}table_layout=v2&amp;col_order={{ layout.col_order_param|urlencode }}&amp;col_order_remove={{ col.key|urlencode }}"
+                 href="{{ col.remove_href }}"
                  title="Remove column">Remove</a>
               {% endif %}
             </li>
@@ -118,6 +118,21 @@
 
   var selectedLabel = "";
 
+  function resetAddForm() {
+    addHidden.value = "";
+    selectedLabel = "";
+    if (calcHidden) calcHidden.value = "";
+    if (calcSelect) {
+      calcSelect.dataset.userTouched = "";
+      calcSelect.value = "none";
+    }
+    if (window.CastorQtyFieldPicker.clearPickerSelection) {
+      window.CastorQtyFieldPicker.clearPickerSelection(picker);
+    }
+    setSubmitLabel();
+    syncCalc();
+  }
+
   function setSubmitLabel() {
     if (!submitBtn) return;
     if (!addHidden.value) {
@@ -153,17 +168,36 @@
   }
 
   function wire() {
-    if (picker.dataset.pickerReady === "1") {
-      if (picker._qtyPicker) picker._qtyPicker.resetSearch();
-      return;
-    }
-    window.CastorQtyFieldPicker.init(picker, {
-      onSelect: function (key, meta) {
-        addHidden.value = key || "";
-        selectedLabel = (meta && meta.label) || key || "";
-        if (calcSelect) calcSelect.dataset.userTouched = "";
+    if (!picker) return;
+    // Never inherit Filter Field selection into Add Column.
+    picker.setAttribute("data-selected-key", "");
+    picker.dataset.selectedKey = "";
+    picker._onSelect = function (key, meta) {
+      if (meta && meta.alreadyAdded) {
+        addHidden.value = "";
+        selectedLabel = "";
         setSubmitLabel();
         syncCalc();
+        return;
+      }
+      addHidden.value = key || "";
+      selectedLabel = (meta && meta.label) || key || "";
+      if (calcSelect) calcSelect.dataset.userTouched = "";
+      setSubmitLabel();
+      syncCalc();
+    };
+    window.CastorQtyFieldPicker.ensureCatalogue(picker, {
+      clearSelection: true,
+      onSelect: picker._onSelect,
+      onReady: function () {
+        window.CastorQtyFieldPicker.clearPickerSelection(picker);
+        addHidden.value = "";
+        selectedLabel = "";
+        setSubmitLabel();
+        syncCalc();
+        if (picker._qtyPicker) picker._qtyPicker.resetSearch();
+        var search = document.getElementById("qty-column-field-search");
+        if (search) search.focus();
       }
     });
   }
@@ -176,20 +210,17 @@
   }
 
   if (modal) {
+    modal.addEventListener("show.bs.modal", function () {
+      // Clear before paint so Add starts disabled with no inherited selection.
+      resetAddForm();
+    });
     modal.addEventListener("shown.bs.modal", function () {
+      resetAddForm();
       wire();
-      addHidden.value = "";
-      selectedLabel = "";
-      if (calcHidden) calcHidden.value = "";
-      if (calcSelect) {
-        calcSelect.dataset.userTouched = "";
-        calcSelect.value = "none";
-      }
-      setSubmitLabel();
-      syncCalc();
-      if (picker && picker._qtyPicker) picker._qtyPicker.resetSearch();
-      var search = document.getElementById("qty-column-field-search");
-      if (search) search.focus();
+    });
+    modal.addEventListener("hidden.bs.modal", function () {
+      // Cancel / close must not keep a stale column selection for next open.
+      resetAddForm();
     });
   }
 
@@ -203,6 +234,7 @@
       var opt = picker.querySelector('.qty-field-picker-option[data-field-key="' + addHidden.value + '"]');
       if (opt && opt.getAttribute("data-already-added") === "1") {
         ev.preventDefault();
+        resetAddForm();
         return;
       }
       syncCalc();
@@ -212,7 +244,7 @@
       }
     });
   }
-  wire();
+  setSubmitLabel();
 })();
 </script>
 {% endwith %}

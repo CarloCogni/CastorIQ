@@ -80,8 +80,6 @@
                         Missing evidence means not found in this IFC export — not unsupported forever.</li>
                     <li>Unresolved Data Register — counts only included schema gaps for counting source intents; no fake readiness percentages.
                         Session row reviews do not change these counts. Session manual mapping values may clear mapping gaps for that row only.</li>
-                    <li>Preparation Data Model Visual Summary — count charts from generated rows only (Advanced).</li>
-                    <li>Quantity Preparation Insights — deterministic operational notes (not AI).</li>
                     <li>Raw Indexed Quantity Inventory — input evidence only, under Advanced.</li>
                 </ul>
 
@@ -108,7 +106,8 @@
                     <li>Not mapped means intentional blank — not counted as missing.</li>
                     <li>Future Modify handoff / Manual field count as unresolved mapping gaps until a session value is entered.</li>
                     <li>Package Mapping is preparation grouping — this screen does not generate BOQ or cost output.</li>
-                    <li>Send unresolved rows to Castor Modify is disabled in this slice.</li>
+                    <li>This screen has no handoff into Castor Modify — the Unresolved Data Register
+                        only reports how many rows would be eligible.</li>
                     <li>Advanced tools “Export legacy QTO cache” dumps the optional legacy QTO cache only
                         (may include cost/cache fields if present). It does not export the generated
                         preparation data model, schema, source intent, row reviews, or manual mapping values.

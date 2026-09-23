@@ -1,0 +1,55 @@
+<!-- scheduling/components/executive_resources_help_modal.html -->
+<div class="modal fade" id="resourcesReadinessHelpModal" tabindex="-1" aria-labelledby="resourcesReadinessHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+            <div class="modal-header border-bottom px-4 py-3">
+                <h2 class="modal-title fw-semibold fs-6 mb-0" id="resourcesReadinessHelpLabel">
+                    <i class="bi bi-people me-2 text-primary"></i>
+                    How Resource / Cost Data Readiness works
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body px-4 py-4 small">
+                <p class="fw-semibold fs-7 mb-2">What this page shows</p>
+                <p class="text-secondary mb-4">
+                    Assignment data readiness for Executive Controls: coverage, manhour units from
+                    recorded schedule resource assignments, and source/provenance labels.
+                    It is <strong>not</strong> resource planning, headcount, leveling, payroll, attendance,
+                    or company/ERP spend.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">Lifecycle / source</p>
+                <p class="text-secondary mb-4">
+                    Totals prefer <strong>canonical ResourceAssignment</strong>. P6 is used only if this
+                    project has no canonical assignments yet. Legacy pilots may lack
+                    <code>source_version</code>; that gap is labelled, not hidden.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">How to read</p>
+                <p class="text-secondary mb-4">
+                    Manhours are assignment units, not attendance.
+                    Equivalent workforce (if shown in advanced) estimates effort from manhours divided by
+                    working-day assumptions — never site headcount.
+                    <strong>Unavailable</strong> means required data is missing or not meaningful — it is
+                    never treated as zero.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">Who uses it</p>
+                <p class="text-secondary mb-4">
+                    Project controls checking whether schedule assignment cost/unit data is ready for
+                    assignment-basis EVM indicators — before trusting deeper analytics.
+                </p>
+
+                <p class="fw-semibold fs-7 mb-2">Caveats</p>
+                <div class="d-flex flex-column gap-1 text-secondary" data-testid="resources-help-non-claims">
+                    <span><i class="bi bi-dot"></i>Not site headcount</span>
+                    <span><i class="bi bi-dot"></i>Not resource leveling</span>
+                    <span><i class="bi bi-dot"></i>Not full resource planning</span>
+                    <span><i class="bi bi-dot"></i>Not full cost management</span>
+                    <span><i class="bi bi-dot"></i>Assignment units are not attendance records</span>
+                    <span><i class="bi bi-dot"></i>Workforce curves and time-phased histograms remain deferred</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

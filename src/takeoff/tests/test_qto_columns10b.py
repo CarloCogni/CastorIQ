@@ -259,7 +259,7 @@ def test_enrich_same_name_types_via_parent_key():
     )
     tree = build_quantity_hierarchy(project=project, ifc_file=ifc)
     expanded = {c["node_key"] for c in tree["classes"]} | set(
-        (tree["classes"][0].get("type_keys") or [])
+        tree["classes"][0].get("type_keys") or []
     )
     visible = flatten_visible_hierarchy_rows(tree, expanded=expanded)
     col = "prop:Pset_Demo.Tag"

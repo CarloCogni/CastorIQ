@@ -66,7 +66,122 @@ CONTRACT_VERSION = QuantityEditableTable.CONTRACT_VERSION_V1
 EDITABLE_TABLE_QUERY_PARAM = "editable_table"
 ACTIVE_SESSION_PREFIX = "qty_editable_active"
 DIRTY_SESSION_PREFIX = "qty_editable_dirty"
+PENDING_RESTORE_PREFIX = "qty_editable_pending_restore"
 NAME_MAX_LENGTH = 120
+
+
+def pending_restore_session_key(project_id: UUID | str) -> str:
+    """Session key for deferred Open rematch (PERF-15B)."""
+    return f"{PENDING_RESTORE_PREFIX}:{project_id}"
+
+
+def apply_pending_editable_table_restore(
+    session: MutableMapping[str, Any],
+    project_id: UUID | str,
+    qty_prep: MutableMapping[str, Any],
+) -> dict[str, Any]:
+    """Rematch stashed Open assignments/reviews onto current row_keys once.
+
+    Called from the redirected GET rebuild so Open POST does not rebuild.
+    Clears the pending payload after apply. Returns a restore_report shape.
+    """
+    key = pending_restore_session_key(project_id)
+    pending = session.pop(key, None)
+    try:
+        session.modified = True  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    report: dict[str, Any] = {
+        "unmatched_assignment_targets": [],
+        "ambiguous_assignment_targets": [],
+    }
+    if not isinstance(pending, Mapping):
+        qty_prep["editable_restore_report"] = report
+        return report
+
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for bucket in (
+        qty_prep.get("prep_rows_export"),
+        qty_prep.get("prep_rows"),
+        qty_prep.get("prep_rows_aggregate_legacy"),
+    ):
+        for row in bucket or []:
+            if not isinstance(row, dict) or row.get("is_load_more"):
+                continue
+            rk = str(row.get("row_key") or "")
+            if not rk or rk in seen:
+                continue
+            seen.add(rk)
+            rows.append(row)
+
+    grain = str(qty_prep.get("prep_row_grain") or "type")
+    rows_by_mt: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        level = str(row.get("level") or "")
+        g = (
+            "instance"
+            if level == "instance"
+            else (
+                "type"
+                if level == "type"
+                else (
+                    "ifc_class"
+                    if level == "class"
+                    else (grain if grain != "hierarchy" else "ifc_class")
+                )
+            )
+        )
+        mt = str(row.get("measurement_target_key") or "") or _mt_key_from_row(row, g)
+        rows_by_mt.setdefault(mt, []).append(row)
+
+    assign_raw = pending.get("assignments_by_mt") or {}
+    mapping_ann: dict[str, Any] = {}
+    unmatched: list[str] = []
+    ambiguous: list[str] = []
+    if isinstance(assign_raw, Mapping):
+        for mt, fields in assign_raw.items():
+            targets = rows_by_mt.get(str(mt)) or []
+            if not targets:
+                unmatched.append(str(mt))
+                continue
+            if len(targets) > 1:
+                ambiguous.append(str(mt))
+                continue
+            rk = str(targets[0].get("row_key") or "")
+            if not rk:
+                unmatched.append(str(mt))
+                continue
+            mapping_ann[rk] = fields
+    save_mapping_payload(
+        session,
+        project_id,
+        {"contract_version": MAPPING_CONTRACT, "annotations": mapping_ann},
+    )
+
+    review_raw = pending.get("reviews_by_mt") or {}
+    review_ann: dict[str, Any] = {}
+    if isinstance(review_raw, Mapping):
+        for mt, payload in review_raw.items():
+            targets = rows_by_mt.get(str(mt)) or []
+            if len(targets) != 1:
+                continue
+            rk = str(targets[0].get("row_key") or "")
+            if rk:
+                review_ann[rk] = payload
+    save_review_payload(
+        session,
+        project_id,
+        {"contract_version": REVIEW_CONTRACT, "annotations": review_ann},
+    )
+
+    report = {
+        "unmatched_assignment_targets": unmatched,
+        "ambiguous_assignment_targets": ambiguous,
+    }
+    qty_prep["editable_restore_report"] = report
+    return report
+
 
 # Presentation-only exclusion from Columns picker (scanning retained).
 COLUMNS_UI_EXCLUDED_SOURCE_PROPS: frozenset[str] = frozenset(
@@ -326,9 +441,20 @@ def query_state_matches_saved(
 ) -> bool:
     """True when current GET presentation matches the last saved query capture."""
     current = _capture_query_state(query)
-    saved = {
-        str(k): str(v) for k, v in (saved_query or {}).items() if v is not None and str(v) != ""
-    }
+    # Re-capture the saved map through the same normalizer so defaults/order
+    # (col_order, table_layout, …) cannot false-dirty a just-opened table.
+    saved_flat = query_dict_from_saved(saved_query or {})
+    saved = _capture_query_state(saved_flat)
+    # hierarchy_expanded is injected from session at save time; keep it when
+    # present on the saved payload even if capture from a bare dict omitted it.
+    saved_exp = str(saved_flat.get("hierarchy_expanded") or "").strip()
+    if saved_exp:
+        saved["hierarchy_expanded"] = saved_exp
+    cur_exp = str(current.get("hierarchy_expanded") or "").strip()
+    if cur_exp:
+        current["hierarchy_expanded"] = cur_exp
+    elif "hierarchy_expanded" in current and not cur_exp:
+        current.pop("hierarchy_expanded", None)
     return current == saved
 
 
@@ -655,7 +781,12 @@ class QuantityEditableTableService:
         table: QuantityEditableTable,
         session: MutableMapping[str, Any],
     ) -> dict[str, Any]:
-        """Verify source, rebuild prep, restore overlays by measurement_target_key."""
+        """Verify source and stash durable overlays for the redirected GET rebuild.
+
+        PERF-15B: does not call ``build_qty_prep_session_ui``. Measurements and
+        units are written immediately; assignments/reviews rematch onto current
+        row_keys during the first GET rebuild via ``apply_pending_editable_table_restore``.
+        """
         try:
             ifc = verify_source_identity(
                 project=self.project,
@@ -671,55 +802,29 @@ class QuantityEditableTableService:
             return {"result": None, "error": str(exc), "query": {}, "ifc_file": None}
 
         query = query_dict_from_saved(state.get("query") or {})
-        runtime = build_qty_prep_session_ui(
-            project=self.project,
-            user=self.user,
-            session={},
-            query=query,
-            ifc_file=ifc,
-        )
-        qty_prep = runtime["qty_prep"]
-        grain = str(qty_prep.get("prep_row_grain") or "type")
-        rows = []
-        seen_rk: set[str] = set()
-        for bucket in (
-            qty_prep.get("prep_rows_export"),
-            qty_prep.get("prep_rows"),
-            qty_prep.get("prep_rows_aggregate_legacy"),
-        ):
-            for row in bucket or []:
-                if not isinstance(row, dict) or row.get("is_load_more"):
-                    continue
-                rk = str(row.get("row_key") or "")
-                if not rk or rk in seen_rk:
-                    continue
-                seen_rk.add(rk)
-                rows.append(row)
-        rows_by_mt: dict[str, list[dict[str, Any]]] = {}
-        for row in rows:
-            level = str(row.get("level") or "")
-            g = (
-                "instance"
-                if level == "instance"
-                else (
-                    "type"
-                    if level == "type"
-                    else (
-                        "ifc_class"
-                        if level == "class"
-                        else (grain if grain != "hierarchy" else "ifc_class")
-                    )
-                )
+
+        # Replace stale hierarchy session overlays with the saved expansion
+        # (or clear when the saved table has none). Offsets always reset.
+        from takeoff.services.quantity_hierarchy import save_expanded_keys, save_offset_map
+
+        expanded_raw = str(query.get("hierarchy_expanded") or "").strip()
+        if expanded_raw:
+            save_expanded_keys(
+                session,
+                self.project.pk,
+                [p.strip() for p in expanded_raw.split(",") if p.strip().startswith("hn1|")],
             )
-            mt = str(row.get("measurement_target_key") or "") or _mt_key_from_row(row, g)
-            rows_by_mt.setdefault(mt, []).append(row)
+        else:
+            save_expanded_keys(session, self.project.pk, [])
+        save_offset_map(session, self.project.pk, kind="type", offsets={})
+        save_offset_map(session, self.project.pk, kind="instance", offsets={})
 
         measure_raw = state.get("measurements") or {}
         choices_in = measure_raw.get("choices") if isinstance(measure_raw, Mapping) else {}
         measure_out: dict[str, Any] = {}
         if isinstance(choices_in, Mapping):
             for k, v in choices_in.items():
-                if str(k) in rows_by_mt and isinstance(v, Mapping):
+                if isinstance(v, Mapping) and str(k or "").strip():
                     measure_out[str(k)] = dict(v)
         save_measurement_payload(
             session,
@@ -727,94 +832,27 @@ class QuantityEditableTableService:
             {"contract_version": MEASUREMENT_CONTRACT, "choices": measure_out},
         )
 
-        runtime2 = build_qty_prep_session_ui(
-            project=self.project,
-            user=self.user,
-            session=session,
-            query=query,
-            ifc_file=ifc,
-        )
-        qty2 = runtime2["qty_prep"]
-        rows2 = []
-        seen2: set[str] = set()
-        for bucket in (
-            qty2.get("prep_rows_export"),
-            qty2.get("prep_rows"),
-            qty2.get("prep_rows_aggregate_legacy"),
-        ):
-            for row in bucket or []:
-                if not isinstance(row, dict) or row.get("is_load_more"):
-                    continue
-                rk = str(row.get("row_key") or "")
-                if not rk or rk in seen2:
-                    continue
-                seen2.add(rk)
-                rows2.append(row)
-        rows_by_mt2: dict[str, list[dict[str, Any]]] = {}
-        for row in rows2:
-            level = str(row.get("level") or "")
-            g = (
-                "instance"
-                if level == "instance"
-                else (
-                    "type"
-                    if level == "type"
-                    else (
-                        "ifc_class"
-                        if level == "class"
-                        else (
-                            str(qty2.get("prep_row_grain") or grain)
-                            if str(qty2.get("prep_row_grain") or "") != "hierarchy"
-                            else "ifc_class"
-                        )
-                    )
-                )
-            )
-            mt = str(row.get("measurement_target_key") or "") or _mt_key_from_row(row, g)
-            rows_by_mt2.setdefault(mt, []).append(row)
-
         assign_raw = state.get("assignments") or {}
         by_mt = assign_raw.get("by_measurement_target") if isinstance(assign_raw, Mapping) else {}
-        mapping_ann: dict[str, Any] = {}
-        unmatched: list[str] = []
-        ambiguous: list[str] = []
-        if isinstance(by_mt, Mapping):
-            for mt, fields in by_mt.items():
-                targets = rows_by_mt2.get(str(mt)) or []
-                if not targets:
-                    unmatched.append(str(mt))
-                    continue
-                if len(targets) > 1:
-                    ambiguous.append(str(mt))
-                    continue
-                rk = str(targets[0].get("row_key") or "")
-                if not rk:
-                    unmatched.append(str(mt))
-                    continue
-                mapping_ann[rk] = fields
-        save_mapping_payload(
-            session,
-            self.project.pk,
-            {"contract_version": MAPPING_CONTRACT, "annotations": mapping_ann},
-        )
-
         review_raw = state.get("reviews") or {}
         rev_by_mt = (
             review_raw.get("by_measurement_target") if isinstance(review_raw, Mapping) else {}
         )
-        review_ann: dict[str, Any] = {}
-        if isinstance(rev_by_mt, Mapping):
-            for mt, payload in rev_by_mt.items():
-                targets = rows_by_mt2.get(str(mt)) or []
-                if len(targets) != 1:
-                    continue
-                rk = str(targets[0].get("row_key") or "")
-                if rk:
-                    review_ann[rk] = payload
+        session[pending_restore_session_key(self.project.pk)] = {
+            "assignments_by_mt": dict(by_mt) if isinstance(by_mt, Mapping) else {},
+            "reviews_by_mt": dict(rev_by_mt) if isinstance(rev_by_mt, Mapping) else {},
+        }
+
+        # Clear prior row_key overlays; rematch writes fresh annotations on GET.
+        save_mapping_payload(
+            session,
+            self.project.pk,
+            {"contract_version": MAPPING_CONTRACT, "annotations": {}},
+        )
         save_review_payload(
             session,
             self.project.pk,
-            {"contract_version": REVIEW_CONTRACT, "annotations": review_ann},
+            {"contract_version": REVIEW_CONTRACT, "annotations": {}},
         )
 
         units_raw = state.get("output_units") or {}
@@ -842,8 +880,10 @@ class QuantityEditableTableService:
             "error": None,
             "query": query,
             "ifc_file": ifc,
+            # Rematch report is filled on the redirected GET rebuild.
             "restore_report": {
-                "unmatched_assignment_targets": unmatched,
-                "ambiguous_assignment_targets": ambiguous,
+                "unmatched_assignment_targets": [],
+                "ambiguous_assignment_targets": [],
+                "deferred": True,
             },
         }

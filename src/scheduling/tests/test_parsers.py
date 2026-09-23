@@ -23,7 +23,8 @@ class XerParserTests(TestCase):
     def _parse(self, **kw):
         from scheduling.services.xer_parser import parse_xer
 
-        return parse_xer(io.BytesIO(xer_bytes(**kw)))
+        tasks, deps, _aux = parse_xer(io.BytesIO(xer_bytes(**kw)))
+        return tasks, deps
 
     def test_xer_parses_tasks(self):
         """Three TASK rows → three task dicts with required fields."""
@@ -63,7 +64,7 @@ class XerParserTests(TestCase):
         )
         from scheduling.services.xer_parser import parse_xer
 
-        tasks, deps = parse_xer(io.BytesIO(raw))
+        tasks, deps, _ = parse_xer(io.BytesIO(raw))
         self.assertEqual(len(tasks), 3)
         self.assertEqual(tasks[0]["name"], "Task One")
         self.assertEqual(tasks[0]["activity_code"], "A1")
@@ -107,7 +108,7 @@ class XerParserTests(TestCase):
         )
         from scheduling.services.xer_parser import parse_xer
 
-        tasks, deps = parse_xer(io.BytesIO(raw))
+        tasks, deps, _ = parse_xer(io.BytesIO(raw))
         self.assertEqual(len(deps), 1)
         d = deps[0]
         self.assertEqual(d["pred_xer_id"], "1")
@@ -133,7 +134,7 @@ class XerParserTests(TestCase):
         many_deps = [{"task_id": "2", "pred_task_id": "1", "pred_type": "PR_FS", "lag_hr_cnt": "0"}]
         from scheduling.services.xer_parser import parse_xer
 
-        tasks, deps = parse_xer(io.BytesIO(xer_bytes(many_tasks, many_deps)), preview_only=True)
+        tasks, deps, _ = parse_xer(io.BytesIO(xer_bytes(many_tasks, many_deps)), preview_only=True)
         self.assertLessEqual(len(tasks), 200)
         self.assertEqual(len(deps), 0)
 
@@ -151,7 +152,7 @@ class XerParserTests(TestCase):
         from scheduling.services.xer_parser import parse_xer
 
         # Should not raise; the extra table rows should be ignored
-        tasks, deps = parse_xer(io.BytesIO(raw))
+        tasks, deps, _ = parse_xer(io.BytesIO(raw))
         self.assertEqual(len(tasks), 1)  # only the default task from xer_bytes
 
     def test_xer_actual_dates(self):
@@ -172,7 +173,7 @@ class XerParserTests(TestCase):
         )
         from scheduling.services.xer_parser import parse_xer
 
-        tasks, _ = parse_xer(io.BytesIO(raw))
+        tasks, _, _ = parse_xer(io.BytesIO(raw))
         self.assertEqual(tasks[0]["actual_start"], date(2025, 1, 2))
         self.assertEqual(tasks[0]["actual_end"], date(2025, 1, 9))
 
@@ -194,7 +195,7 @@ class XerParserTests(TestCase):
         )
         from scheduling.services.xer_parser import parse_xer
 
-        tasks, _ = parse_xer(io.BytesIO(raw))
+        tasks, _, _ = parse_xer(io.BytesIO(raw))
         self.assertIsNone(tasks[0]["actual_start"])
         self.assertIsNone(tasks[0]["actual_end"])
 
@@ -217,7 +218,7 @@ class XerParserTests(TestCase):
         )
         from scheduling.services.xer_parser import parse_xer
 
-        tasks, _ = parse_xer(io.BytesIO(raw))
+        tasks, _, _ = parse_xer(io.BytesIO(raw))
         self.assertAlmostEqual(tasks[0]["_p6_phys_pct"], 0.4, places=4)
 
     def test_xer_no_tasks_raises(self):
@@ -238,7 +239,8 @@ class P6XmlParserTests(TestCase):
     def _parse(self, **kw):
         from scheduling.services.msp_parser import parse_msp
 
-        return parse_msp(io.BytesIO(p6xml_bytes(**kw)))
+        tasks, deps, _aux = parse_msp(io.BytesIO(p6xml_bytes(**kw)))
+        return tasks, deps
 
     def test_p6xml_detects_format(self):
         """APIBusinessObjects root → tasks have source='p6xml'."""
@@ -314,7 +316,7 @@ class P6XmlParserTests(TestCase):
         rels = [{"pred": "1", "succ": "2", "type": "Finish to Start", "lag": "0"}]
         from scheduling.services.msp_parser import parse_msp
 
-        tasks, deps = parse_msp(
+        tasks, deps, _ = parse_msp(
             io.BytesIO(p6xml_bytes(activities=acts, relationships=rels)), preview_only=True
         )
         self.assertLessEqual(len(tasks), 200)
@@ -468,7 +470,8 @@ class MspXmlParserTests(TestCase):
     def _parse(self, **kw):
         from scheduling.services.msp_parser import parse_msp
 
-        return parse_msp(io.BytesIO(mspxml_bytes(**kw)))
+        tasks, deps, _aux = parse_msp(io.BytesIO(mspxml_bytes(**kw)))
+        return tasks, deps
 
     def test_msp_detects_format(self):
         """Project/Tasks root → tasks have source='msp'."""
@@ -542,7 +545,7 @@ class MspXmlParserTests(TestCase):
         ]
         from scheduling.services.msp_parser import parse_msp
 
-        tasks, deps = parse_msp(io.BytesIO(mspxml_bytes(tasks=task_list)), preview_only=True)
+        tasks, deps, _ = parse_msp(io.BytesIO(mspxml_bytes(tasks=task_list)), preview_only=True)
         self.assertLessEqual(len(tasks), 200)
         self.assertEqual(len(deps), 0)
 

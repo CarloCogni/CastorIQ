@@ -149,6 +149,7 @@ def xer_bytes(
 def p6xml_bytes(
     activities: list[dict] | None = None,
     relationships: list[dict] | None = None,
+    wbs_nodes: list[dict] | None = None,
     ns: str = "http://xmlns.oracle.com/Primavera/P6Professional/V21.12/API/BusinessObjects",
 ) -> bytes:
     """Build minimal valid Primavera P6 XML bytes."""
@@ -183,10 +184,15 @@ def p6xml_bytes(
             f"    </Relationship>\n"
         )
 
+    wbs_xml = ""
+    for w in wbs_nodes or []:
+        fields_xml = "".join(f"      <{k}>{v}</{k}>\n" for k, v in w.items())
+        wbs_xml += f"    <WBS>\n{fields_xml}    </WBS>\n"
+
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         f'<APIBusinessObjects xmlns="{ns}">\n'
-        f"  <Project>\n{act_xml}{rel_xml}  </Project>\n"
+        f"  <Project>\n{wbs_xml}{act_xml}{rel_xml}  </Project>\n"
         "</APIBusinessObjects>\n"
     )
     return xml.encode("utf-8")

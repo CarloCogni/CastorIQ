@@ -19,7 +19,7 @@
         <button type="button"
                 class="help-pill"
                 data-bs-toggle="modal"
-                data-bs-target="#executiveControlsHelpModal"
+                data-bs-target="#evmAnalyticsHelpModal"
                 title="How Schedule Performance & Readiness works"
                 aria-label="How Schedule Performance & Readiness works">
             <i class="bi bi-question-circle"></i>
@@ -30,42 +30,95 @@
 
     <p class="small text-secondary mb-2" data-testid="exec-evm-source-caveat">
         Schedule and progress indicators only — not financial Cost EVM.
-        SPI is a planned-vs-earned schedule performance signal, not monetary EVM.
+        Derived As-of S-Curve is reconstructed from the current schedule state —
+        not imported historical performance and may change after re-import.
     </p>
     <p class="small text-secondary mb-3" data-testid="exec-company-cost-unavailable">
-        {{ company_cost_unavailable }}
-        {{ company_cost_note }}
+        Unavailable — requires a company cost source (ERP / invoice / QS / payroll / procurement).
+        Castor has no ERP, invoice, QS, payroll, procurement, or company cost ledger integration.
         ResourceAssignment.actual_cost is not company spend.
     </p>
-
-    <div class="row g-3 mb-3">
-        <div class="col-md-4">
-            <div class="border rounded p-3 h-100" data-testid="exec-spi-card">
-                <div class="small text-secondary mb-1">SPI (Schedule Performance Indicator)</div>
-                {% if spi_available %}
-                <div class="fs-4 fw-semibold" data-testid="exec-spi-value">{{ spi_value|floatformat:2 }}</div>
-                <div class="small text-secondary mt-1">Schedule / progress sourced — not company cost CPI.</div>
-                {% else %}
-                <div class="fs-5 text-secondary" data-testid="exec-spi-unavailable">Unavailable</div>
-                <div class="small text-secondary mt-1">Needs schedule dates and progress updates.</div>
-                {% endif %}
-            </div>
+    <details class="mb-3" data-testid="exec-evm-capability-details">
+        <summary class="small text-secondary">Capability diagnostics</summary>
+        <div class="mt-2">
+            {% include "scheduling/components/executive_capability_banner.html" %}
         </div>
-        <div class="col-md-8">
-            <div class="border rounded p-3 h-100 border-dashed" data-testid="exec-company-cost-kpis-unavailable">
-                <div class="small text-secondary mb-2">Company-cost EVM metrics</div>
-                <p class="mb-2 small">
-                    CPI, AC, EAC, ETC, VAC, TCPI, and cost variance are
-                    <strong>Unavailable</strong> — not zero.
-                </p>
-                <p class="mb-0 small text-secondary">
-                    Castor has no ERP / invoice / QS / payroll / procurement company cost source.
-                    P6 assignment actual_cost is schedule assignment data only.
-                </p>
-            </div>
+    </details>
+
+    <div class="row g-2 mb-3 align-items-end">
+        <div class="col-auto">
+            <label for="evm-granularity" class="form-label small mb-0">Granularity</label>
+            <select id="evm-granularity" class="form-select form-select-sm"
+                    hx-get="{% url 'scheduling:executive_controls_evm_scurve' project.pk %}"
+                    hx-target="#exec-evm-scurve"
+                    hx-include="#evm-filter-form"
+                    name="granularity">
+                <option value="weekly" {% if filters.granularity == 'weekly' %}selected{% endif %}>Weekly</option>
+                <option value="monthly" {% if filters.granularity == 'monthly' %}selected{% endif %}>Monthly</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label for="evm-mode" class="form-label small mb-0">Mode</label>
+            <select id="evm-mode" class="form-select form-select-sm"
+                    hx-get="{% url 'scheduling:executive_controls_evm_current' project.pk %}"
+                    hx-target="#exec-evm-current"
+                    hx-include="#evm-filter-form"
+                    name="mode"
+                    data-testid="exec-evm-mode-select">
+                <option value="auto" {% if filters.mode == 'auto' %}selected{% endif %}>Auto</option>
+                <option value="schedule_performance" {% if filters.mode == 'schedule_performance' %}selected{% endif %}>Schedule Performance</option>
+            </select>
         </div>
     </div>
+    <form id="evm-filter-form" class="d-none">
+        <input type="hidden" name="granularity" value="{{ filters.granularity }}">
+        <input type="hidden" name="mode" value="{{ filters.mode }}">
+    </form>
 
-    {% include "scheduling/components/executive_controls_help_modal.html" %}
+    <div id="exec-evm-current"
+         hx-get="{% url 'scheduling:executive_controls_evm_current' project.pk %}?{{ filter_query }}"
+         hx-trigger="load"
+         hx-swap="innerHTML"
+         data-testid="exec-evm-current-autoload">
+        <div class="text-secondary small py-3">Loading schedule performance…</div>
+    </div>
+
+    <!-- Derived curve / periods are manual — avoid parallel compute_evm on first paint -->
+    <div id="exec-evm-scurve" class="mt-4" data-testid="exec-evm-scurve-lazy">
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary"
+                hx-get="{% url 'scheduling:executive_controls_evm_scurve' project.pk %}?{{ filter_query }}"
+                hx-target="#exec-evm-scurve"
+                hx-swap="innerHTML"
+                hx-include="#evm-filter-form"
+                data-testid="exec-evm-load-scurve">
+            Load derived S-curve
+        </button>
+        <p class="text-secondary small mb-0 mt-1">
+            Reconstructed from current schedule state — not imported historical performance.
+        </p>
+    </div>
+
+    <div id="exec-evm-periods" class="mt-4" data-testid="exec-evm-periods-lazy">
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary"
+                hx-get="{% url 'scheduling:executive_controls_evm_periods' project.pk %}?{{ filter_query }}"
+                hx-target="#exec-evm-periods"
+                hx-swap="innerHTML"
+                hx-include="#evm-filter-form"
+                data-testid="exec-evm-load-periods">
+            Load period table
+        </button>
+    </div>
+
+    <div id="exec-evm-methodology" class="mt-4"
+         hx-get="{% url 'scheduling:executive_controls_evm_methodology' project.pk %}?{{ filter_query }}"
+         hx-trigger="load"
+         hx-swap="innerHTML"
+         data-testid="exec-evm-methodology-autoload">
+        <div class="text-secondary small py-3">Loading methodology…</div>
+    </div>
 </div>
+
+{% include "scheduling/components/executive_evm_help_modal.html" %}
 {% endblock %}

@@ -76,35 +76,6 @@ def _fmt_date(iso: str | None) -> str:
         return iso
 
 
-def _forecast_finish(spi: float, project_start: str, project_end: str, as_of: str) -> date | None:
-    """SPI-adjusted forecast finish (mirrors JS formula in evm.html).
-
-    Returns None when spi <= 0 or the result exceeds 3× planned duration past
-    baseline (formula artefact, not a real prediction).  The old 0.05 clamp
-    is removed — it masked the blowup instead of preventing it.
-    """
-    try:
-        from datetime import timedelta
-
-        spi = float(spi)
-        if spi <= 0:
-            return None
-        start = date.fromisoformat(project_start)
-        baseline = date.fromisoformat(project_end)
-        today = date.fromisoformat(as_of)
-        elapsed = (today - start).days
-        if today < baseline:
-            remaining = (baseline - today).days
-            fd = elapsed + remaining / spi
-        else:
-            fd = elapsed / spi
-        candidate = start + timedelta(days=max(0, round(fd)))
-        sane_horizon = baseline + timedelta(days=(baseline - start).days * 3)
-        return candidate if candidate <= sane_horizon else None
-    except Exception:
-        return None
-
-
 def _safe(fn: Any, *args: Any, **kwargs: Any) -> dict:
     """Call a service function, returning {'has_data': False} on failure."""
     try:
@@ -148,9 +119,10 @@ def gather_report_data(project_id: str, sections: tuple[str, ...]) -> dict:
     data["_baseline_finish"] = evm.get("project_end")
     data["_as_of"] = evm.get("as_of")
     data["_forecast_finish"] = None
-    if evm.get("has_data") and float(evm.get("ev") or 0) > 0:
-        ff = _forecast_finish(evm["spi"], evm["project_start"], evm["project_end"], evm["as_of"])
-        data["_forecast_finish"] = ff.isoformat() if ff else None
+    if evm.get("has_data"):
+        spi_fc = evm.get("spi_forecast") or {}
+        if not spi_fc.get("suppressed") and spi_fc.get("date"):
+            data["_forecast_finish"] = spi_fc["date"]
 
     if "executive_summary" in sections:
         data["decision"] = _safe(compute_decision_summary, project_id)
@@ -310,6 +282,7 @@ def _html_evm(data: dict) -> str:
     use_cost = evm.get("use_cost", False)
     bac = evm.get("bac", 0)
     sym = "" if not use_cost else "$"
+    mode_label = evm.get("performance_mode_label", "")
 
     def v(key: str, pct: bool = False) -> str:
         val = evm.get(key)
@@ -353,6 +326,9 @@ def _html_evm(data: dict) -> str:
         alt = ' class="alt"' if i % 2 else ""
         html += f"<tr{alt}><td><b>{_esc(metric)}</b></td><td class='num {cls}'>{_esc(val)}</td><td class='muted'>{_esc(desc)}</td></tr>\n"
     html += "</table>\n"
+
+    if mode_label:
+        html += f"<p class='muted' style='font-size:0.9em;'><i>{_esc(mode_label)}</i></p>\n"
 
     # Interpretation sentence — only compare when both scalars are available
     if cpi is not None and spi >= 0.95 and cpi >= 0.95:
@@ -581,7 +557,12 @@ def _html_cash_flow(data: dict) -> str:
 
     m = cf.get("metrics", {})
     src = cf.get("source", "")
-    src_label = "P6 resource assignments" if src == "p6_assignments" else "task costs"
+    if src == "canonical_resource_assignment":
+        src_label = "canonical ResourceAssignment"
+    elif src in ("legacy_p6_resource_assignment_fallback", "p6_assignments"):
+        src_label = "P6 resource assignments (legacy fallback)"
+    else:
+        src_label = "task costs"
     months = cf.get("months", [])
 
     def fc(v: float | None) -> str:

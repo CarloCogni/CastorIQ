@@ -352,12 +352,17 @@ def test_table04b_column_remove_clears_presentation_only(client):
     without = client.get(url, {"sem_cols": ""}).content.decode()
     assert f'data-testid="qty-prep-col-{col}"' not in without
     assert f'data-col-key="{col}"' not in without
-    # Columns modal still offers indexed properties (scanning not deleted).
-    assert (
-        'data-testid="qty-column-field-search"' in without
-        or 'data-testid="qty-column-field-option"' in without
-        or 'data-testid="qty-property-add"' in without
-    )
+    # Add column entry point survives; the catalogue is lazy (PERF-15C1) so the
+    # options live behind the field-catalogue endpoint, not in the page.
+    assert 'data-testid="qty-columns-open"' in without
+    assert 'data-testid="qty-column-field"' in without
+    catalogue = client.get(
+        reverse("takeoff:qty_field_catalogue", kwargs={"pk": project.pk}),
+        {"mode": "column", "picker_id": "qty-column-field"},
+    ).content.decode()
+    # Scanning was not deleted — the removed property is still offered.
+    assert f'data-field-key="{col}"' in catalogue
+    assert "Manufacturer" in catalogue
 
 
 def test_table04b_unit_example_follows_output_choice():

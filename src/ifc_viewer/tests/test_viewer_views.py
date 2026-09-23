@@ -49,37 +49,76 @@ class TestViewerEmbedView:
         assert response.status_code == 403
 
     def test_embed_default_mode_shows_4d_context_actions(self, client):
-        """Without mode=inspect the 4D task actions stay in the context menu."""
+        """The embed always ships the 4D task actions and the Option-3 paint bridge."""
         project = ProjectFactory()
         IFCFileFactory(project=project)
         _login(client, project.owner)
 
         response = client.get(_embed_url(project))
+        body = response.content
 
-        assert b'id="sel-ctx-addtask"' in response.content
-        assert b"INSPECT_MODE = false" in response.content
+        # 4D selection context menu — link / unlink / add another task.
+        assert b'id="sel-ctx-addtask"' in body
+        assert b'id="sel-ctx-link"' in body
+        assert b'id="sel-ctx-unlink"' in body
+        # Option-3 Time View paint bridge: colour request in, ACK out.
+        assert b"castor:timeline-colors" in body
+        assert b"castor:timeline-applied" in body
+        assert b"not_due" in body
+        assert b"colorByGlobalIds" in body
 
     def test_embed_inspect_mode_hides_4d_context_actions(self, client):
-        """mode=inspect removes 4D task actions and flags the JS constant."""
+        """Option-3: ``?mode=inspect`` is not a capability switch and must not strip 4D.
+
+        Pre-Option-3 embeds had an inspect-only variant that hid selection
+        context actions. The approved ifc-lite contract keeps the embed as the
+        4D / Time View surface for every ``?mode=`` value — including
+        ``inspect`` — so the paint bridge and task actions stay present.
+        """
         project = ProjectFactory()
         IFCFileFactory(project=project)
         _login(client, project.owner)
 
-        response = client.get(_embed_url(project, mode="inspect"))
+        inspect_body = client.get(_embed_url(project, mode="inspect")).content
 
-        assert b'id="sel-ctx-addtask"' not in response.content
-        assert b"INSPECT_MODE = true" in response.content
+        assert b'id="sel-ctx-addtask"' in inspect_body
+        assert b'id="sel-ctx-link"' in inspect_body
+        assert b'id="sel-ctx-unlink"' in inspect_body
+        assert b"castor:timeline-colors" in inspect_body
+        assert b"castor:timeline-applied" in inspect_body
+        assert b"colorByGlobalIds" in inspect_body
+        assert b"INSPECT_MODE" not in inspect_body
 
     def test_embed_ifc_param_selects_named_file(self, client):
         """?ifc=<pk> pins an older completed file instead of the latest."""
         project = ProjectFactory()
         older = IFCFileFactory(project=project)
-        IFCFileFactory(project=project)  # newer file becomes the default
+        newer = IFCFileFactory(project=project)  # newer file becomes the default
         _login(client, project.owner)
 
         response = client.get(_embed_url(project, ifc=older.pk))
+        body = response.content.decode()
 
-        assert older.file.url.encode() in response.content
+        assert older.file.url in body
+        assert newer.file.url not in body
+
+    def test_embed_ifc_param_scopes_geometry_frag_and_colormap_to_one_file(self, client):
+        """Geometry URL, .frag cache and colormap must all resolve to the pinned file.
+
+        The .frag cache path is derived from the IFC file path, so a mismatch
+        would paint one model with another model's fragments.
+        """
+        project = ProjectFactory()
+        older = IFCFileFactory(project=project)
+        newer = IFCFileFactory(project=project)
+        _login(client, project.owner)
+
+        body = client.get(_embed_url(project, ifc=older.pk)).content.decode()
+
+        assert older.file.url in body
+        # fragments cache + colormap endpoints both carry the pinned pk
+        assert body.count(f"?ifc={older.pk}") >= 2
+        assert f"?ifc={newer.pk}" not in body
 
     def test_embed_ifc_param_cross_project_falls_back_to_latest(self, client):
         """A file pk from another project must not leak — fall back to latest."""
@@ -157,3 +196,18 @@ class TestElementPropertiesView:
 
         assert default_response.json()["found"] is False
         assert pinned_response.json()["found"] is True
+
+    def test_props_ifc_param_cross_project_does_not_leak(self, client):
+        """A file pk from another project cannot be used to read its entities."""
+        project = ProjectFactory()
+        IFCFileFactory(project=project)
+        foreign_file = IFCFileFactory()  # other project
+        foreign_entity = IFCEntityFactory(ifc_file=foreign_file)
+        _login(client, project.owner)
+
+        response = client.get(
+            self._props_url(project, foreign_entity.global_id),
+            {"ifc": str(foreign_file.pk)},
+        )
+
+        assert response.json()["found"] is False

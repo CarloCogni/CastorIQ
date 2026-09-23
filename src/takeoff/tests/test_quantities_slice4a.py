@@ -204,7 +204,14 @@ def test_no_query_defaults_and_get_session_still_work(client):
     project = _pilot_like_project()
     client.force_login(project.owner)
     url = reverse("takeoff:qto", kwargs={"pk": project.pk})
-    html = client.get(url).content.decode()
+    # TABLE-04: the Classification register card needs a counting source intent
+    # (manual_field), not just an included column.
+    included = {
+        "table_layout": "v2",
+        "col_order": "ifc_class,name,classification_code,status,actions",
+        "source_classification_code": "manual_field",
+    }
+    html = client.get(url, included).content.decode()
     assert 'data-testid="quantities-prep-config-panel"' in html
     assert 'data-testid="qty-prep-config-save"' in html
     assert (
@@ -216,7 +223,9 @@ def test_no_query_defaults_and_get_session_still_work(client):
     assert "Production profile" not in html
     assert 'data-testid="qty-reg-missing-classification"' in html
 
-    html2 = client.get(url, {"source_classification_code": "not_mapped"}).content.decode()
+    html2 = client.get(
+        url, {**included, "source_classification_code": "not_mapped"}
+    ).content.decode()
     assert 'data-testid="qty-reg-missing-classification"' not in html2
 
 
@@ -230,12 +239,10 @@ def test_boundaries_and_disabled_modify(client):
     assert "generated quantit" in panel.lower()
     assert "Does not save generated quantity rows" in panel
     assert "Not BOQ" in panel or "not BOQ" in panel
-    assert (
-        "disabled"
-        in html.split('data-testid="qty-send-unresolved-to-modify"', 1)[0][
-            html.split('data-testid="qty-send-unresolved-to-modify"', 1)[0].rfind("<button") :
-        ]
-    )
+    # No Modify handoff control exists on the Quantities workspace.
+    assert 'data-testid="qty-send-unresolved-to-modify"' not in html
+    assert 'data-testid="quantities-boundary-copy"' in html
+    assert "Not Ask, not Modify, not BOQ, not cost" in html
     assert "Raw Indexed Quantity Inventory" in html
     page = html.split('data-testid="quantities-page"', 1)[1].split(
         'data-testid="quantities-not-claims"', 1

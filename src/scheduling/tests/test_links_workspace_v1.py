@@ -179,7 +179,7 @@ def test_links_workspace_v1_simple_surface_no_advanced_console(client):
     assert 'id="lw-advanced"' not in html
     assert 'id="fd-gov-pane"' not in html
     assert 'id="fourD-bottom-panels"' not in html
-    assert "link_governance" not in html
+    assert reverse("scheduling:link_governance_workspace", args=[project.pk]) not in html
     assert 'data-testid="suggest-links-btn"' not in html
     assert 'data-testid="links-suggest-form"' not in html
     assert 'data-testid="links-suggest-status"' not in html
@@ -388,6 +388,50 @@ def test_task_detail_empty_applied_shows_manual_guidance(client):
     assert "Suggest Links" not in html
     assert 'data-testid="links-suggestion-card"' not in html
     assert 'data-testid="links-remove-link-btn"' not in html
+
+
+@pytest.mark.django_db
+def test_applied_links_workspace_queue_first_no_trust_landing(client):
+    """Standalone Applied Links workspace lands on queue; trust scorecard is demoted."""
+    project = ProjectFactory()
+    client.force_login(project.owner)
+
+    response = client.get(
+        reverse("scheduling:link_governance_workspace", kwargs={"pk": project.pk})
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert 'data-testid="links-advanced-landing"' in html
+    assert "Advanced link details are available here" in html
+    assert "Link actions remain scoped to selected suggestions" in html
+    assert 'data-testid="link-diagnostics"' in html
+    assert 'id="gq-tab-queue"' in html
+    assert "Suggested Links queue" in html
+    assert "Confirm Link" in html or "Ignore Suggestion" in html or "Applied Links" in html
+    for phrase in _FORBIDDEN_ADVANCED_LANDING:
+        assert phrase not in html, f"forbidden advanced landing chrome: {phrase!r}"
+    diagnostics = html.split('data-testid="link-diagnostics"', 1)[1][:200]
+    assert "open" not in diagnostics.split(">", 1)[0]
+    assert "gq-tab-overview" not in html
+
+
+@pytest.mark.django_db
+def test_link_diagnostics_overview_uses_product_wording(client):
+    """Overview partial uses Applied / Confirmed labels, not trust/destructive chrome."""
+    project = ProjectFactory()
+    client.force_login(project.owner)
+
+    response = client.get(
+        reverse("scheduling:link_governance_overview", kwargs={"pk": project.pk}),
+        HTTP_HX_REQUEST="true",
+    )
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Applied / Confirmed" in html or "Applied Links" in html
+    assert "Destructive ops" not in html
+    assert "Trust state" not in html
 
 
 @pytest.mark.django_db

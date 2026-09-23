@@ -38,6 +38,41 @@ def _spatial_available(scan: Mapping[str, Any], spatial_key: str) -> bool:
         return False
 
 
+def _lightweight_scan_summary(project: Any) -> dict[str, Any]:
+    """Cheap EXISTS checks for SEM-4A readiness keys — no full property catalogue scan.
+
+    PERF-15C1: when Quantities defers catalogue discovery, readiness must not
+    reintroduce a third full IFCEntity iterator solely for this panel.
+    """
+    from ifc_processor.models import IFCEntity, IFCSpatialElement
+    from ifc_processor.services.classification_ref_index import KEY_DISPLAY
+    from takeoff.services.ifc_semantic_fields import (
+        SPATIAL_STOREY_KEY,
+        _latest_completed_ifc,
+    )
+
+    key_nonempty: dict[str, int] = {}
+    spatial_nonempty: dict[str, int] = {}
+    ifc = _latest_completed_ifc(project)
+    if ifc is None:
+        return {"key_nonempty": key_nonempty, "spatial_nonempty": spatial_nonempty}
+
+    qs = IFCEntity.objects.filter(ifc_file=ifc)
+    for prop_key in (
+        KEY_DISPLAY,
+        "Identity Data.OmniClass Number",
+        "Identity Data.OmniClass Title",
+        "Identity Data.Assembly Code",
+        "Identity Data.Project Level",
+    ):
+        if qs.filter(properties__has_key=prop_key).exists():
+            key_nonempty[prop_key] = 1
+
+    if IFCSpatialElement.objects.filter(ifc_file=ifc, spatial_type="building_storey").exists():
+        spatial_nonempty[SPATIAL_STOREY_KEY] = 1
+    return {"key_nonempty": key_nonempty, "spatial_nonempty": spatial_nonempty}
+
+
 def build_semantic_source_readiness(
     *,
     project: Any,
@@ -49,22 +84,10 @@ def build_semantic_source_readiness(
     No DB writes. Does not auto-map to Castor ClassificationNode.
     """
     from ifc_processor.services.classification_ref_index import KEY_DISPLAY
-    from takeoff.services.ifc_semantic_fields import (
-        SPATIAL_STOREY_KEY,
-        _latest_completed_ifc,
-        _scan_entities,
-    )
+    from takeoff.services.ifc_semantic_fields import SPATIAL_STOREY_KEY
 
     if scan is None:
-        ifc = _latest_completed_ifc(project)
-        scan = (
-            _scan_entities(project, selected_source_props=[], selected_spatial_keys=[])
-            if ifc is not None
-            else {
-                "key_nonempty": {},
-                "spatial_nonempty": {},
-            }
-        )
+        scan = _lightweight_scan_summary(project)
 
     classref_ok = _has_prop_coverage(scan, KEY_DISPLAY)
     omni_num = _has_prop_coverage(scan, "Identity Data.OmniClass Number")
@@ -256,17 +279,13 @@ def apply_semantic_profile_to_qty_prep(
     """Attach semantic_source_readiness onto qty_prep (mutates in place)."""
     enrichment = (qty_prep.get("semantic_filters") or {}).get("entity_enrichment") or {}
     scan = enrichment.get("scan_summary")
-    if not isinstance(scan, Mapping) or not scan:
+    if not isinstance(scan, Mapping) or not scan or not (scan.get("key_nonempty") or {}):
+        # PERF-15C1: deferred catalogue leaves empty scan_summary — do not
+        # re-run a full IFCEntity catalogue iterator for readiness alone.
         try:
-            from takeoff.services.ifc_semantic_fields import _scan_entities
-
-            full = _scan_entities(project, selected_source_props=[], selected_spatial_keys=[])
-            scan = {
-                "key_nonempty": dict(full.get("key_nonempty") or {}),
-                "spatial_nonempty": dict(full.get("spatial_nonempty") or {}),
-            }
+            scan = _lightweight_scan_summary(project)
         except Exception as exc:  # noqa: BLE001
-            logger.debug("semantic profile scan failed: %s", exc)
+            logger.debug("semantic profile lightweight scan failed: %s", exc)
             scan = {"key_nonempty": {}, "spatial_nonempty": {}}
 
     qty_prep["semantic_source_readiness"] = build_semantic_source_readiness(

@@ -419,9 +419,14 @@ def apply_column_calculations(
             )
             if op not in allowed:
                 continue
-            # Additive Qto Sum is already correct from measure_inventory.
+            # Additive Qto Sum is usually already correct from measure_inventory.
+            # If inventory/additive left a non-numeric Mixed/Multiple cell, recompute.
             if is_qto_additive_source(src) and op == CALC_SUM:
-                continue
+                existing = by_key.get(col_key) if isinstance(by_key.get(col_key), dict) else {}
+                if existing.get("additive") or (
+                    existing.get("status") == "single" and existing.get("numeric_value") is not None
+                ):
+                    continue
             if op == CALC_NONE:
                 displays = [_leaf_display(leaf, col_key) for leaf in leaves]
                 result = compute_parent_none(displays)
@@ -546,6 +551,18 @@ def attach_column_header_menus(
     """Attach compact header-menu descriptors onto ``table_columns`` (COLUMNS-10B)."""
     from urllib.parse import urlencode
 
+    from takeoff.services.quantity_table_layout import (
+        CORE_COLUMN_SET,
+        layout_query_pairs,
+        order_after_move,
+        order_after_remove,
+    )
+
+    layout = qty_prep.get("table_layout") or {}
+    if not isinstance(layout, Mapping):
+        layout = {}
+    layout_order = list(layout.get("order") or [])
+
     calc_ops = qty_prep.get("col_calc_ops") or qty_prep.get("column_calculations") or {}
     if not isinstance(calc_ops, Mapping):
         calc_ops = {}
@@ -592,16 +609,10 @@ def attach_column_header_menus(
                     cvt = _str(cinfo.get("value_type"))
                     if cv != default_calc_op(column_key=ck, value_type=cvt, source_property=csrc):
                         compact[ck] = cv
-                pairs = _query_pairs_without(
+                pairs = layout_query_pairs(
                     query,
-                    {
-                        "col_calc",
-                        "col_calc_add",
-                        "col_order_add",
-                        "col_order_remove",
-                        "col_order_move",
-                        "sem_cols_add",
-                    },
+                    layout,
+                    extra_drop={"col_calc", "col_calc_add"},
                 )
                 serialized = col_calc_param(compact)
                 if serialized:
@@ -616,17 +627,10 @@ def attach_column_header_menus(
                 )
         col["calc_options"] = calc_options
 
-        sort_pairs_base = _query_pairs_without(
+        sort_pairs_base = layout_query_pairs(
             query,
-            {
-                "hierarchy_sort",
-                "hierarchy_sort_dir",
-                "col_order_add",
-                "col_order_remove",
-                "col_order_move",
-                "sem_cols_add",
-                "col_calc_add",
-            },
+            layout,
+            extra_drop={"hierarchy_sort", "hierarchy_sort_dir"},
         )
         col["sort_asc_href"] = "?" + urlencode(
             sort_pairs_base + [("hierarchy_sort", key), ("hierarchy_sort_dir", "asc")]
@@ -636,25 +640,30 @@ def attach_column_header_menus(
         )
         col["sort_clear_href"] = "?" + urlencode(sort_pairs_base)
 
-        removable = bool(col.get("removable"))
-        col["can_remove"] = removable and key not in {
-            "ifc_class",
-            "name",
-            "status",
-            "actions",
-        }
-        if col["can_remove"]:
-            rem_pairs = _query_pairs_without(
+        # Manage-columns / header move: write post-move canonical order (no sticky move).
+        col["move_up_href"] = "?" + urlencode(
+            layout_query_pairs(
                 query,
-                {
-                    "col_order_remove",
-                    "col_order_add",
-                    "col_order_move",
-                    "sem_cols_add",
-                    "col_calc_add",
-                },
+                layout,
+                col_order=",".join(order_after_move(layout_order, key, "up")),
             )
-            rem_pairs.append(("col_order_remove", key))
+        )
+        col["move_down_href"] = "?" + urlencode(
+            layout_query_pairs(
+                query,
+                layout,
+                col_order=",".join(order_after_move(layout_order, key, "down")),
+            )
+        )
+
+        removable = bool(col.get("removable"))
+        col["can_remove"] = removable and key not in CORE_COLUMN_SET
+        if col["can_remove"]:
+            # Write cleaned order directly — never leave col_order_remove in the URL.
+            rem_order = ",".join(order_after_remove(layout_order, key))
+            rem_pairs = layout_query_pairs(query, layout, col_order=rem_order)
             col["remove_href"] = "?" + urlencode(rem_pairs)
+            col["remove_col_order"] = rem_order
         else:
             col["remove_href"] = ""
+            col["remove_col_order"] = ",".join(layout_order)

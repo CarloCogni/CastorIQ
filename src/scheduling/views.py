@@ -10,6 +10,7 @@ import logging
 import math
 from datetime import date
 
+from django.db import transaction
 from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -21,6 +22,8 @@ from django.views.generic import TemplateView
 from core.http import toast_response, trigger_toast
 from core.mixins import ProjectAccessMixin, ProjectModifyAccessMixin, ProjectTabMixin
 from ifc_processor.models import IFCEntity, IFCFile
+from scheduling.governance_access import GovernanceCapabilityMixin
+from scheduling.services.governance.authority import GovernanceAuthorityError, GovernanceCapability
 
 from .models import (
     MappingProfile,
@@ -32,24 +35,65 @@ from .models import (
     TaskEntityBinding,
 )
 from .parsers.p6xml_parser import parse_p6xml
-from .services.autolink import autodetect_stages, run_autolink
+from .services.approved_match_persistence import (
+    ApprovalValidationError,
+    ApprovedMatchPersistenceService,
+    MatchApprovalRequest,
+    StalePreviewError,
+)
+from .services.autolink import run_autolink
 from .services.column_mapper import (
     CANONICAL_FIELDS,
     CANONICAL_LABELS,
-    apply_mapping,
     default_visible_columns,
     extract_columns,
+    map_schedule_rows,
     suggest_mapping,
 )
 from .services.critical_path import compute_critical_path
 from .services.evm import compute_evm
+from .services.match_preview import MatchPreviewService
 from .services.msp_parser import parse_msp
-from .services.p6_save import finalise_p6_data, save_p6_pending_data
+from .services.p6_save import save_p6_pending_data
 from .services.pct_normalize import normalize_pct_complete
+from .services.source_version.content_hash import (
+    hash_parsed_tasks_payload,
+    store_session_import_artifact,
+)
+from .services.source_version.import_persistence import attach_wbs_aux, persist_schedule_import
+from .services.source_version.import_provenance import (
+    ImportProvenanceContext,
+    ScheduleImportProvenanceCoordinator,
+)
 from .services.validator import validate_schedule
 from .services.xer_parser import parse_xer
 
 logger = logging.getLogger(__name__)
+
+
+def _annotate_binding_link_state(project, tasks: list) -> None:
+    """Attach binding_link_count and binding_link_status to task instances in-place."""
+    from .services.link_resolver import entity_gids_by_task, link_status_for_task
+
+    if not tasks:
+        return
+    link_map = entity_gids_by_task(project.pk, [t.pk for t in tasks])
+    for task in tasks:
+        gids = link_map.get(str(task.pk), [])
+        task.binding_link_count = len(gids)
+        task.binding_link_status = link_status_for_task(task, gids)
+
+
+def _task_list_render_context(project, queryset, **extra: object) -> dict:
+    """Build task_list.html context with TaskEntityBinding link counts (not M2M)."""
+    tasks = list(queryset)
+    _annotate_binding_link_state(project, tasks)
+    return {
+        "tasks": tasks,
+        "project": project,
+        "preview_mode": False,
+        **extra,
+    }
 
 
 class ScheduleView(ProjectTabMixin, TemplateView):
@@ -67,44 +111,38 @@ class ScheduleView(ProjectTabMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         project = ctx["project"]
         ctx["castor_subtab"] = "schedule"
-        schedule_tab = self.request.GET.get("tab", "data_sources")
-        ctx["schedule_tab"] = schedule_tab
+        # Normalize dead deep-links used by older bookmarks/harnesses.
+        # Product hub pills use data_sources / fourD_link; gantt lives inside Schedule.
+        _tab_aliases = {
+            "gantt": "data_sources",
+            "links": "fourD_link",
+            "link": "fourD_link",
+            "4d_link": "fourD_link",
+        }
+        raw_tab = self.request.GET.get("tab", "data_sources") or "data_sources"
+        ctx["schedule_tab"] = _tab_aliases.get(raw_tab, raw_tab)
 
-        base_tasks = Task.objects.filter(project=project)
-        ctx["task_count"] = base_tasks.count()
-        ctx["ifc_files_available"] = IFCFile.objects.filter(
-            project=project, status=IFCFile.Status.COMPLETED
-        ).exists()
-        ctx["ifc_param_name"] = self.request.session.get(
-            f"ifc_param_name_{project.pk}", "Activity ID"
-        )
-
-        # Time View shell does not iterate tasks server-side; timeline colours load via
-        # viewer APIs. Skip materializing all tasks + ifc_entities on large pilots.
-        if schedule_tab == "lookahead":
-            ctx["tasks"] = Task.objects.none()
-            ctx["gantt_min_date"] = None
-            ctx["gantt_max_date"] = None
-            ctx["binding_review_count"] = 0
-            ctx["dep_count"] = 0
-            ctx["schedule_sources"] = []
-            ctx["intel_suggestions"] = []
-            return ctx
-
-        tasks = base_tasks.prefetch_related("ifc_entities")
+        tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
         ctx["tasks"] = tasks
+        ctx["task_count"] = tasks.count()
+
+        ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
+        ctx["ifc_files_available"] = ifc_files.exists()
 
         # Gantt + simulate date range
-        if base_tasks.exists():
+        if tasks.exists():
             from django.db.models import Max, Min
 
-            agg = base_tasks.aggregate(min_start=Min("start_date"), max_end=Max("end_date"))
+            agg = tasks.aggregate(min_start=Min("start_date"), max_end=Max("end_date"))
             ctx["gantt_min_date"] = agg["min_start"]
             ctx["gantt_max_date"] = agg["max_end"]
         else:
             ctx["gantt_min_date"] = None
             ctx["gantt_max_date"] = None
 
+        ctx["ifc_param_name"] = self.request.session.get(
+            f"ifc_param_name_{project.pk}", "Activity ID"
+        )
         ctx["binding_review_count"] = TaskEntityBinding.objects.filter(
             task__project=project, needs_review=True
         ).count()
@@ -120,7 +158,19 @@ class ScheduleView(ProjectTabMixin, TemplateView):
             "What work is planned to start next week?",
         ]
 
-        if schedule_tab == "data_sources":
+        if ctx["schedule_tab"] == "fourD_link":
+            from environments.services.access_service import ProjectAccessService
+
+            caps = _governance_capabilities_context(project, self.request.user)
+            can_modify = ProjectAccessService.can_modify(self.request.user, project)
+            ctx["links_can_manual_link"] = bool(
+                caps.get("capabilities", {}).get("can_approve_individual")
+            )
+            ctx["links_can_remove_link"] = can_modify
+            # Exact Parameter Match apply uses ProjectModifyAccessMixin endpoint.
+            ctx["links_can_apply_param"] = can_modify
+
+        if ctx["schedule_tab"] == "data_sources":
             from django.db.models import Count as _Count
 
             from .models import P6Calendar
@@ -339,6 +389,13 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
             return JsonResponse({"error": f"Preview failed: {exc}"}, status=500)
 
     def _preview_tabular(self, request, project, file_obj) -> JsonResponse:
+        # Capture artifact bytes before extract_columns consumes the stream.
+        if hasattr(file_obj, "seek"):
+            file_obj.seek(0)
+        artifact_bytes = file_obj.read() if hasattr(file_obj, "read") else b""
+        if hasattr(file_obj, "seek"):
+            file_obj.seek(0)
+
         col_data = extract_columns(file_obj, file_obj.name)
         headers: list[str] = col_data["headers"]
         raw_rows: list[list] = col_data["raw_rows"]
@@ -347,7 +404,12 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
         request.session[f"raw_headers_{project.pk}"] = json.dumps(headers)
         request.session[f"raw_rows_{project.pk}"] = json.dumps(raw_rows)
         request.session[f"raw_source_{project.pk}"] = col_data["source"]
-        request.session[f"schedule_filename_{project.pk}"] = file_obj.name
+        store_session_import_artifact(
+            request,
+            project.pk,
+            filename=file_obj.name,
+            content=artifact_bytes,
+        )
 
         mapping = suggest_mapping(headers)
         visible = default_visible_columns(headers, mapping)
@@ -374,8 +436,22 @@ class SchedulePreviewView(ProjectModifyAccessMixin, View):
         )
 
     def _preview_parsed(self, request, project, file_obj, parser_fn) -> JsonResponse:
-        tasks, raw_deps = parser_fn(file_obj)
-        request.session[f"schedule_filename_{project.pk}"] = file_obj.name
+        content = file_obj.read() if hasattr(file_obj, "read") else b""
+        if hasattr(file_obj, "seek"):
+            file_obj.seek(0)
+        parsed = parser_fn(file_obj)
+        if len(parsed) == 3:
+            tasks, raw_deps, wbs_aux = parsed
+            request.session[f"parsed_wbs_aux_{project.pk}"] = json.dumps(wbs_aux)
+        else:
+            tasks, raw_deps = parsed
+        store_session_import_artifact(
+            request,
+            project.pk,
+            filename=getattr(file_obj, "name", ""),
+            content=content,
+            tasks_fallback=tasks,
+        )
 
         # Full parse — store in session so TaskSaveView can persist without a re-upload.
         request.session[f"parsed_tasks_{project.pk}"] = json.dumps(
@@ -528,20 +604,32 @@ class TaskUploadView(ProjectModifyAccessMixin, View):
                     },
                 )
             elif filename.endswith(".xer"):
-                tasks, raw_deps = parse_xer(uploaded)
+                xer_bytes = uploaded.read()
+                tasks, raw_deps, wbs_aux = parse_xer(io.BytesIO(xer_bytes))
+                request.session[f"parsed_wbs_aux_{project.pk}"] = json.dumps(wbs_aux)
                 source = "xer"
+                store_session_import_artifact(
+                    request, project.pk, filename=uploaded.name, content=xer_bytes
+                )
             elif filename.endswith(".xml"):
                 file_bytes = uploaded.read()
                 if b"APIBusinessObjects" in file_bytes[:2048]:
                     tasks, raw_deps, aux_data = parse_p6xml(io.BytesIO(file_bytes))
                     save_p6_pending_data(project, aux_data)
+                    request.session[f"parsed_wbs_aux_{project.pk}"] = json.dumps(
+                        {"wbs_nodes": aux_data.get("wbs_nodes", [])}
+                    )
                     source = "p6xml"
                     _dd = (aux_data.get("project_meta") or {}).get("data_date")
                     if _dd:
                         request.session[f"p6_data_date_{project.pk}"] = _dd.isoformat()
                 else:
-                    tasks, raw_deps = parse_msp(io.BytesIO(file_bytes))
+                    tasks, raw_deps, wbs_aux = parse_msp(io.BytesIO(file_bytes))
+                    request.session[f"parsed_wbs_aux_{project.pk}"] = json.dumps(wbs_aux)
                     source = "msp"
+                store_session_import_artifact(
+                    request, project.pk, filename=uploaded.name, content=file_bytes
+                )
             else:
                 return toast_response(
                     "Unsupported file type. Upload .xlsx, .xls, .csv, .xer, or .xml.",
@@ -614,241 +702,134 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
                 "No parsed tasks in session — re-upload the file.", "error", status=400
             )
 
-        from decimal import Decimal
-
-        from .services.column_mapper import parse_predecessor_string
-
         try:
             tasks_data = json.loads(raw)
         except json.JSONDecodeError:
             return toast_response("Session data corrupt — re-upload the file.", "error", status=400)
 
-        # Replace mode: wipe existing tasks before saving (cascades deps + bindings)
+        if not tasks_data:
+            return toast_response(
+                "No mapped tasks to import — complete column mapping first.",
+                "error",
+                status=400,
+            )
+
         replace_mode = request.POST.get("replace") == "true" or bool(
             request.session.pop(f"schedule_replace_{project.pk}", False)
         )
-        if replace_mode:
-            existing = Task.objects.filter(project=project).count()
-            Task.objects.filter(project=project).delete()
-            logger.info("Replace mode: cleared %d tasks for project %s", existing, project.pk)
 
-        created = 0
-        updated = 0
-        unchanged = 0
-        touched_pks: list[str] = []  # PKs of tasks created or updated in this import
-        xer_id_map: dict[str, str] = {}  # _xer_task_id  → str(task.pk)
-        msp_uid_map: dict[str, str] = {}  # _msp_uid      → str(task.pk)
-        p6_obj_id_map: dict[str, str] = {}  # _p6_obj_id    → str(task.pk)
-        activity_code_map: dict[str, str] = {}  # activity_code → str(task.pk)
-        tasks_with_preds: list[tuple[str, str]] = []  # (task_pk, raw_predecessors)
+        filename = request.session.pop(f"schedule_filename_{project.pk}", "")
+        source_format = tasks_data[0].get("source", "excel") if tasks_data else "excel"
+        content_hash = request.session.pop(f"schedule_content_hash_{project.pk}", "") or (
+            hash_parsed_tasks_payload(tasks_data)
+        )
+        _p6_dd_str = request.session.pop(f"p6_data_date_{project.pk}", None)
+        _p6_data_date = date.fromisoformat(_p6_dd_str) if _p6_dd_str else None
 
-        # Pre-load existing tasks for dedup:
-        #   primary key   — activity_code (str)
-        #   secondary key — (name, start_date) for tasks without an activity code
-        existing_by_code: dict[str, Task] = {}
-        existing_by_name_date: dict[tuple, Task] = {}
-        cleaned = 0
-        if not replace_mode:
-            for t in Task.objects.filter(project=project).only(
-                "pk", "activity_code", "name", "start_date", "end_date"
-            ):
-                if t.activity_code:
-                    existing_by_code[t.activity_code] = t
-                existing_by_name_date[(t.name, str(t.start_date))] = t
+        coordinator = ScheduleImportProvenanceCoordinator(project, request.user)
+        ctx = ImportProvenanceContext(
+            source_type=source_format,
+            source_filename=filename,
+            content_hash=content_hash,
+            mode=ScheduleImportProvenanceCoordinator.resolve_mode(replace_mode),
+            data_date=_p6_data_date,
+        )
+        run_id = coordinator.start_run(ctx)
 
-            # Clean pre-existing duplicates: same (project, activity_code) — keep first, delete rest
-            dup_codes = list(
-                Task.objects.filter(project=project)
-                .exclude(activity_code="")
-                .values("activity_code")
-                .annotate(cnt=Count("pk"))
-                .filter(cnt__gt=1)
-                .values_list("activity_code", flat=True)
-            )
-            for code in dup_codes:
-                tasks_for_code = list(
-                    Task.objects.filter(project=project, activity_code=code).order_by(
-                        "start_date", "name"
-                    )
+        raw_deps_json = request.session.pop(f"parsed_deps_{project.pk}", None)
+        raw_deps: list[dict] = json.loads(raw_deps_json) if raw_deps_json else []
+        wbs_aux_json = request.session.pop(f"parsed_wbs_aux_{project.pk}", None)
+        wbs_aux: dict = json.loads(wbs_aux_json) if wbs_aux_json else {}
+        del request.session[session_key]
+
+        try:
+            with transaction.atomic():
+                persist_result = persist_schedule_import(
+                    project,
+                    tasks_data=tasks_data,
+                    raw_deps=raw_deps,
+                    replace_mode=replace_mode,
+                    filename=filename,
+                    source_format=source_format,
+                    data_date=_p6_data_date,
                 )
-                to_delete = [t.pk for t in tasks_for_code[1:]]
-                Task.objects.filter(pk__in=to_delete).delete()
-                cleaned += len(to_delete)
-            if cleaned:
-                logger.info("Cleaned %d duplicate tasks for project %s", cleaned, project.pk)
+                attach_wbs_aux(persist_result, wbs_aux)
+                coordinator.complete_success(run_id, ctx, persist_result)
+        except Exception as exc:
+            logger.exception("Schedule import failed for project %s", project.pk)
+            coordinator.complete_failure(run_id, error_summary=str(exc))
+            return toast_response(f"Import failed: {exc}", "error", status=500)
+
+        created = persist_result.created
+        updated = persist_result.updated
+        unchanged = persist_result.unchanged
+        skipped_count = persist_result.skipped_count
+        cleaned = persist_result.cleaned
+        dep_count = persist_result.dep_count
 
         has_p6_cpm = any(
             td.get("total_float_days") is not None or td.get("early_start") for td in tasks_data
         )
-
-        for td in tasks_data:
-            try:
-                cost_str = td.get("cost") or td.get("budgeted_cost")
-                actual_start_raw = td.get("actual_start")
-                actual_end_raw = td.get("actual_end")
-                early_start_raw = td.get("early_start")
-                early_finish_raw = td.get("early_finish")
-                late_start_raw = td.get("late_start")
-                late_finish_raw = td.get("late_finish")
-                total_float_val = td.get("total_float_days")
-                activity_code = td.get("activity_code", "")
-
-                task_fields = dict(
-                    name=td["name"],
-                    description=td.get("description", ""),
-                    start_date=date.fromisoformat(td["start_date"]),
-                    end_date=date.fromisoformat(td["end_date"]),
-                    actual_start=date.fromisoformat(actual_start_raw) if actual_start_raw else None,
-                    actual_end=date.fromisoformat(actual_end_raw) if actual_end_raw else None,
-                    status=td.get("status", "planned"),
-                    source=td.get("source", "excel"),
-                    activity_code=activity_code,
-                    color=td.get("color", "#3b82f6"),
-                    cost=Decimal(cost_str) if cost_str else None,
-                    activity_type=td.get("activity_type", ""),
-                    stage=td.get("stage", ""),
-                    sub_stage=td.get("sub_stage", ""),
-                    early_start=date.fromisoformat(early_start_raw) if early_start_raw else None,
-                    early_finish=date.fromisoformat(early_finish_raw) if early_finish_raw else None,
-                    late_start=date.fromisoformat(late_start_raw) if late_start_raw else None,
-                    late_finish=date.fromisoformat(late_finish_raw) if late_finish_raw else None,
-                    total_float=int(total_float_val) if total_float_val is not None else None,
-                    is_critical=total_float_val is not None and int(total_float_val) == 0,
-                    calendar_object_id=td.get("calendar_object_id", ""),
-                    constraint_type=td.get("constraint_type", ""),
-                    constraint_date=date.fromisoformat(td["constraint_date"])
-                    if td.get("constraint_date")
-                    else None,
-                    physical_percent_complete=_resolve_import_phys_pct(td),
-                    duration_percent_complete=normalize_pct_complete(td.get("_p6_dur_pct")),
-                )
-
-                existing = None
-                if activity_code and activity_code in existing_by_code:
-                    existing = existing_by_code[activity_code]
-                else:
-                    existing = existing_by_name_date.get(
-                        (task_fields["name"], str(task_fields["start_date"]))
-                    )
-
-                if existing is not None:
-                    dirty = [f for f, v in task_fields.items() if getattr(existing, f) != v]
-                    if dirty:
-                        for f in dirty:
-                            setattr(existing, f, task_fields[f])
-                        existing.save(update_fields=dirty)
-                        updated += 1
-                        touched_pks.append(str(existing.pk))
-                    else:
-                        unchanged += 1
-                    task = existing
-                else:
-                    task = Task.objects.create(project=project, **task_fields)
-                    created += 1
-                    touched_pks.append(str(task.pk))
-
-                pk = str(task.pk)
-                if td.get("_xer_task_id"):
-                    xer_id_map[td["_xer_task_id"]] = pk
-                if td.get("_msp_uid"):
-                    msp_uid_map[td["_msp_uid"]] = pk
-                if td.get("_p6_obj_id"):
-                    p6_obj_id_map[td["_p6_obj_id"]] = pk
-                if activity_code:
-                    activity_code_map[activity_code] = pk
-                raw_preds = td.get("_raw_predecessors", "").strip()
-                if raw_preds:
-                    tasks_with_preds.append((pk, raw_preds))
-            except Exception as exc:
-                logger.warning("Skipping task row: %s", exc)
-
-        del request.session[session_key]
-
-        raw_deps_json = request.session.pop(f"parsed_deps_{project.pk}", None)
-        raw_deps: list[dict] = json.loads(raw_deps_json) if raw_deps_json else []
-
-        dep_objects: list[TaskDependency] = []
-        dep_set: set[tuple] = set()
-
-        def _add(pred_pk: str, succ_pk: str, dep_type: str, lag_days: int) -> None:
-            key = (pred_pk, succ_pk, dep_type)
-            if key in dep_set or pred_pk == succ_pk:
-                return
-            dep_set.add(key)
-            dep_objects.append(
-                TaskDependency(
-                    predecessor_id=pred_pk,
-                    successor_id=succ_pk,
-                    dep_type=dep_type,
-                    lag_days=lag_days,
-                )
+        if has_p6_cpm:
+            logger.info(
+                "P6 CPM fields present in import for project %s — will recompute after save",
+                project.pk,
             )
 
-        for d in raw_deps:
-            if "pred_xer_id" in d:
-                pred_pk = xer_id_map.get(d["pred_xer_id"])
-                succ_pk = xer_id_map.get(d["succ_xer_id"])
-            elif "pred_uid" in d:
-                pred_pk = msp_uid_map.get(d["pred_uid"])
-                succ_pk = msp_uid_map.get(d["succ_uid"])
-            elif "pred_p6_obj_id" in d:
-                pred_pk = p6_obj_id_map.get(d["pred_p6_obj_id"])
-                succ_pk = p6_obj_id_map.get(d["succ_p6_obj_id"])
-            else:
-                continue
-            if pred_pk and succ_pk:
-                _add(pred_pk, succ_pk, d.get("dep_type", "FS"), d.get("lag_days", 0))
+        cpm_attempted = False
+        cpm_ok = False
+        cpm_skipped = False
+        try:
+            schedulable = (
+                Task.objects.filter(project=project, is_non_physical=False)
+                .exclude(start_date=None)
+                .exclude(end_date=None)
+            )
+            if schedulable.exists():
+                cpm_attempted = True
+                cpm = compute_critical_path(str(project.pk))
+                cpm_ok = True
+                logger.info(
+                    "CPM recomputed after import: %d critical of %d tasks (project %s)",
+                    len(cpm["critical_task_ids"]),
+                    len(cpm["task_data"]),
+                    project.pk,
+                )
+            elif Task.objects.filter(project=project).exists():
+                cpm_skipped = True
+                logger.info(
+                    "CPM skipped after import — no schedulable tasks (project %s)",
+                    project.pk,
+                )
+        except Exception as exc:
+            logger.warning("CPM recompute after import failed: %s", exc)
 
-        for task_pk, raw_preds in tasks_with_preds:
-            for ref in parse_predecessor_string(raw_preds):
-                pred_pk = activity_code_map.get(ref["activity_code"])
-                if pred_pk:
-                    _add(pred_pk, task_pk, ref["dep_type"], ref["lag_days"])
+        tasks = Task.objects.filter(project=project).order_by("start_date", "name")
+        verified_count = tasks.count()
+        current_source = persist_result.current_source
+        if verified_count <= 0 or current_source is None:
+            return toast_response(
+                "Import did not commit any tasks — mapping retained; try again.",
+                "error",
+                status=500,
+            )
 
-        dep_count = 0
-        if dep_objects:
-            TaskDependency.objects.filter(predecessor__project=project).delete()
-            TaskDependency.objects.bulk_create(dep_objects, ignore_conflicts=True)
-            dep_count = len(dep_objects)
-            logger.info("Dependencies saved: %d for project %s", dep_count, project.pk)
-            if not has_p6_cpm:
-                try:
-                    cpm = compute_critical_path(str(project.pk))
-                    logger.info(
-                        "CPM computed: %d critical of %d tasks",
-                        len(cpm["critical_task_ids"]),
-                        len(cpm["task_data"]),
-                    )
-                except Exception as exc:
-                    logger.warning("CPM auto-run failed: %s", exc)
-
-        all_tasks = list(
-            Task.objects.filter(project=project).only("pk", "name", "stage", "sub_stage")
-        )
-        autodetect_stages([t for t in all_tasks if not t.stage])
-
-        # Record this import event so the Data Sources tab can show source chips.
-        filename = request.session.pop(f"schedule_filename_{project.pk}", "")
-        source_format = tasks_data[0].get("source", "excel") if tasks_data else "excel"
-        _p6_dd_str = request.session.pop(f"p6_data_date_{project.pk}", None)
-        _p6_data_date = date.fromisoformat(_p6_dd_str) if _p6_dd_str else None
-        current_source = ScheduleSource.objects.create(
-            project=project,
-            filename=filename,
-            source_format=source_format,
-            task_count=created + updated + unchanged,
-            data_date=_p6_data_date,
-        )
-        if touched_pks:
-            Task.objects.filter(pk__in=touched_pks).update(schedule_source=current_source)
-        if source_format == "p6xml" and p6_obj_id_map:
-            finalise_p6_data(project, current_source, p6_obj_id_map)
-
-        tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
         response = render(
             request,
             "scheduling/components/task_list.html",
-            {"tasks": tasks, "project": project, "preview_mode": False, "dep_count": dep_count},
+            _task_list_render_context(project, tasks, dep_count=dep_count),
+        )
+        response["X-Castor-Import-Result"] = json.dumps(
+            {
+                "ok": True,
+                "created": created,
+                "updated": updated,
+                "unchanged": unchanged,
+                "skipped": skipped_count,
+                "task_count": verified_count,
+                "source_id": str(current_source.pk),
+                "filename": current_source.filename or filename,
+            }
         )
         parts = []
         if created:
@@ -857,14 +838,30 @@ class TaskSaveView(ProjectModifyAccessMixin, View):
             parts.append(f"{updated} updated")
         if unchanged:
             parts.append(f"{unchanged} unchanged")
-        msg = (", ".join(parts) or "No new tasks") + "."
+        # Prefer verified committed count so UI matches DB (not raw spreadsheet rows).
+        msg = f"{verified_count} task{'s' if verified_count != 1 else ''} imported."
+        if parts:
+            msg = f"{verified_count} tasks committed ({', '.join(parts)})."
         if dep_count:
-            msg += (
-                f" {dep_count} dependenc{'y' if dep_count == 1 else 'ies'} imported, CPM computed."
-            )
+            msg += f" {dep_count} dependenc{'y' if dep_count == 1 else 'ies'} imported."
+            if cpm_attempted and cpm_ok:
+                msg += " CPM recomputed."
+        elif cpm_attempted and cpm_ok:
+            msg += " CPM recomputed."
+        if cpm_attempted and not cpm_ok:
+            msg += " Schedule imported, but CPM recompute failed — check logs or re-run CPM."
+        if cpm_skipped:
+            msg += " CPM skipped — no schedulable tasks."
+        if skipped_count:
+            msg += f" {skipped_count} task row{'s' if skipped_count != 1 else ''} skipped — check logs."
         if cleaned:
             msg += f" Cleaned {cleaned} duplicate task{'s' if cleaned != 1 else ''}."
-        return trigger_toast(response, msg, "success")
+        toast_level = "success"
+        if cpm_attempted and not cpm_ok:
+            toast_level = "error"
+        elif skipped_count:
+            toast_level = "info"
+        return trigger_toast(response, msg, toast_level)
 
 
 class ScheduleClearView(ProjectModifyAccessMixin, View):
@@ -1089,6 +1086,23 @@ class TaskActualDateView(ProjectModifyAccessMixin, View):
         return trigger_toast(response, "Actual dates updated.", "success")
 
 
+class LinkParamView(ProjectModifyAccessMixin, View):
+    """HTMX POST — parameter mapping (persistence blocked until E1-E approval)."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        self.get_project()
+        param_name = request.POST.get("param_name", "").strip()
+        if not param_name:
+            return toast_response("Enter a property name to match on.", "error", status=400)
+
+        return toast_response(
+            "Parameter Match persistence is disabled until you preview and approve. "
+            "Use Preview Match on the 4D Link tab first.",
+            "info",
+            status=400,
+        )
+
+
 class MatchPreviewView(ProjectAccessMixin, View):
     """GET — read-only exact-match preview for Task.activity_code ↔ IFC property."""
 
@@ -1110,8 +1124,6 @@ class MatchPreviewView(ProjectAccessMixin, View):
         }
 
     def get(self, request, **kwargs: object) -> HttpResponse:
-        from scheduling.services.match_preview import MatchPreviewService
-
         project = self.get_project()
         param_name = request.GET.get("param_name", "Activity ID").strip()
         if not param_name:
@@ -1147,28 +1159,27 @@ class MatchPreviewView(ProjectAccessMixin, View):
                 "show_approval": show_approval,
                 "summary_only": summary_only,
                 **ui_state,
-                "approval_swap_target": "#fourD-match-preview",
+                "approval_swap_target": "#governance-exact-preview-slot"
+                if show_approval
+                else "#fourD-match-preview",
             },
         )
         if preview.errors:
-            return trigger_toast(response, preview.errors[0], "error")
+            return trigger_toast(
+                response,
+                preview.errors[0],
+                "error",
+            )
         return response
 
 
 class ApplyApprovedMatchView(ProjectModifyAccessMixin, View):
-    """POST — persist accepted bindings after fingerprint-validated approval."""
+    """POST — persist trusted bindings after fingerprint-validated approval."""
 
     def post(self, request, **kwargs: object) -> HttpResponse:
-        from scheduling.services.approved_match_main import (
-            ApprovalValidationError,
-            ApprovedMatchPersistenceService,
-            MatchApprovalRequest,
-            StalePreviewError,
-        )
-
         project = self.get_project()
 
-        if request.content_type and request.content_type.startswith("application/json"):
+        if request.content_type.startswith("application/json"):
             try:
                 payload = json.loads(request.body.decode() or "{}")
             except json.JSONDecodeError:
@@ -1193,7 +1204,10 @@ class ApplyApprovedMatchView(ProjectModifyAccessMixin, View):
                     "Preview is stale — regenerate preview before applying.",
                     "error",
                 )
-            return JsonResponse({"error": exc.message, **exc.details}, status=409)
+            return JsonResponse(
+                {"error": exc.message, **exc.details},
+                status=409,
+            )
         except ApprovalValidationError as exc:
             if request.headers.get("HX-Request"):
                 return toast_response(exc.message, "error", status=400)
@@ -1222,23 +1236,6 @@ class ApplyApprovedMatchView(ProjectModifyAccessMixin, View):
             f"{result.noop_existing_accepted_bindings} unchanged."
         )
         return trigger_toast(response, msg, "success")
-
-
-class LinkParamView(ProjectModifyAccessMixin, View):
-    """HTMX POST — parameter mapping (persistence blocked until preview approval)."""
-
-    def post(self, request, **kwargs: object) -> HttpResponse:
-        self.get_project()
-        param_name = request.POST.get("param_name", "").strip()
-        if not param_name:
-            return toast_response("Enter a property name to match on.", "error", status=400)
-
-        return toast_response(
-            "Parameter Match persistence is disabled until you preview and approve. "
-            "Use Link Check / Preview Match on the Links tab first.",
-            "info",
-            status=400,
-        )
 
 
 class AutoLinkView(ProjectModifyAccessMixin, View):
@@ -1277,11 +1274,11 @@ class TaskListPartialView(ProjectAccessMixin, View):
 
     def get(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
-        tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
+        tasks = Task.objects.filter(project=project).order_by("start_date", "name")
         return render(
             request,
             "scheduling/components/task_list.html",
-            {"tasks": tasks, "project": project, "preview_mode": False},
+            _task_list_render_context(project, tasks),
         )
 
 
@@ -1294,11 +1291,11 @@ class TaskDeleteView(ProjectModifyAccessMixin, View):
         task_name = task.name
         task.delete()
 
-        tasks = Task.objects.filter(project=project).prefetch_related("ifc_entities")
+        tasks = Task.objects.filter(project=project).order_by("start_date", "name")
         response = render(
             request,
             "scheduling/components/task_list.html",
-            {"tasks": tasks, "project": project, "preview_mode": False},
+            _task_list_render_context(project, tasks),
         )
         return trigger_toast(response, f"'{task_name}' deleted.", "success")
 
@@ -1341,6 +1338,10 @@ class GanttDataView(ProjectAccessMixin, View):
     _MAX_PAGE_SIZE = 1000
 
     def get(self, request, **kwargs: object) -> JsonResponse:
+        from scheduling.services.governance.reader import BindingGovernanceReader
+
+        from .services.link_resolver import link_status_for_task
+
         project = self.get_project()
         qs = Task.objects.filter(project=project, is_non_physical=False).order_by(
             "start_date", "activity_code"
@@ -1377,28 +1378,15 @@ class GanttDataView(ProjectAccessMixin, View):
             tasks = list(qs)
             pagination = None
 
-        task_ids = [t.pk for t in tasks]
-        trusted_by_task: dict[str, list[str]] = {}
-        review_by_task: dict[str, list[str]] = {}
-        if task_ids:
-            for task_id, gid, needs_review in TaskEntityBinding.objects.filter(
-                task_id__in=task_ids
-            ).values_list("task_id", "entity_global_id", "needs_review"):
-                key = str(task_id)
-                if needs_review:
-                    review_by_task.setdefault(key, []).append(gid)
-                else:
-                    trusted_by_task.setdefault(key, []).append(gid)
-
+        task_pks = [t.pk for t in tasks]
+        reader = BindingGovernanceReader(project.pk)
+        trusted_map = reader.entity_gids_by_task(task_pks, trusted_only=True)
+        review_map = reader.entity_gids_by_task(task_pks, review_only=True)
         data = []
         for task in tasks:
             tid = str(task.pk)
-            trusted_gids = trusted_by_task.get(tid, [])
-            review_gids = review_by_task.get(tid, [])
-            # Prefer accepted bindings; fall back to M2M for legacy links.
-            if not trusted_gids:
-                trusted_gids = list(task.ifc_entities.values_list("global_id", flat=True))
-            link_status = "linked" if trusted_gids else "unlinked"
+            trusted_gids = trusted_map.get(tid, [])
+            review_gids = review_map.get(tid, [])
             data.append(
                 {
                     "id": tid,
@@ -1413,12 +1401,12 @@ class GanttDataView(ProjectAccessMixin, View):
                     "total_float": task.total_float,
                     "activity_code": task.activity_code or "",
                     "status": task.status,
-                    "link_status": link_status,
-                    "entity_global_ids": trusted_gids,
+                    "link_status": link_status_for_task(task, trusted_gids + review_gids),
                     "trusted_entity_global_ids": trusted_gids,
                     "review_entity_global_ids": review_gids,
                     "trusted_entity_count": len(trusted_gids),
                     "review_entity_count": len(review_gids),
+                    "entity_global_ids": trusted_gids,
                 }
             )
 
@@ -1429,18 +1417,18 @@ class GanttDataView(ProjectAccessMixin, View):
 
 
 class TaskDetailView(ProjectAccessMixin, View):
-    """HTMX GET — task detail side panel for Links / Gantt inspector."""
+    """HTMX GET — task detail side panel for the Gantt chart / Links inspector."""
 
     def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.reader import BindingGovernanceReader
+
         project = self.get_project()
         task = get_object_or_404(Task, pk=kwargs["task_pk"], project=project)
-        today = date.today()
-        progress = _compute_progress(task, today)
-
+        reader = BindingGovernanceReader(project.pk)
         trusted_bindings = list(
-            TaskEntityBinding.objects.filter(task=task, needs_review=False).order_by(
-                "-confidence", "created_at"
-            )[:50]
+            reader.trusted_bindings_qs()
+            .filter(task_id=task.pk)
+            .order_by("-confidence", "created_at")[:50]
         )
         trusted_gids = [b.entity_global_id for b in trusted_bindings]
         ifc_files = IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
@@ -1449,85 +1437,121 @@ class TaskDetailView(ProjectAccessMixin, View):
             for e in IFCEntity.objects.filter(
                 ifc_file__in=ifc_files,
                 global_id__in=set(trusted_gids),
-            ).only("global_id", "name", "ifc_type")
+            )
+            .select_related("spatial_container", "spatial_container__entity")
+            .only(
+                "global_id",
+                "name",
+                "ifc_type",
+                "properties",
+                "spatial_container_id",
+                "spatial_container__spatial_type",
+                "spatial_container__entity_id",
+                "spatial_container__entity__name",
+            )
         }
 
-        # Fallback: legacy M2M when no accepted bindings yet.
-        if not trusted_bindings:
-            m2m_entities = list(task.ifc_entities.only("global_id", "name", "ifc_type"))
-            applied_links = [
-                {
-                    "binding_id": "",
-                    "global_id": e.global_id,
-                    "name": e.name or e.global_id,
-                    "ifc_type": e.ifc_type or "",
-                    "storey": "",
-                    "confidence": None,
-                    "link_method": "",
-                    "activity_hint": "",
-                }
-                for e in m2m_entities
-            ]
-            trusted_gids = [e.global_id for e in m2m_entities]
-        else:
-            applied_links = [
-                {
-                    "binding_id": str(b.pk),
-                    "global_id": b.entity_global_id,
-                    "name": (
-                        (
-                            entity_by_gid[b.entity_global_id].name
-                            if b.entity_global_id in entity_by_gid
-                            else ""
-                        )
-                        or b.entity_global_id
-                    ),
-                    "ifc_type": (
-                        entity_by_gid[b.entity_global_id].ifc_type
-                        if b.entity_global_id in entity_by_gid
-                        else ""
-                    )
-                    or "",
-                    "storey": "",
-                    "confidence": b.confidence,
-                    "link_method": b.link_method or "",
-                    "activity_hint": "",
-                }
-                for b in trusted_bindings
-            ]
+        def _storey(entity) -> str:
+            if entity is None:
+                return ""
+            container = getattr(entity, "spatial_container", None)
+            if container is None:
+                return ""
+            linked = getattr(container, "entity", None)
+            return (linked.name if linked and linked.name else "") or ""
+
+        def _rows(bindings: list) -> list[dict]:
+            rows: list[dict] = []
+            for binding in bindings:
+                entity = entity_by_gid.get(binding.entity_global_id)
+                rows.append(
+                    {
+                        "binding_id": str(binding.pk),
+                        "global_id": binding.entity_global_id,
+                        "name": (entity.name if entity and entity.name else "")
+                        or binding.entity_global_id,
+                        "ifc_type": (entity.ifc_type if entity else "") or "",
+                        "storey": _storey(entity),
+                        "confidence": binding.confidence,
+                        "link_method": binding.link_method or "",
+                        "activity_hint": "",
+                    }
+                )
+            return rows
+
+        applied_links = _rows(trusted_bindings)
+
+        # Property hints tied to this activity code only (metadata, not proposals)
+        property_hints: list[dict] = []
+        activity_code = (task.activity_code or "").strip().lower()
+        if activity_code:
+            for entity in (
+                IFCEntity.objects.filter(ifc_file__in=ifc_files)
+                .only("global_id", "name", "ifc_type", "properties")
+                .iterator(chunk_size=200)
+            ):
+                if entity.global_id in trusted_gids:
+                    continue
+                act_id = None
+                for key, value in (entity.properties or {}).items():
+                    if value and key.lower().endswith("activity id"):
+                        act_id = str(value).strip()
+                        break
+                if not act_id:
+                    continue
+                if act_id.lower() != activity_code and activity_code not in act_id.lower():
+                    continue
+                property_hints.append(
+                    {
+                        "global_id": entity.global_id,
+                        "name": entity.name or entity.global_id,
+                        "ifc_type": entity.ifc_type,
+                        "activity_id": act_id,
+                    }
+                )
+                if len(property_hints) >= 20:
+                    break
+
+        today = date.today()
+        progress = _compute_progress(task, today)
 
         siblings_count = (
-            (
-                TaskEntityBinding.objects.filter(
-                    task__project=project,
-                    entity_global_id__in=trusted_gids,
-                    needs_review=False,
-                )
-                .exclude(task_id=task.pk)
-                .values("task_id")
-                .distinct()
-                .count()
+            TaskEntityBinding.objects.filter(
+                entity_global_id__in=trusted_gids,
+                task__project=project,
+                needs_review=False,
             )
+            .exclude(task_id=task.pk)
+            .values("task_id")
+            .distinct()
+            .count()
             if trusted_gids
             else 0
         )
+
+        from environments.services.access_service import ProjectAccessService
+
+        caps = _governance_capabilities_context(project, request.user)
+        can_manual_link = bool(caps.get("capabilities", {}).get("can_approve_individual"))
+        can_remove_link = ProjectAccessService.can_modify(request.user, project)
 
         return render(
             request,
             "scheduling/components/task_detail.html",
             {
                 "task": task,
-                "entities": list(entity_by_gid.values()) if entity_by_gid else [],
+                "entities": [entity_by_gid[g] for g in trusted_gids if g in entity_by_gid],
+                "trusted_entities": [entity_by_gid[g] for g in trusted_gids if g in entity_by_gid],
                 "applied_links": applied_links,
-                "trusted_count": len(applied_links),
+                "property_hints": property_hints,
+                "trusted_count": len(trusted_gids),
                 "progress": progress,
                 "siblings_count": siblings_count,
                 "stage_color": _STAGE_COLORS.get(task.stage or "", "#6b7280"),
                 "entity_global_ids_json": json.dumps(trusted_gids),
                 "project": project,
-                "can_manual_link": True,
-                "can_remove_link": True,
-                "property_hints": [],
+                "can_manual_link": can_manual_link,
+                "can_remove_link": can_remove_link,
             },
         )
 
@@ -1885,6 +1909,1073 @@ class FloorHealthView(ProjectAccessMixin, View):
         return JsonResponse(result)
 
 
+class LinkGovernanceSummaryView(ProjectAccessMixin, View):
+    """GET — read-only trusted link governance summary for one project."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from scheduling.services.governance.summary import GovernanceSummaryService
+
+        project = self.get_project()
+        payload = GovernanceSummaryService(str(project.pk)).build()
+        return JsonResponse(payload)
+
+
+class LinkGovernanceReviewQueueView(ProjectAccessMixin, View):
+    """GET — paginated read-only link governance review queue (JSON or HTMX)."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.review_queue import LinkReviewQueueService
+
+        project = self.get_project()
+        filters = LinkReviewQueueService.filters_from_request(request.GET.dict())
+        service = LinkReviewQueueService(str(project.pk), project_pk=project.pk)
+        payload = service.build(filters)
+
+        if request.headers.get("HX-Request"):
+            queue_modes = [
+                ("review", "Review"),
+                ("trusted", "Applied / Confirmed"),
+                ("property_hints", "Property hints"),
+                ("legacy_only", "Legacy M2M"),
+                ("multiple_trusted", "Multi-applied"),
+                ("possible_conflicts", "Conflicts"),
+                ("all_governance", "All"),
+            ]
+            return render(
+                request,
+                "scheduling/components/governance_review_queue.html",
+                {
+                    "project": project,
+                    "queue": payload,
+                    "filters": filters,
+                    "queue_modes": queue_modes,
+                    "governance_capabilities": _governance_capabilities_context(
+                        project, request.user
+                    ),
+                },
+            )
+        return JsonResponse(payload)
+
+
+class LinkGovernanceTaskView(ProjectAccessMixin, View):
+    """GET — task-centric governance read model."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from scheduling.services.governance.review_queue import LinkReviewQueueService
+
+        project = self.get_project()
+        service = LinkReviewQueueService(str(project.pk), project_pk=project.pk)
+        payload = service.task_centric(kwargs["task_pk"])
+        return JsonResponse(payload)
+
+
+class LinkGovernanceEntityView(ProjectAccessMixin, View):
+    """GET — entity-centric governance read model by GlobalId."""
+
+    def get(self, request, **kwargs: object) -> JsonResponse:
+        from scheduling.services.governance.review_queue import LinkReviewQueueService
+
+        project = self.get_project()
+        service = LinkReviewQueueService(str(project.pk), project_pk=project.pk)
+        payload = service.entity_centric(kwargs["global_id"])
+        return JsonResponse(payload)
+
+
+class LinkGovernanceWorkspaceView(ProjectAccessMixin, View):
+    """GET — HTMX shell for link governance review workspace."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.authority import GovernanceAuthorityPolicy
+
+        project = self.get_project()
+        capabilities = GovernanceAuthorityPolicy(project, request.user).capabilities_summary()
+        return render(
+            request,
+            "scheduling/tabs/link_governance.html",
+            {"project": project, "governance_capabilities": capabilities},
+        )
+
+
+def _parse_json_or_form(request) -> dict | None:
+    """Parse POST body as JSON or form fields."""
+    if request.content_type.startswith("application/json"):
+        try:
+            return json.loads(request.body.decode() or "{}")
+        except json.JSONDecodeError:
+            return None
+    data = request.POST.dict()
+    if "binding_ids" not in data and request.POST.getlist("binding_ids"):
+        data["binding_ids"] = request.POST.getlist("binding_ids")
+    return data
+
+
+def _parse_binding_ids(payload: dict) -> list[str]:
+    """Extract binding UUID strings from request payload."""
+    raw = payload.get("binding_ids") or payload.get("binding_id")
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        return [raw.strip()] if raw.strip() else []
+    return [str(x).strip() for x in raw if str(x).strip()]
+
+
+def _parse_parity_items_from_request(request) -> list[dict[str, str]]:
+    """Build parity repair item dicts from HTMX form selection."""
+    items: list[dict[str, str]] = []
+    for bid in request.POST.getlist("binding_ids"):
+        repair_type = request.POST.get(f"repair_type_{bid}", "")
+        if bid and repair_type:
+            items.append({"binding_id": bid, "repair_type": repair_type})
+    for row_key in request.POST.getlist("parity_row"):
+        repair_type = request.POST.get(f"repair_type_row_{row_key}", "")
+        task_id = request.POST.get(f"task_id_row_{row_key}", "")
+        entity_gid = request.POST.get(f"entity_gid_row_{row_key}", "")
+        if repair_type and task_id and entity_gid:
+            items.append(
+                {
+                    "task_id": task_id,
+                    "entity_global_id": entity_gid,
+                    "repair_type": repair_type,
+                }
+            )
+    return items
+
+
+def _decision_error(
+    request,
+    message: str,
+    *,
+    status: int = 400,
+    details: dict | None = None,
+) -> HttpResponse:
+    """Return JSON or HTMX toast for decision validation errors."""
+    body = {"error": message, **(details or {})}
+    if request.headers.get("HX-Request"):
+        return toast_response(message, "error", status=status)
+    return JsonResponse(body, status=status)
+
+
+def _governance_capabilities_context(project, user) -> dict:
+    from scheduling.services.governance.authority import GovernanceAuthorityPolicy
+
+    return GovernanceAuthorityPolicy(project, user).capabilities_summary()
+
+
+class LinkDecisionPreviewOneView(ProjectModifyAccessMixin, View):
+    """POST — preview individual binding approval with fingerprint."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.link_decision import (
+            DecisionValidationError,
+            LinkDecisionService,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        service = LinkDecisionService(project, request.user)
+        try:
+            preview = service.preview_one(kwargs["binding_pk"])
+        except DecisionValidationError as exc:
+            return _decision_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_decision_confirm_one.html",
+                {
+                    "project": project,
+                    "preview": preview,
+                    "binding_id": kwargs["binding_pk"],
+                    "queue_mode": payload.get("queue_mode", "review"),
+                    "queue_page": payload.get("queue_page", 1),
+                },
+            )
+        return JsonResponse(preview.to_dict())
+
+
+class LinkDecisionApplyOneView(ProjectModifyAccessMixin, View):
+    """POST — apply individual binding approval."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.link_decision import (
+            DecisionValidationError,
+            LinkDecisionService,
+            StaleDecisionError,
+        )
+        from scheduling.services.governance.review_queue import LinkReviewQueueService
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        fingerprint = payload.get("selection_fingerprint", "")
+        conflict_ack = payload.get("conflict_acknowledged") in (True, "true", "1", "on")
+
+        service = LinkDecisionService(project, request.user)
+        try:
+            result = service.approve_one(
+                kwargs["binding_pk"],
+                selection_fingerprint=fingerprint,
+                conflict_acknowledged=conflict_ack,
+            )
+        except StaleDecisionError as exc:
+            return _decision_error(request, exc.message, status=409, details=exc.details)
+        except GovernanceAuthorityError as exc:
+            return _decision_error(
+                request, exc.result.reason, status=403, details=exc.result.to_dict()
+            )
+        except DecisionValidationError as exc:
+            status = 422 if "acknowledgment" in exc.message.lower() else 400
+            return _decision_error(request, exc.message, status=status, details=exc.details)
+        except GovernanceAuthorityError as exc:
+            return _decision_error(
+                request, exc.result.reason, status=403, details=exc.result.to_dict()
+            )
+
+        mode = payload.get("queue_mode", "review")
+        page = int(payload.get("queue_page", 1) or 1)
+        filters = LinkReviewQueueService.filters_from_request({"mode": mode, "page": page})
+        queue = LinkReviewQueueService(str(project.pk), project_pk=project.pk).build(filters)
+        queue_modes = [
+            ("review", "Review"),
+            ("trusted", "Applied / Confirmed"),
+            ("property_hints", "Property hints"),
+            ("legacy_only", "Legacy M2M"),
+            ("multiple_trusted", "Multi-applied"),
+            ("possible_conflicts", "Conflicts"),
+            ("all_governance", "All"),
+        ]
+        queue_html = render_to_string(
+            "scheduling/components/governance_review_queue.html",
+            {
+                "project": project,
+                "queue": queue,
+                "filters": filters,
+                "queue_modes": queue_modes,
+                "governance_capabilities": _governance_capabilities_context(project, request.user),
+            },
+            request=request,
+        )
+        result_html = render_to_string(
+            "scheduling/components/governance_decision_result.html",
+            {"result": result, "project": project},
+            request=request,
+        )
+        msg = (
+            f"Approved {result.promoted_count}, "
+            f"{result.noop_count} already trusted, "
+            f"{result.m2m_additions} M2M added."
+        )
+        response = HttpResponse(
+            result_html
+            + f'<div id="governance-queue-panel" hx-swap-oob="innerHTML">{queue_html}</div>'
+        )
+        return trigger_toast(response, msg, "success")
+
+
+class LinkDecisionBulkPreviewView(GovernanceCapabilityMixin, View):
+    """POST — preview selected bulk approval."""
+
+    governance_capability = GovernanceCapability.APPROVE_BULK
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.link_decision import (
+            BULK_UI_MAX,
+            DecisionValidationError,
+            LinkDecisionService,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        binding_ids = _parse_binding_ids(payload)
+        if not binding_ids:
+            return _decision_error(request, "At least one binding must be selected.", status=400)
+        if len(binding_ids) > BULK_UI_MAX:
+            return _decision_error(
+                request,
+                f"Selection exceeds UI maximum of {BULK_UI_MAX} items.",
+                status=400,
+                details={"max": BULK_UI_MAX, "requested": len(binding_ids)},
+            )
+
+        service = LinkDecisionService(project, request.user)
+        try:
+            preview = service.preview_selected(binding_ids)
+        except DecisionValidationError as exc:
+            return _decision_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_bulk_preview.html",
+                {
+                    "project": project,
+                    "preview": preview,
+                    "binding_ids": binding_ids,
+                    "queue_mode": payload.get("queue_mode", "review"),
+                    "queue_page": payload.get("queue_page", 1),
+                },
+            )
+        return JsonResponse(preview.to_dict())
+
+
+class LinkDecisionBulkApplyView(GovernanceCapabilityMixin, View):
+    """POST — apply selected bulk approval (all-or-nothing)."""
+
+    governance_capability = GovernanceCapability.APPROVE_BULK
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.link_decision import (
+            DecisionValidationError,
+            LinkDecisionService,
+            StaleDecisionError,
+        )
+        from scheduling.services.governance.review_queue import LinkReviewQueueService
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        binding_ids = _parse_binding_ids(payload)
+        fingerprint = payload.get("selection_fingerprint", "")
+        confirmation = payload.get("confirmation", "")
+        confirm_ack = payload.get("confirm_acknowledged") in (True, "true", "1", "on")
+        conflict_ack = payload.get("conflict_acknowledged") in (True, "true", "1", "on")
+
+        service = LinkDecisionService(project, request.user)
+        try:
+            result = service.approve_selected(
+                binding_ids,
+                selection_fingerprint=fingerprint,
+                confirmation=confirmation,
+                confirm_acknowledged=confirm_ack,
+                conflict_acknowledged=conflict_ack,
+                require_bulk_phrase=True,
+            )
+        except StaleDecisionError as exc:
+            return _decision_error(request, exc.message, status=409, details=exc.details)
+        except DecisionValidationError as exc:
+            status = 422 if "acknowledgment" in exc.message.lower() else 400
+            return _decision_error(request, exc.message, status=status, details=exc.details)
+        except GovernanceAuthorityError as exc:
+            return _decision_error(
+                request, exc.result.reason, status=403, details=exc.result.to_dict()
+            )
+
+        mode = payload.get("queue_mode", "review")
+        page = int(payload.get("queue_page", 1) or 1)
+        filters = LinkReviewQueueService.filters_from_request({"mode": mode, "page": page})
+        queue = LinkReviewQueueService(str(project.pk), project_pk=project.pk).build(filters)
+        queue_modes = [
+            ("review", "Review"),
+            ("trusted", "Applied / Confirmed"),
+            ("property_hints", "Property hints"),
+            ("legacy_only", "Legacy M2M"),
+            ("multiple_trusted", "Multi-applied"),
+            ("possible_conflicts", "Conflicts"),
+            ("all_governance", "All"),
+        ]
+        queue_html = render_to_string(
+            "scheduling/components/governance_review_queue.html",
+            {
+                "project": project,
+                "queue": queue,
+                "filters": filters,
+                "queue_modes": queue_modes,
+                "governance_capabilities": _governance_capabilities_context(project, request.user),
+            },
+            request=request,
+        )
+        result_html = render_to_string(
+            "scheduling/components/governance_decision_result.html",
+            {"result": result, "project": project, "bulk": True},
+            request=request,
+        )
+        msg = (
+            f"Bulk approved {result.promoted_count}, "
+            f"{result.noop_count} no-op, "
+            f"{result.m2m_additions} M2M added."
+        )
+        response = HttpResponse(
+            result_html
+            + f'<div id="governance-queue-panel" hx-swap-oob="innerHTML">{queue_html}</div>'
+        )
+        return trigger_toast(response, msg, "success")
+
+
+class LinkGovernanceReconciliationView(ProjectAccessMixin, View):
+    """GET — read-only binding reconciliation diagnostic (JSON or HTMX)."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_reconciliation import (
+            BindingReconciliationService,
+        )
+
+        project = self.get_project()
+        filters = BindingReconciliationService.filters_from_request(request.GET.dict())
+        payload = BindingReconciliationService(str(project.pk), project_pk=project.pk).build(
+            filters
+        )
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_reconciliation_panel.html",
+                {
+                    "project": project,
+                    "reconciliation": payload,
+                    "filters": filters,
+                    "governance_capabilities": _governance_capabilities_context(
+                        project, request.user
+                    ),
+                },
+            )
+        return JsonResponse(payload)
+
+
+class LinkGovernanceReconciliationDetailView(ProjectAccessMixin, View):
+    """GET — read-only reconciliation detail for one binding."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_reconciliation import (
+            BindingReconciliationService,
+        )
+
+        project = self.get_project()
+        payload = BindingReconciliationService(
+            str(project.pk), project_pk=project.pk
+        ).binding_detail(kwargs["binding_pk"])
+        if "error" in payload:
+            return JsonResponse(payload, status=404)
+        return JsonResponse(payload)
+
+
+def _lifecycle_error(
+    request,
+    message: str,
+    *,
+    status: int = 400,
+    details: dict | None = None,
+) -> HttpResponse:
+    """Return JSON or HTMX toast for lifecycle validation errors."""
+    body = {"error": message, **(details or {})}
+    if request.headers.get("HX-Request"):
+        return toast_response(message, "error", status=status)
+    return JsonResponse(body, status=status)
+
+
+def _lifecycle_error_from_exc(request, exc: Exception) -> HttpResponse:
+    if isinstance(exc, GovernanceAuthorityError):
+        return _lifecycle_error(
+            request, exc.result.reason, status=403, details=exc.result.to_dict()
+        )
+    from scheduling.services.governance.binding_lifecycle import (
+        LifecycleValidationError,
+        StaleLifecycleError,
+    )
+
+    if isinstance(exc, StaleLifecycleError):
+        return _lifecycle_error(request, exc.message, status=409, details=exc.details)
+    if isinstance(exc, LifecycleValidationError):
+        return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+    raise exc
+
+
+class LinkLifecycleRejectPreviewView(ProjectModifyAccessMixin, View):
+    """POST — preview rejection of an active review binding."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+        )
+
+        project = self.get_project()
+        service = BindingLifecycleService(project, request.user)
+        try:
+            preview = service.preview_reject(str(kwargs["binding_pk"]))
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_confirm.html",
+                {
+                    "project": project,
+                    "preview": preview,
+                    "operation": "reject",
+                    "binding_id": kwargs["binding_pk"],
+                    "reason_codes": [
+                        ("wrong_task", "Wrong task"),
+                        ("wrong_entity", "Wrong entity"),
+                        ("wrong_location", "Wrong location"),
+                        ("wrong_discipline", "Wrong discipline"),
+                        ("wrong_type", "Wrong type"),
+                        ("duplicate", "Duplicate"),
+                        ("insufficient_evidence", "Insufficient evidence"),
+                        ("obsolete_suggestion", "Obsolete suggestion"),
+                        ("other", "Other"),
+                    ],
+                },
+            )
+        return JsonResponse(preview.to_dict())
+
+
+class LinkLifecycleRejectApplyView(ProjectModifyAccessMixin, View):
+    """POST — apply audited rejection."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+            StaleLifecycleError,
+        )
+        from scheduling.services.governance.review_queue import LinkReviewQueueService
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        service = BindingLifecycleService(project, request.user)
+        try:
+            result = service.reject(
+                str(kwargs["binding_pk"]),
+                fingerprint=payload.get("fingerprint", ""),
+                reason_code=payload.get("reason_code", ""),
+                reason_text=payload.get("reason_text", ""),
+            )
+        except StaleLifecycleError as exc:
+            return _lifecycle_error(request, exc.message, status=409, details=exc.details)
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            queue_svc = LinkReviewQueueService(project.pk, project_pk=project.pk)
+            queue = queue_svc.build(queue_svc.filters_from_request({"mode": "review", "page": 1}))
+            queue_html = render_to_string(
+                "scheduling/components/governance_review_queue.html",
+                {
+                    "project": project,
+                    "queue": queue,
+                    "filters": queue_svc.filters_from_request({"mode": "review", "page": 1}),
+                    "queue_modes": [("review", "Review"), ("trusted", "Applied / Confirmed")],
+                    "governance_capabilities": _governance_capabilities_context(
+                        project, request.user
+                    ),
+                },
+                request=request,
+            )
+            result_html = render_to_string(
+                "scheduling/components/governance_lifecycle_result.html",
+                {"project": project, "result": result, "operation": "reject"},
+                request=request,
+            )
+            return HttpResponse(
+                result_html
+                + f'<div id="governance-queue-panel" hx-swap-oob="innerHTML">{queue_html}</div>'
+            )
+        return JsonResponse(result.to_dict())
+
+
+class LinkLifecycleReaffirmPreviewView(ProjectModifyAccessMixin, View):
+    """POST — preview reaffirmation of a trusted binding."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+        )
+
+        project = self.get_project()
+        service = BindingLifecycleService(project, request.user)
+        try:
+            preview = service.preview_reaffirm(str(kwargs["binding_pk"]))
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_confirm.html",
+                {
+                    "project": project,
+                    "preview": preview,
+                    "operation": "reaffirm",
+                    "binding_id": kwargs["binding_pk"],
+                    "reason_codes": [
+                        ("evidence_verified", "Evidence verified"),
+                        ("manual_override_confirmed", "Manual override confirmed"),
+                        ("source_change_reviewed", "Source change reviewed"),
+                        ("reconciliation_false_positive", "Reconciliation false positive"),
+                        ("other", "Other"),
+                    ],
+                },
+            )
+        return JsonResponse(preview.to_dict())
+
+
+class LinkLifecycleReaffirmApplyView(ProjectModifyAccessMixin, View):
+    """POST — apply reaffirmation."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+            StaleLifecycleError,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        service = BindingLifecycleService(project, request.user)
+        try:
+            result = service.reaffirm(
+                str(kwargs["binding_pk"]),
+                fingerprint=payload.get("fingerprint", ""),
+                reason_code=payload.get("reason_code", ""),
+                reason_text=payload.get("reason_text", ""),
+                repair_m2m=payload.get("repair_m2m") in (True, "true", "1", "on"),
+            )
+        except StaleLifecycleError as exc:
+            return _lifecycle_error(request, exc.message, status=409, details=exc.details)
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_result.html",
+                {"project": project, "result": result, "operation": "reaffirm"},
+            )
+        return JsonResponse(result.to_dict())
+
+
+class LinkLifecycleReversePreviewView(GovernanceCapabilityMixin, View):
+    """POST — preview trusted binding reversal."""
+
+    governance_capability = GovernanceCapability.REVERSE
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+        )
+
+        project = self.get_project()
+        service = BindingLifecycleService(project, request.user)
+        try:
+            preview = service.preview_reverse(str(kwargs["binding_pk"]))
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_confirm.html",
+                {
+                    "project": project,
+                    "preview": preview,
+                    "operation": "reverse",
+                    "binding_id": kwargs["binding_pk"],
+                    "confirm_phrase": "REVERSE TRUSTED LINK",
+                    "reason_codes": [
+                        ("mistaken_approval", "Mistaken approval"),
+                        ("source_changed", "Source changed"),
+                        ("task_removed", "Task removed"),
+                        ("entity_removed", "Entity removed"),
+                        ("scope_changed", "Scope changed"),
+                        ("governance_correction", "Governance correction"),
+                        ("other", "Other"),
+                    ],
+                },
+            )
+        return JsonResponse(preview.to_dict())
+
+
+class LinkLifecycleReverseApplyView(GovernanceCapabilityMixin, View):
+    """POST — apply audited reversal."""
+
+    governance_capability = GovernanceCapability.REVERSE
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+            StaleLifecycleError,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        service = BindingLifecycleService(project, request.user)
+        try:
+            result = service.reverse(
+                str(kwargs["binding_pk"]),
+                fingerprint=payload.get("fingerprint", ""),
+                reason_code=payload.get("reason_code", ""),
+                reason_text=payload.get("reason_text", ""),
+                confirmation=payload.get("confirmation", ""),
+            )
+        except StaleLifecycleError as exc:
+            return _lifecycle_error(request, exc.message, status=409, details=exc.details)
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_result.html",
+                {"project": project, "result": result, "operation": "reverse"},
+            )
+        return JsonResponse(result.to_dict())
+
+
+class LinkLifecycleSupersedePreviewView(GovernanceCapabilityMixin, View):
+    """POST — preview supersession of trusted binding by review replacement."""
+
+    governance_capability = GovernanceCapability.SUPERSEDE
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        replacement_id = payload.get("replacement_binding_id", "")
+        service = BindingLifecycleService(project, request.user)
+        try:
+            preview = service.preview_supersede(str(kwargs["binding_pk"]), str(replacement_id))
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_confirm.html",
+                {
+                    "project": project,
+                    "preview": preview,
+                    "operation": "supersede",
+                    "binding_id": kwargs["binding_pk"],
+                    "replacement_binding_id": replacement_id,
+                    "confirm_phrase": "SUPERSEDE LINK",
+                    "reason_codes": [
+                        ("mistaken_approval", "Mistaken approval"),
+                        ("source_changed", "Source changed"),
+                        ("scope_changed", "Scope changed"),
+                        ("governance_correction", "Governance correction"),
+                        ("other", "Other"),
+                    ],
+                },
+            )
+        return JsonResponse(preview.to_dict())
+
+
+class LinkLifecycleSupersedeApplyView(GovernanceCapabilityMixin, View):
+    """POST — apply atomic supersession."""
+
+    governance_capability = GovernanceCapability.SUPERSEDE
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+            StaleLifecycleError,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        service = BindingLifecycleService(project, request.user)
+        try:
+            result = service.supersede(
+                str(kwargs["binding_pk"]),
+                str(payload.get("replacement_binding_id", "")),
+                fingerprint=payload.get("fingerprint", ""),
+                reason_code=payload.get("reason_code", ""),
+                reason_text=payload.get("reason_text", ""),
+                confirmation=payload.get("confirmation", ""),
+            )
+        except StaleLifecycleError as exc:
+            return _lifecycle_error(request, exc.message, status=409, details=exc.details)
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_result.html",
+                {"project": project, "result": result, "operation": "supersede"},
+            )
+        return JsonResponse(result.to_dict())
+
+
+class LinkLifecycleSupersedePairView(GovernanceCapabilityMixin, View):
+    """GET — supersede pairing form with eligible review replacements."""
+
+    governance_capability = GovernanceCapability.SUPERSEDE
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.review_queue import LinkReviewQueueService
+
+        project = self.get_project()
+        service = LinkReviewQueueService(str(project.pk), project_pk=project.pk)
+        candidates = service.supersede_replacement_candidates(kwargs["binding_pk"])
+        return render(
+            request,
+            "scheduling/components/governance_supersede_pair.html",
+            {
+                "project": project,
+                "binding_id": kwargs["binding_pk"],
+                "candidates": candidates,
+            },
+        )
+
+
+class LinkLifecycleParityBulkPreviewView(GovernanceCapabilityMixin, View):
+    """POST — preview selected parity repairs."""
+
+    governance_capability = GovernanceCapability.REPAIR_M2M_ADD
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+        )
+
+        project = self.get_project()
+        items = _parse_parity_items_from_request(request)
+        if not items:
+            payload = _parse_json_or_form(request) or {}
+            items = payload.get("parity_items") or payload.get("items") or []
+            if isinstance(items, dict):
+                items = [items]
+        service = BindingLifecycleService(project, request.user)
+        try:
+            preview = service.preview_parity_selected(items)
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_confirm.html",
+                {
+                    "project": project,
+                    "preview": preview,
+                    "operation": "parity_bulk",
+                    "confirm_phrase": "PARITY REPAIR",
+                    "reason_codes": [
+                        ("accepted_missing_m2m", "Accepted missing M2M"),
+                        ("m2m_without_accepted", "M2M without accepted binding"),
+                        ("review_m2m_leak", "Review M2M leak"),
+                        ("other", "Other"),
+                    ],
+                    "parity_items_json": json.dumps(items),
+                },
+            )
+        return JsonResponse(preview)
+
+
+class LinkLifecycleParityBulkApplyView(GovernanceCapabilityMixin, View):
+    """POST — apply selected parity repairs atomically."""
+
+    governance_capability = GovernanceCapability.REPAIR_M2M_ADD
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+            StaleLifecycleError,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        items = _parse_parity_items_from_request(request)
+        if not items:
+            items = payload.get("parity_items") or []
+            if isinstance(items, str):
+                items = json.loads(items or "[]")
+        service = BindingLifecycleService(project, request.user)
+        try:
+            result = service.repair_parity_selected(
+                items,
+                fingerprint=payload.get("fingerprint", ""),
+                reason_code=payload.get("reason_code", ""),
+                reason_text=payload.get("reason_text", ""),
+                confirmation=payload.get("confirmation", ""),
+            )
+        except StaleLifecycleError as exc:
+            return _lifecycle_error(request, exc.message, status=409, details=exc.details)
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_result.html",
+                {"project": project, "result": result, "operation": "parity"},
+            )
+        return JsonResponse(result.to_dict())
+
+
+class LinkLifecycleParityPreviewView(ProjectAccessMixin, View):
+    """POST — preview audited M2M parity repair."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from django.core.exceptions import PermissionDenied
+
+        from scheduling.services.governance.authority import (
+            GovernanceAuthorityError,
+            GovernanceAuthorityPolicy,
+            require_parity_repair_authority,
+        )
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+            LifecycleValidationError,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        repair_type = payload.get("repair_type", "")
+        try:
+            require_parity_repair_authority(
+                GovernanceAuthorityPolicy(project, request.user),
+                repair_type,
+            )
+        except GovernanceAuthorityError as exc:
+            raise PermissionDenied(exc.result.reason) from exc
+
+        service = BindingLifecycleService(project, request.user)
+        try:
+            preview = service.preview_parity_repair(
+                binding_id=payload.get("binding_id"),
+                task_id=payload.get("task_id"),
+                entity_global_id=payload.get("entity_global_id"),
+                repair_type=payload.get("repair_type", ""),
+            )
+        except LifecycleValidationError as exc:
+            return _lifecycle_error(request, exc.message, status=400, details=exc.details)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_confirm.html",
+                {
+                    "project": project,
+                    "preview": preview,
+                    "operation": "parity",
+                    "binding_id": payload.get("binding_id"),
+                    "task_id": payload.get("task_id"),
+                    "entity_global_id": payload.get("entity_global_id"),
+                    "repair_type": payload.get("repair_type"),
+                    "confirm_phrase": "PARITY REPAIR",
+                    "reason_codes": [
+                        ("accepted_missing_m2m", "Accepted missing M2M"),
+                        ("m2m_without_accepted", "M2M without accepted binding"),
+                        ("review_m2m_leak", "Review M2M leak"),
+                        ("duplicate_compatibility", "Duplicate compatibility"),
+                        ("other", "Other"),
+                    ],
+                },
+            )
+        return JsonResponse(preview.to_dict())
+
+
+class LinkLifecycleParityApplyView(ProjectAccessMixin, View):
+    """POST — apply audited parity repair."""
+
+    def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.binding_lifecycle import (
+            BindingLifecycleService,
+        )
+
+        project = self.get_project()
+        payload = _parse_json_or_form(request) or {}
+        service = BindingLifecycleService(project, request.user)
+        try:
+            result = service.repair_parity(
+                fingerprint=payload.get("fingerprint", ""),
+                reason_code=payload.get("reason_code", ""),
+                reason_text=payload.get("reason_text", ""),
+                confirmation=payload.get("confirmation", ""),
+                binding_id=payload.get("binding_id"),
+                task_id=payload.get("task_id"),
+                entity_global_id=payload.get("entity_global_id"),
+                repair_type=payload.get("repair_type", ""),
+            )
+        except Exception as exc:
+            return _lifecycle_error_from_exc(request, exc)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_lifecycle_result.html",
+                {"project": project, "result": result, "operation": "parity"},
+            )
+        return JsonResponse(result.to_dict())
+
+
+class LinkGovernanceAuditHistoryView(ProjectAccessMixin, View):
+    """GET — read-only immutable governance audit timeline."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.audit_history import BindingAuditHistoryService
+        from scheduling.services.governance.authority import (
+            GovernanceAuthorityError,
+            GovernanceAuthorityPolicy,
+            GovernanceCapability,
+        )
+
+        project = self.get_project()
+        try:
+            GovernanceAuthorityPolicy(project, request.user).require(
+                GovernanceCapability.VIEW_AUDIT
+            )
+        except GovernanceAuthorityError as exc:
+            return JsonResponse({"error": exc.result.reason}, status=403)
+
+        filters = BindingAuditHistoryService.filters_from_request(dict(request.GET.items()))
+        payload = BindingAuditHistoryService(str(project.pk)).build(filters)
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_audit_panel.html",
+                {
+                    "project": project,
+                    "audit": payload,
+                    "filters": filters,
+                },
+            )
+        return JsonResponse(payload)
+
+
+class LinkGovernanceOverviewView(ProjectAccessMixin, View):
+    """GET — methodology-aware governance scorecard and overview."""
+
+    def get(self, request, **kwargs: object) -> HttpResponse:
+        from django.core.exceptions import PermissionDenied
+
+        from scheduling.services.governance.authority import GovernanceAuthorityError
+        from scheduling.services.governance.governance_overview import (
+            GovernanceOverviewService,
+        )
+
+        project = self.get_project()
+        filters = GovernanceOverviewService.filters_from_request(request.GET.dict())
+        try:
+            payload = GovernanceOverviewService(project).build(request.user, filters)
+        except GovernanceAuthorityError as exc:
+            raise PermissionDenied(exc.result.reason) from exc
+
+        if request.headers.get("HX-Request"):
+            return render(
+                request,
+                "scheduling/components/governance_overview_panel.html",
+                {
+                    "project": project,
+                    "overview": payload,
+                    "filters": filters,
+                },
+            )
+        return JsonResponse(payload)
+
+
 class LookaheadDataView(ProjectAccessMixin, View):
     """JSON — per-week task buckets (starting/in_progress/finishing) for the Look-ahead tab."""
 
@@ -1909,6 +3000,10 @@ class LookaheadDataView(ProjectAccessMixin, View):
             .order_by("start_date")
         )
 
+        from scheduling.services.link_resolver import entity_gids_by_task
+
+        gids_by_task = entity_gids_by_task(project.pk, [t.pk for t in tasks], accepted_only=True)
+
         result_weeks = []
         for w in range(weeks):
             ws = today_monday + timedelta(weeks=w)
@@ -1932,6 +3027,7 @@ class LookaheadDataView(ProjectAccessMixin, View):
                     "stage": t.stage or "",
                     "activity_code": t.activity_code or "",
                     "is_critical": t.is_critical,
+                    "entity_global_ids": gids_by_task.get(str(t.pk), []),
                 }
 
                 if in_week_start:
@@ -1984,7 +3080,7 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
         column_mapping = {
             field: request.POST.get(f"col_{field}", "").strip() for field in CANONICAL_FIELDS
         }
-        # Remove unmapped optional fields so apply_mapping only sees real mappings
+        # Remove unmapped optional fields so map_schedule_rows only sees real mappings
         column_mapping = {k: v for k, v in column_mapping.items() if v}
 
         ifc_param_name = request.POST.get("ifc_param_name", "Activity ID").strip() or "Activity ID"
@@ -1995,7 +3091,8 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
             request.session[f"schedule_replace_{project.pk}"] = True
 
         try:
-            tasks = apply_mapping(headers, rows, column_mapping, source)
+            mapped = map_schedule_rows(headers, rows, column_mapping, source)
+            tasks = mapped.tasks
         except ValueError as exc:
             return toast_response(str(exc), "error", status=400)
 
@@ -2003,6 +3100,8 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
             return toast_response(
                 "No valid task rows found with this mapping.", "error", status=400
             )
+
+        request.session[f"mapping_preflight_{project.pk}"] = json.dumps(mapped.to_dict())
 
         # Optionally save profile
         profile_name = request.POST.get("profile_name", "").strip()
@@ -2014,6 +3113,12 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
             )
 
         validation = validate_schedule(tasks, project_name=project.name)
+        store_session_import_artifact(
+            request,
+            project.pk,
+            filename=request.session.get(f"schedule_filename_{project.pk}", ""),
+            tasks_fallback=tasks,
+        )
         request.session[f"parsed_tasks_{project.pk}"] = json.dumps(
             [
                 {
@@ -2044,7 +3149,7 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
         ):
             request.session.pop(key, None)
 
-        return render(
+        response = render(
             request,
             "scheduling/components/task_list.html",
             {
@@ -2055,6 +3160,49 @@ class MappingSubmitView(ProjectModifyAccessMixin, View):
                 "preview_mode": True,
             },
         )
+        response["X-Castor-Mapping-Preflight"] = json.dumps(mapped.to_dict())
+        return response
+
+
+class MappingPreflightView(ProjectModifyAccessMixin, View):
+    """JSON POST — classify mapped rows without committing (same rules as Confirm Import)."""
+
+    def post(self, request, **kwargs: object) -> JsonResponse:
+        project = self.get_project()
+        raw_headers = request.session.get(f"raw_headers_{project.pk}")
+        raw_rows = request.session.get(f"raw_rows_{project.pk}")
+        source = request.session.get(f"raw_source_{project.pk}", "excel")
+        if not raw_headers or not raw_rows:
+            return JsonResponse(
+                {"error": "Session expired — please re-upload the file."}, status=400
+            )
+
+        try:
+            body = json.loads(request.body.decode("utf-8") or "{}")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            body = {}
+
+        # Prefer JSON body {mapping: {field: header}}; fall back to form col_* fields.
+        column_mapping = body.get("mapping") if isinstance(body.get("mapping"), dict) else {}
+        if not column_mapping:
+            column_mapping = {
+                field: request.POST.get(f"col_{field}", "").strip() for field in CANONICAL_FIELDS
+            }
+        column_mapping = {k: v for k, v in column_mapping.items() if v}
+
+        try:
+            report = map_schedule_rows(
+                json.loads(raw_headers),
+                json.loads(raw_rows),
+                column_mapping,
+                source,
+            )
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+
+        payload = report.to_dict()
+        request.session[f"mapping_preflight_{project.pk}"] = json.dumps(payload)
+        return JsonResponse(payload)
 
 
 class DetectColumnsView(ProjectModifyAccessMixin, View):
@@ -2100,8 +3248,10 @@ class DetectColumnsView(ProjectModifyAccessMixin, View):
                 {
                     "mapping": lookup.mapping,
                     "confidence": 1.0,
-                    "notes": f"Using saved mapping · {lookup.hit_count} previous uses",
+                    "notes": f"Saved mapping · used {lookup.hit_count} times",
                     "from_lookup": True,
+                    "detection_source": "lookup",
+                    "hit_count": lookup.hit_count,
                     "fingerprint": fp,
                 }
             )
@@ -2111,6 +3261,7 @@ class DetectColumnsView(ProjectModifyAccessMixin, View):
         result = detect_columns(headers, sample_rows, filename, user=request.user)
         result["from_lookup"] = False
         result["fingerprint"] = fp
+        result.setdefault("detection_source", "llm")
         result.setdefault("filename_pattern", filename_to_pattern(filename))
         return JsonResponse(result)
 
@@ -2207,6 +3358,8 @@ def _get_ifc_files(project):
 
 
 def _build_review_summary(project) -> dict:
+    from scheduling.services.governance.active_state import trusted_filter
+
     qs = TaskEntityBinding.objects.filter(task__project=project)
 
     physical_pks = set(
@@ -2216,22 +3369,20 @@ def _build_review_summary(project) -> dict:
         Task.objects.filter(project=project, is_non_physical=True).values_list("pk", flat=True)
     )
 
-    # Unique task PKs that have at least one accepted binding
-    accepted_task_pks = set(
-        qs.filter(needs_review=False).values_list("task_id", flat=True).distinct()
-    )
+    # Unique task PKs that have at least one trusted binding
+    trusted_task_pks = set(qs.filter(trusted_filter()).values_list("task_id", flat=True).distinct())
     # Unique task PKs with any binding at all
     bound_task_pks = set(qs.values_list("task_id", flat=True).distinct())
 
-    # Needs Review: tasks that have bindings but none are accepted yet
-    needs_review_task_pks = bound_task_pks - accepted_task_pks
+    # Needs Review: tasks that have bindings but none are trusted yet
+    needs_review_task_pks = bound_task_pks - trusted_task_pks
 
-    # For backwards-compat with the standalone review template
+    # High-confidence proposals still awaiting Governance approval
     needs_review_high = qs.filter(needs_review=True, confidence__gte=0.95).count()
 
     return {
         "total": len(physical_pks),
-        "auto_accepted": len(accepted_task_pks & physical_pks),
+        "auto_accepted": len(trusted_task_pks & physical_pks),
         "needs_review": len(needs_review_task_pks & physical_pks),
         "needs_review_high": needs_review_high,
         "unlinked_tasks": len(physical_pks - bound_task_pks),
@@ -2260,7 +3411,22 @@ def _make_row(binding: TaskEntityBinding, ifc_files) -> dict:
 def _render_link_review(
     request, project, filter_by: str = "all", inline: bool = False
 ) -> HttpResponse:
+    """Render Link Proposals review — paginated rows, filter-scoped side lists."""
     ifc_files = _get_ifc_files(project)
+
+    # Default page size keeps HTML payload bounded on large pilot projects.
+    default_limit = 100
+    max_limit = 200
+    try:
+        page_size = int(request.GET.get("limit", default_limit))
+    except (TypeError, ValueError):
+        page_size = default_limit
+    page_size = max(1, min(page_size, max_limit))
+    try:
+        page = int(request.GET.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+    page = max(1, page)
 
     bindings_qs = (
         TaskEntityBinding.objects.filter(task__project=project)
@@ -2270,11 +3436,22 @@ def _render_link_review(
     if filter_by == "needs_review":
         bindings_qs = bindings_qs.filter(needs_review=True)
     elif filter_by in ("auto_accepted", "linked"):
-        bindings_qs = bindings_qs.filter(needs_review=False)
+        from scheduling.services.governance.active_state import trusted_filter
+
+        bindings_qs = bindings_qs.filter(trusted_filter())
     elif filter_by in ("exact", "normalized", "heuristic", "embedding", "manual"):
         bindings_qs = bindings_qs.filter(link_method=filter_by)
+    elif filter_by in ("unlinked", "non_physical"):
+        # Side-list filters — do not also dump the full bindings table.
+        bindings_qs = bindings_qs.none()
 
-    binding_list = list(bindings_qs)
+    total_rows = bindings_qs.count()
+    total_pages = max(1, (total_rows + page_size - 1) // page_size) if total_rows else 1
+    if page > total_pages:
+        page = total_pages
+    offset = (page - 1) * page_size
+    binding_list = list(bindings_qs[offset : offset + page_size])
+
     gids = {b.entity_global_id for b in binding_list}
     entity_name_map = (
         {
@@ -2287,12 +3464,16 @@ def _render_link_review(
         else {}
     )
 
-    # Sibling count: how many OTHER tasks share each entity_global_id in this project
-    entity_task_counts: dict[str, int] = dict(
-        TaskEntityBinding.objects.filter(task__project=project)
-        .values("entity_global_id")
-        .annotate(cnt=Count("pk"))
-        .values_list("entity_global_id", "cnt")
+    # Sibling counts only for entities on this page (not full project scan).
+    entity_task_counts: dict[str, int] = (
+        dict(
+            TaskEntityBinding.objects.filter(task__project=project, entity_global_id__in=gids)
+            .values("entity_global_id")
+            .annotate(cnt=Count("pk"))
+            .values_list("entity_global_id", "cnt")
+        )
+        if gids
+        else {}
     )
 
     rows = [
@@ -2306,25 +3487,52 @@ def _render_link_review(
         }
         for b in binding_list
     ]
-    # Group by entity so shared-entity rows are adjacent
+    # Group by entity within the page so shared-entity rows stay adjacent.
     rows.sort(key=lambda r: (r["entity_name"].lower(), r["binding"].task.name.lower()))
 
-    unlinked_tasks = []
-    if filter_by in ("all", "unlinked"):
+    # Side lists only when that filter is active — avoid dumping all unlinked
+    # tasks into the "all" HTML payload.
+    unlinked_tasks: list = []
+    unlinked_total = 0
+    if filter_by == "unlinked":
         linked_pks = TaskEntityBinding.objects.filter(task__project=project).values_list(
             "task_id", flat=True
         )
-        unlinked_tasks = list(
+        unlinked_qs = (
             Task.objects.filter(project=project, is_non_physical=False)
             .exclude(pk__in=linked_pks)
             .order_by("name")
         )
+        unlinked_total = unlinked_qs.count()
+        unlinked_tasks = list(unlinked_qs[:page_size])
 
-    non_physical_tasks = []
-    if filter_by in ("all", "non_physical"):
-        non_physical_tasks = list(
-            Task.objects.filter(project=project, is_non_physical=True).order_by("name")
+    non_physical_tasks: list = []
+    non_physical_total = 0
+    if filter_by == "non_physical":
+        non_physical_qs = Task.objects.filter(project=project, is_non_physical=True).order_by(
+            "name"
         )
+        non_physical_total = non_physical_qs.count()
+        non_physical_tasks = list(non_physical_qs[:page_size])
+
+    showing_from = offset + 1 if total_rows else 0
+    showing_to = min(offset + page_size, total_rows)
+    pagination = {
+        "page": page,
+        "page_size": page_size,
+        "total_rows": total_rows,
+        "total_pages": total_pages,
+        "showing_from": showing_from,
+        "showing_to": showing_to,
+        "truncated": total_rows > showing_to,
+        "has_prev": page > 1,
+        "has_next": page < total_pages,
+        "prev_page": page - 1 if page > 1 else None,
+        "next_page": page + 1 if page < total_pages else None,
+        "unlinked_total": unlinked_total,
+        "non_physical_total": non_physical_total,
+        "inline": inline,
+    }
 
     summary = _build_review_summary(project)
     template = (
@@ -2342,6 +3550,7 @@ def _render_link_review(
             "non_physical_tasks": non_physical_tasks,
             "summary": summary,
             "filter_by": filter_by,
+            "pagination": pagination,
         },
     )
 
@@ -2357,25 +3566,56 @@ class LinkReviewView(ProjectAccessMixin, View):
 
 
 class BindingAcceptView(ProjectModifyAccessMixin, View):
-    """HTMX POST — accept one binding, write M2M, return updated row + OOB summary."""
+    """HTMX POST — promote one proposed binding to trusted via governance contract."""
 
     def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.authority import (
+            GovernanceAuthorityError,
+            GovernanceAuthorityPolicy,
+            GovernanceCapability,
+        )
+        from scheduling.services.governance.link_decision import (
+            DecisionValidationError,
+            LinkDecisionService,
+            StaleDecisionError,
+        )
+
         project = self.get_project()
         binding = get_object_or_404(
             TaskEntityBinding, pk=kwargs["binding_pk"], task__project=project
         )
         ifc_files = _get_ifc_files(project)
 
-        binding.needs_review = False
-        binding.save(update_fields=["needs_review"])
-
         try:
-            entity = IFCEntity.objects.get(
-                ifc_file__in=ifc_files, global_id=binding.entity_global_id
+            GovernanceAuthorityPolicy(project, request.user).require(
+                GovernanceCapability.APPROVE_INDIVIDUAL
             )
-            binding.task.ifc_entities.add(entity)
-        except IFCEntity.DoesNotExist:
-            pass
+            svc = LinkDecisionService(project, request.user)
+            preview = svc.preview_one(str(binding.pk))
+            if preview.hard_blocked_count:
+                return toast_response(
+                    "This link is blocked — resolve conflicts in Governance before approving.",
+                    "error",
+                    status=400,
+                )
+            if preview.conflict_warning_count:
+                return toast_response(
+                    "Conflict warnings require Governance acknowledgment before approval.",
+                    "error",
+                    status=400,
+                )
+            if preview.eligible_count == 0:
+                binding.refresh_from_db()
+            else:
+                svc.approve_one(
+                    str(binding.pk),
+                    selection_fingerprint=preview.selection_fingerprint,
+                )
+                binding.refresh_from_db()
+        except GovernanceAuthorityError as exc:
+            return toast_response(exc.result.reason, "error", status=403)
+        except (StaleDecisionError, DecisionValidationError) as exc:
+            return toast_response(str(exc), "error", status=400)
 
         row = _make_row(binding, ifc_files)
         summary = _build_review_summary(project)
@@ -2427,32 +3667,26 @@ class BindingRemoveView(ProjectModifyAccessMixin, View):
 
 
 class BulkAcceptView(ProjectModifyAccessMixin, View):
-    """HTMX POST — accept all bindings with confidence ≥ 0.95, re-render full tab."""
+    """HTMX POST — bulk promote is Governance-only (Pipeline proposes).
+
+    Does not flip needs_review or create trusted bindings. Directs the user to
+    the Governance review queue so fingerprint / APPROVE SELECTED policy applies.
+    """
 
     def post(self, request, **kwargs: object) -> HttpResponse:
         project = self.get_project()
-        ifc_files = _get_ifc_files(project)
-
-        pending = list(
-            TaskEntityBinding.objects.filter(
-                task__project=project, needs_review=True, confidence__gte=0.95
-            ).select_related("task")
+        pending_count = TaskEntityBinding.objects.filter(
+            task__project=project, needs_review=True, confidence__gte=0.95
+        ).count()
+        response = _render_link_review(request, project, "needs_review")
+        return trigger_toast(
+            response,
+            (
+                f"{pending_count} high-confidence proposal(s) remain proposed. "
+                "Approve them in the Governance tab (fingerprint + confirmation required)."
+            ),
+            "info",
         )
-        accepted = 0
-        for binding in pending:
-            try:
-                entity = IFCEntity.objects.get(
-                    ifc_file__in=ifc_files, global_id=binding.entity_global_id
-                )
-                binding.task.ifc_entities.add(entity)
-                accepted += 1
-            except IFCEntity.DoesNotExist:
-                pass
-
-        TaskEntityBinding.objects.filter(pk__in=[b.pk for b in pending]).update(needs_review=False)
-
-        response = _render_link_review(request, project, "all")
-        return trigger_toast(response, f"Accepted {accepted} binding(s).", "success")
 
 
 class BindingExportView(ProjectAccessMixin, View):
@@ -2493,15 +3727,32 @@ class BindingExportView(ProjectAccessMixin, View):
 
 
 class BindingAddView(ProjectModifyAccessMixin, View):
-    """HTMX POST — manually create a binding for an unlinked task, re-render full tab."""
+    """HTMX POST — manually create a trusted binding via promotion helper."""
 
     def post(self, request, **kwargs: object) -> HttpResponse:
+        from scheduling.services.governance.authority import (
+            GovernanceAuthorityError,
+            GovernanceAuthorityPolicy,
+            GovernanceCapability,
+        )
+        from scheduling.services.governance.trust_promotion import (
+            create_trusted_bindings,
+            promote_bindings_to_trusted,
+        )
+
         project = self.get_project()
         task_pk = request.POST.get("task_pk", "").strip()
         entity_global_id = request.POST.get("entity_global_id", "").strip()
 
         if not task_pk or not entity_global_id:
             return toast_response("Missing task or entity.", "error", status=400)
+
+        try:
+            GovernanceAuthorityPolicy(project, request.user).require(
+                GovernanceCapability.APPROVE_INDIVIDUAL
+            )
+        except GovernanceAuthorityError as exc:
+            return toast_response(exc.result.reason, "error", status=403)
 
         task = get_object_or_404(Task, pk=task_pk, project=project)
         ifc_files = _get_ifc_files(project)
@@ -2511,15 +3762,40 @@ class BindingAddView(ProjectModifyAccessMixin, View):
         except IFCEntity.DoesNotExist:
             return toast_response("Entity not found in this project.", "error", status=404)
 
-        TaskEntityBinding.objects.get_or_create(
-            task=task,
-            entity_global_id=entity_global_id,
-            defaults={"confidence": 1.0, "link_method": "exact", "needs_review": False},
-        )
-        task.ifc_entities.add(entity)
+        existing = TaskEntityBinding.objects.filter(
+            task=task, entity_global_id=entity_global_id
+        ).first()
+        if existing is None:
+            create_trusted_bindings(
+                project=project,
+                user=request.user,
+                specs=[
+                    {
+                        "task_id": str(task.pk),
+                        "entity_global_id": entity_global_id,
+                        "entity_pk": str(entity.pk),
+                        "confidence": 1.0,
+                        "link_method": TaskEntityBinding.LinkMethod.MANUAL,
+                    }
+                ],
+                request_source="pipeline_manual_link",
+                reason_text="Manual link approval",
+            )
+        else:
+            promote_bindings_to_trusted(
+                project=project,
+                user=request.user,
+                binding_ids=[str(existing.pk)],
+                request_source="pipeline_manual_link",
+                reason_text="Manual link approval",
+                extra_field_updates={
+                    "confidence": 1.0,
+                    "link_method": TaskEntityBinding.LinkMethod.MANUAL,
+                },
+            )
 
         response = _render_link_review(request, project, "all")
-        return trigger_toast(response, f"Linked '{task.name}' manually.", "success")
+        return trigger_toast(response, f"Linked '{task.name}' (trusted).", "success")
 
 
 class TaskToggleNonPhysicalView(ProjectModifyAccessMixin, View):
@@ -2696,9 +3972,19 @@ class ScheduleWritebackView(ProjectModifyAccessMixin, View):
 
 
 class LinkElementView(ProjectModifyAccessMixin, View):
-    """POST — manually link a single IFC element globalId to a task."""
+    """POST — manually link a single IFC element globalId to a task (trusted)."""
 
     def post(self, request, task_pk: str, **kwargs: object) -> JsonResponse:
+        from scheduling.services.governance.authority import (
+            GovernanceAuthorityError,
+            GovernanceAuthorityPolicy,
+            GovernanceCapability,
+        )
+        from scheduling.services.governance.trust_promotion import (
+            create_trusted_bindings,
+            promote_bindings_to_trusted,
+        )
+
         project = self.get_project()
         task = get_object_or_404(Task, pk=task_pk, project=project)
 
@@ -2711,15 +3997,45 @@ class LinkElementView(ProjectModifyAccessMixin, View):
         if not global_id:
             return JsonResponse({"error": "global_id is required"}, status=400)
 
-        binding, created = TaskEntityBinding.objects.get_or_create(
-            task=task,
-            entity_global_id=global_id,
-            defaults={
-                "confidence": 1.0,
-                "link_method": TaskEntityBinding.LinkMethod.EXACT,
-                "needs_review": False,
-            },
-        )
+        try:
+            GovernanceAuthorityPolicy(project, request.user).require(
+                GovernanceCapability.APPROVE_INDIVIDUAL
+            )
+        except GovernanceAuthorityError as exc:
+            return JsonResponse({"error": exc.result.reason}, status=403)
+
+        existing = TaskEntityBinding.objects.filter(task=task, entity_global_id=global_id).first()
+        created = existing is None
+        if created:
+            create_trusted_bindings(
+                project=project,
+                user=request.user,
+                specs=[
+                    {
+                        "task_id": str(task.pk),
+                        "entity_global_id": global_id,
+                        "confidence": 1.0,
+                        "link_method": TaskEntityBinding.LinkMethod.MANUAL,
+                    }
+                ],
+                request_source="viewer_manual_link",
+                reason_text="Manual viewer link approval",
+            )
+            binding = TaskEntityBinding.objects.get(task=task, entity_global_id=global_id)
+        else:
+            promote_bindings_to_trusted(
+                project=project,
+                user=request.user,
+                binding_ids=[str(existing.pk)],
+                request_source="viewer_manual_link",
+                reason_text="Manual viewer link approval",
+                extra_field_updates={
+                    "confidence": 1.0,
+                    "link_method": TaskEntityBinding.LinkMethod.MANUAL,
+                },
+            )
+            binding = TaskEntityBinding.objects.get(pk=existing.pk)
+
         status_code = 201 if created else 200
         return JsonResponse({"status": "linked", "binding_id": str(binding.id)}, status=status_code)
 
@@ -2851,11 +4167,11 @@ class TasksForLinkView(ProjectAccessMixin, View):
 
 
 class BulkLinkElementView(ProjectModifyAccessMixin, View):
-    """POST — add task bindings for one IFC element in this project.
+    """POST — add trusted task bindings for one IFC element in this project.
 
     Body: {global_id: str, task_pks: [str, ...]}
 
-    Add-only: creates bindings for any task_pks not yet linked.
+    Add-only: creates trusted bindings for any task_pks not yet linked.
     Existing links for tasks not in the selection are left untouched — the
     modal uses server-side search so the user can't see the full linked set,
     making removal via this endpoint unsafe. Use UnlinkAllElementView or
@@ -2863,6 +4179,13 @@ class BulkLinkElementView(ProjectModifyAccessMixin, View):
     """
 
     def post(self, request, **kwargs: object) -> JsonResponse:
+        from scheduling.services.governance.authority import (
+            GovernanceAuthorityError,
+            GovernanceAuthorityPolicy,
+            GovernanceCapability,
+        )
+        from scheduling.services.governance.trust_promotion import create_trusted_bindings
+
         project = self.get_project()
 
         try:
@@ -2878,6 +4201,13 @@ class BulkLinkElementView(ProjectModifyAccessMixin, View):
         if not selected_pks:
             return JsonResponse({"status": "ok", "linked": 0})
 
+        try:
+            GovernanceAuthorityPolicy(project, request.user).require(
+                GovernanceCapability.APPROVE_INDIVIDUAL
+            )
+        except GovernanceAuthorityError as exc:
+            return JsonResponse({"error": exc.result.reason}, status=403)
+
         current_pks = {
             str(pk)
             for pk in TaskEntityBinding.objects.filter(
@@ -2886,26 +4216,23 @@ class BulkLinkElementView(ProjectModifyAccessMixin, View):
         }
 
         to_add = selected_pks - current_pks
-        entities = list(IFCEntity.objects.filter(global_id=global_id))
-
         if to_add:
             tasks_to_link = list(Task.objects.filter(project=project, pk__in=to_add))
-            TaskEntityBinding.objects.bulk_create(
-                [
-                    TaskEntityBinding(
-                        task=task,
-                        entity_global_id=global_id,
-                        confidence=1.0,
-                        link_method=TaskEntityBinding.LinkMethod.MANUAL,
-                        needs_review=False,
-                    )
+            create_trusted_bindings(
+                project=project,
+                user=request.user,
+                specs=[
+                    {
+                        "task_id": str(task.pk),
+                        "entity_global_id": global_id,
+                        "confidence": 1.0,
+                        "link_method": TaskEntityBinding.LinkMethod.MANUAL,
+                    }
                     for task in tasks_to_link
                 ],
-                ignore_conflicts=True,
+                request_source="viewer_bulk_manual_link",
+                reason_text="Manual bulk viewer link approval",
             )
-            if entities:
-                for task in tasks_to_link:
-                    task.ifc_entities.add(*entities)
 
         return JsonResponse({"status": "ok", "linked": len(to_add)})
 

@@ -74,30 +74,25 @@
     <!-- Status -->
     <td>
         {% if row.binding.needs_review %}
-            <span class="badge bg-warning text-dark">Pending</span>
+            <span class="badge bg-warning text-dark">Proposed</span>
+        {% elif row.binding.governance_status == "trusted" and row.binding.is_active %}
+            <span class="badge bg-success">Applied / Confirmed</span>
         {% else %}
-            <span class="badge bg-success">Accepted</span>
+            <span class="badge bg-secondary">Not trusted</span>
         {% endif %}
     </td>
 
-    <!-- Actions -->
+    <!-- Actions: remove only — confirm in Applied Links -->
     <td>
-        <div class="d-flex gap-1">
+        <div class="d-flex gap-1 align-items-center">
             {% if row.binding.needs_review %}
-            <form hx-post="{% url 'scheduling:binding_accept' project.pk row.binding.pk %}"
-                  hx-target="#binding-row-{{ row.binding.pk }}"
-                  hx-swap="outerHTML">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-success btn-sm py-0 px-2" title="Accept link">
-                    <i class="bi bi-check-lg"></i>
-                </button>
-            </form>
+            <span class="text-secondary" style="font-size:0.72rem;" data-testid="proposal-approve-hint">Applied Links</span>
             {% endif %}
             <form hx-post="{% url 'scheduling:binding_remove' project.pk row.binding.pk %}"
                   hx-target="#binding-row-{{ row.binding.pk }}"
                   hx-swap="outerHTML">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" title="Remove binding">
+                <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" title="Remove proposal">
                     <i class="bi bi-trash"></i>
                 </button>
             </form>

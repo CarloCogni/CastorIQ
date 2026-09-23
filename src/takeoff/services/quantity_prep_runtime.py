@@ -265,30 +265,39 @@ def build_qty_prep_session_ui(
         qty_prep["hierarchy_baseline_elements"] = int(
             (hierarchy.get("counts") or {}).get("matching_elements") or 0
         )
-    # Re-attach measurement defaults per hierarchy level.
-    for row in qty_prep.get("prep_rows") or []:
-        if row.get("is_load_more"):
-            continue
-        level = str(row.get("level") or "")
-        grain = "ifc_class" if level == "class" else ("type" if level == "type" else "instance")
-        if level == "instance":
-            row["measurement_target_key"] = row.get("measurement_target_key") or ""
-            from takeoff.services.quantity_prep_row_measurement import (
-                apply_resolution_fields,
-                legacy_default_choice,
-            )
+    # Re-attach measurement defaults per hierarchy level (visible + export).
+    # Export/freeze consume prep_rows_export; without the same instance resolution
+    # those rows keep unresolved "model volume units" and freeze cannot capture m3.
+    from takeoff.services.quantity_prep_row_measurement import (
+        apply_resolution_fields,
+        legacy_default_choice,
+    )
 
-            mtype, source = legacy_default_choice(row)
-            apply_resolution_fields(
-                row,
-                measurement_type=mtype,
-                selected_source=source,
-                session_owned=False,
-            )
-        else:
+    for bucket in ("prep_rows", "prep_rows_export"):
+        for row in qty_prep.get(bucket) or []:
+            if row.get("is_load_more"):
+                continue
+            level = str(row.get("level") or "")
+            if bucket == "prep_rows_export" or level == "instance":
+                # Export rows are always instance grain.
+                row["measurement_target_key"] = row.get("measurement_target_key") or ""
+                mtype, source = legacy_default_choice(row)
+                apply_resolution_fields(
+                    row,
+                    measurement_type=mtype,
+                    selected_source=source,
+                    session_owned=False,
+                )
+                continue
+            grain = "ifc_class" if level == "class" else ("type" if level == "type" else "instance")
             attach_measurement_defaults_to_prep_rows([row], grain=grain)
 
     apply_layout_to_qty_prep(qty_prep, query)
+
+    # PERF-15B: finish deferred Open rematch before session mapping overlays.
+    from takeoff.services.quantity_editable_table import apply_pending_editable_table_restore
+
+    apply_pending_editable_table_restore(session, project.pk, qty_prep)
 
     mapping_svc = QuantityPrepRowMappingService(project, user, session)
     mapping_annotations = mapping_svc.get_annotations()
@@ -496,9 +505,20 @@ def build_qty_prep_session_ui(
     # REVIEW-08 C: combined Measurement settings panel (class-scoped).
     from takeoff.services.quantity_measurement_settings import (
         attach_measurement_settings_to_qty_prep,
+        canonicalize_measurement_filter_scope,
     )
 
-    attach_measurement_settings_to_qty_prep(qty_prep, project=project, user=user, session=session)
+    attach_measurement_settings_to_qty_prep(
+        qty_prep,
+        project=project,
+        user=user,
+        session=session,
+        ifc_file_id=quantities.get("ifc_file_id") or getattr(ifc_file, "pk", None),
+        ifc_file_hash=str(
+            quantities.get("ifc_file_hash") or getattr(ifc_file, "file_hash", "") or ""
+        ),
+        filter_scope=canonicalize_measurement_filter_scope(query),
+    )
 
     # SCALE-1A: paginate filtered prep rows for DOM; keep full prep_rows for freeze.
     from takeoff.services.quantity_prep_pagination import apply_prep_pagination_to_qty_prep

@@ -86,9 +86,12 @@ def test_link_analysis_page_identity_and_no_qto(client):
     assert ">Risk<" not in html
     assert "Link Review Table" in html
     assert "Unlink All" not in html
-    assert "Model Readiness" not in html
     for banned in ("BOQ", "NetVolume", "QS valuation", "company actual cost", "EAC", "VAC"):
         assert banned not in html
+    # Page identity is Link Analysis; Model Readiness remains only as the
+    # project nav label pointing at this route.
+    page = html.split('data-testid="link-analysis-page"', 1)[1]
+    assert "Model Readiness" not in page
 
 
 @pytest.mark.django_db

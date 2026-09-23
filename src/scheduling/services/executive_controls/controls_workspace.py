@@ -1,8 +1,9 @@
 # scheduling/services/executive_controls/controls_workspace.py
-"""Controls Workspace V1 — presentation adapter over main-compatible profile.
+"""Controls Workspace V1 — presentation adapter over existing capability/context.
 
-Builds command-bar chips, stats strip, readiness rows, and inspector defaults.
-No company-cost EVM metrics are inventored as available.
+Builds command-bar chips, stats strip, readiness rows, and inspector defaults
+from data already gathered by ProjectAnalyticsCapabilityProfile and
+AnalyticalContextService. No new analytics engine and no extra EVM compute.
 """
 
 from __future__ import annotations
@@ -12,20 +13,13 @@ from typing import Any
 
 from django.urls import reverse
 
+from scheduling.services.executive_controls.enums import FeatureId
 from scheduling.services.executive_controls.product_surface_gate import (
     COMPANY_ACTUAL_COST_UNAVAILABLE,
     COMPANY_COST_SOURCE_ABSENT_NOTE,
 )
 
 logger = logging.getLogger(__name__)
-
-_SCHED = "schedule.overview"
-_SPI = "schedule.current_spi"
-_PERF = "schedule.performance"
-_DELAY = "schedule.delay_current"
-_CRIT = "schedule.critical_path"
-_MODEL_COV = "model.coverage"
-_MODEL_IMP = "model.impact"
 
 
 def _pct(num: int | None, den: int | None) -> float | None:
@@ -82,13 +76,13 @@ def build_controls_workspace(
     quantities_url = reverse("takeoff:qto", kwargs={"pk": project_id})
     spi_detail_url = reverse("scheduling:executive_controls_evm", kwargs={"pk": project_id})
 
-    sched = _cap(capability_profile, _SCHED)
-    spi_cap = _cap(capability_profile, _SPI)
-    perf_cap = _cap(capability_profile, _PERF)
-    delay_cap = _cap(capability_profile, _DELAY)
-    critical_cap = _cap(capability_profile, _CRIT)
-    model_cov = _cap(capability_profile, _MODEL_COV)
-    model_impact = _cap(capability_profile, _MODEL_IMP)
+    sched = _cap(capability_profile, FeatureId.SCHEDULE_OVERVIEW.value)
+    spi_cap = _cap(capability_profile, FeatureId.CURRENT_SPI.value)
+    perf_cap = _cap(capability_profile, FeatureId.SCHEDULE_PERFORMANCE.value)
+    delay_cap = _cap(capability_profile, FeatureId.DELAY_CURRENT.value)
+    critical_cap = _cap(capability_profile, FeatureId.CRITICAL_PATH.value)
+    model_cov = _cap(capability_profile, FeatureId.MODEL_COVERAGE.value)
+    model_impact = _cap(capability_profile, FeatureId.MODEL_IMPACT.value)
 
     total_tasks = sched.get("denominator") or 0
     dated_tasks = sched.get("numerator") or 0
@@ -108,6 +102,7 @@ def build_controls_workspace(
     baseline_identity = baseline_caps.get("baseline_version_identity", {})
     baseline_imported = baseline_caps.get("imported_reference_baseline", {})
     baseline_ok = bool(baseline_identity.get("available") or baseline_imported.get("available"))
+    # Imported schedule reference fields still count when BaselineVersion is absent.
     baseline_desc = analytical_context.get("baseline_description") or "No baseline recorded"
     if "not contractual" in baseline_desc.lower() or "imported" in baseline_desc.lower():
         baseline_ok = True
@@ -287,7 +282,7 @@ def build_controls_workspace(
             required_input="Applied / Confirmed activity–model links",
             next_action="Open Links",
             source="Applied / Confirmed bindings",
-            caveat="Task-link coverage and entity-link coverage use different denominators.",
+            caveat=("Task-link coverage and entity-link coverage use different denominators."),
             href=links_url,
         ),
         _row(

@@ -183,9 +183,11 @@
                 </td>
                 <td class="text-secondary" style="font-size:0.78rem;">{{ task.source }}</td>
                 <td class="text-center">
-                    {% with cnt=task.ifc_entities.all|length %}
-                        {% if cnt %}<span class="badge bg-primary">{{ cnt }}</span>{% else %}<span class="text-secondary">—</span>{% endif %}
-                    {% endwith %}
+                    {% if task.binding_link_count %}
+                        <span class="badge bg-primary">{{ task.binding_link_count }}</span>
+                    {% else %}
+                        <span class="text-secondary">—</span>
+                    {% endif %}
                 </td>
                 <td>
                     <button class="btn btn-sm btn-outline-danger py-0"

@@ -943,12 +943,16 @@ class QuantityMeasurementSettingsView(ProjectAccessMixin, View):
     """POST — apply combined measurement/source/output-unit settings for one IFC class."""
 
     def post(self, request, pk):  # noqa: ANN001
-        from takeoff.services.quantity_measurement_settings import apply_class_settings
+        from ifc_processor.models import IFCFile
+        from takeoff.services.quantity_measurement_settings import (
+            apply_class_settings,
+            canonicalize_measurement_filter_scope,
+            verify_measurement_apply_scope_token,
+        )
         from takeoff.services.quantity_output_units import QuantityOutputUnitsService
 
         project = self.get_project()
         return_query = (request.POST.get("return_query") or "").strip()
-        effective = QueryDict(return_query, mutable=False) if return_query else request.GET
         action = (request.POST.get("action") or "apply").strip().lower()
         ifc_class = (request.POST.get("ifc_class") or "").strip()
 
@@ -972,49 +976,46 @@ class QuantityMeasurementSettingsView(ProjectAccessMixin, View):
             messages.success(request, toast_msg)
             return redirect(redirect_url)
 
-        runtime = build_qty_prep_session_ui(
-            project=project,
+        # PERF-15B-SAFETY: signed scope only — raw target_keys_json / source_coverage_json ignored.
+        pinned_ifc, source_error = _resolve_qto_ifc_file(project, request)
+        if source_error:
+            return toast_response(source_error, level="error", status=400)
+        ifc_file = pinned_ifc
+        if ifc_file is None:
+            ifc_file = (
+                IFCFile.objects.filter(project=project, status=IFCFile.Status.COMPLETED)
+                .order_by("-created_at")
+                .first()
+            )
+        filter_scope = canonicalize_measurement_filter_scope(return_query)
+        verified = verify_measurement_apply_scope_token(
+            (request.POST.get("apply_scope_token") or "").strip(),
             user=request.user,
-            session=request.session,
-            query=effective,
+            project=project,
+            ifc_file=ifc_file,
+            ifc_class=ifc_class,
+            filter_scope=filter_scope,
         )
-        qty_prep = runtime["qty_prep"] or {}
-        prep_rows = list(qty_prep.get("prep_rows") or [])
-        inventory_rows = [
-            r
-            for r in (qty_prep.get("prep_rows_export") or [])
-            if isinstance(r, dict) and not r.get("is_load_more")
-        ]
-        hierarchy_tree = qty_prep.get("_hierarchy_tree")
-        known_targets = {
-            str(row.get("measurement_target_key") or "")
-            for row in [*prep_rows, *inventory_rows]
-            if isinstance(row, dict) and row.get("measurement_target_key")
-        }
-        # Include hierarchy type/class keys for unloaded descendants.
-        if isinstance(hierarchy_tree, dict):
-            for cnode in hierarchy_tree.get("classes") or []:
-                if isinstance(cnode, dict) and cnode.get("measurement_target_key"):
-                    known_targets.add(str(cnode["measurement_target_key"]))
-            for tnode in (hierarchy_tree.get("type_by_key") or {}).values():
-                if isinstance(tnode, dict) and tnode.get("measurement_target_key"):
-                    known_targets.add(str(tnode["measurement_target_key"]))
-            for inst_list in (hierarchy_tree.get("instances_by_type_key") or {}).values():
-                for inst in inst_list or []:
-                    if isinstance(inst, dict) and inst.get("measurement_target_key"):
-                        known_targets.add(str(inst["measurement_target_key"]))
+        if not verified.get("ok"):
+            return toast_response(
+                verified.get("error") or "Could not verify measurement apply scope.",
+                level="error",
+                status=400,
+            )
+
         result = apply_class_settings(
             project=project,
             user=request.user,
             session=request.session,
-            ifc_class=ifc_class,
+            ifc_class=verified["ifc_class"],
             measurement_type=(request.POST.get("measurement_type") or "").strip(),
             selected_source=(request.POST.get("selected_source") or "").strip(),
             output_unit=(request.POST.get("output_unit") or "").strip(),
-            prep_rows=prep_rows,
-            known_target_keys=known_targets,
-            inventory_rows=inventory_rows,
-            hierarchy_tree=hierarchy_tree if isinstance(hierarchy_tree, dict) else None,
+            prep_rows=[],
+            inventory_rows=[],
+            hierarchy_tree=None,
+            target_keys=list(verified["target_keys"]),
+            source_coverage=verified["source_coverage"],
         )
         if not result.get("ok"):
             return toast_response(
@@ -1374,3 +1375,106 @@ class QTOExportView(ProjectAccessMixin, View):
         )
         response["Content-Disposition"] = f'attachment; filename="qto_{safe_name}.xlsx"'
         return response
+
+
+class QuantityFieldCatalogueView(ProjectAccessMixin, View):
+    """GET — lazy HTML fragment for Add-column / Filter Field pickers (PERF-15C1)."""
+
+    def get(self, request, pk):  # noqa: ANN001
+        from takeoff.services.quantity_field_catalogue import build_lazy_field_catalogue_context
+
+        project = self.get_project()
+        pinned_ifc, source_error = _resolve_qto_ifc_file(project, request)
+        if source_error:
+            return HttpResponse(
+                '<div class="qty-field-catalogue-error small text-danger p-2" '
+                'data-testid="qty-field-catalogue-error">'
+                f"{source_error}</div>",
+                status=409,
+                content_type="text/html; charset=utf-8",
+            )
+
+        # Reject cross-project IFC id probes; only trust session-pinned or
+        # project-owned IFC ids when the client supplies one.
+        probe_ifc = (request.GET.get("ifc_file_id") or "").strip()
+        if probe_ifc:
+            from ifc_processor.models import IFCFile
+
+            owned = IFCFile.objects.filter(pk=probe_ifc, project=project).first()
+            if owned is None:
+                return HttpResponse(
+                    '<div class="qty-field-catalogue-error small text-danger p-2" '
+                    'data-testid="qty-field-catalogue-error">'
+                    "IFC source does not belong to this project.</div>",
+                    status=403,
+                    content_type="text/html; charset=utf-8",
+                )
+            if pinned_ifc is not None and str(pinned_ifc.pk) != probe_ifc:
+                return HttpResponse(
+                    '<div class="qty-field-catalogue-error small text-danger p-2" '
+                    'data-testid="qty-field-catalogue-error">'
+                    "IFC source does not match this project session.</div>",
+                    status=403,
+                    content_type="text/html; charset=utf-8",
+                )
+
+        mode = (request.GET.get("mode") or "filter").strip().lower()
+        if mode not in {"filter", "column"}:
+            mode = "filter"
+        picker_id = (request.GET.get("picker_id") or "").strip()
+        if mode == "column":
+            picker_id = picker_id or "qty-column-field"
+        else:
+            picker_id = picker_id or "qty-filter-field"
+
+        mark_raw = (request.GET.get("mark_added") or "").strip()
+        mark_added = [p.strip() for p in mark_raw.split(",") if p.strip()] if mark_raw else []
+
+        try:
+            ctx = build_lazy_field_catalogue_context(
+                project=project,
+                query=request.GET,
+                ifc_file=pinned_ifc,
+                mode=mode,
+                mark_added_keys=mark_added,
+            )
+        except Exception:
+            logger.exception(
+                "field catalogue lazy load failed project=%s", getattr(project, "pk", None)
+            )
+            return HttpResponse(
+                '<div class="qty-field-catalogue-error small text-danger p-2" '
+                'data-testid="qty-field-catalogue-error">'
+                "Could not load field catalogue. "
+                '<button type="button" class="btn btn-link btn-sm p-0 align-baseline '
+                'qty-field-catalogue-retry" data-testid="qty-field-catalogue-retry">'
+                "Retry</button></div>",
+                status=500,
+                content_type="text/html; charset=utf-8",
+            )
+
+        option_testid = "qty-column-field-option" if mode == "column" else "qty-filter-field-option"
+        tree_testid = "qty-column-field-list" if mode == "column" else f"{picker_id}-tree"
+        no_matches = "qty-column-field-empty" if mode == "column" else f"{picker_id}-no-matches"
+        return render(
+            request,
+            "takeoff/components/quantities_field_catalogue_fragment.html",
+            {
+                "project": project,
+                "picker_id": picker_id,
+                "hierarchy": ctx["hierarchy"],
+                "mode": mode,
+                "scope_label": ctx["scope_label"],
+                "option_testid": option_testid,
+                "tree_testid": tree_testid,
+                "no_matches_testid": no_matches,
+                "mark_added_keys": ctx["mark_added_keys"],
+                "field_meta_json": ctx["field_meta_json"],
+                # Add Column never restores a pressed option from the query string
+                # (Filter selection must stay independent).
+                "selected_key": (
+                    "" if mode == "column" else (request.GET.get("selected_key") or "").strip()
+                ),
+                "catalogue_empty": ctx["catalogue_empty"],
+            },
+        )

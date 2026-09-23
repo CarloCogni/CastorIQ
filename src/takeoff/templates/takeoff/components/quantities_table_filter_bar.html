@@ -98,10 +98,10 @@
            data-testid="qty-filter-field-menu">
         {% if sem.selected_classes %}
           {% with scope_label=sem.selected_classes|join:", " %}
-          {% include "takeoff/components/quantities_field_picker.html" with picker_id="qty-filter-field" hierarchy=sem.picker_hierarchy mode="filter" selected_key=sem.active_field scope_label=scope_label option_testid="qty-filter-field-option" %}
+          {% include "takeoff/components/quantities_field_picker_shell.html" with picker_id="qty-filter-field" mode="filter" selected_key=sem.active_field scope_label=scope_label option_testid="qty-filter-field-option" catalogue_url="" %}
           {% endwith %}
         {% else %}
-          {% include "takeoff/components/quantities_field_picker.html" with picker_id="qty-filter-field" hierarchy=sem.picker_hierarchy mode="filter" selected_key=sem.active_field scope_label="All classes" option_testid="qty-filter-field-option" %}
+          {% include "takeoff/components/quantities_field_picker_shell.html" with picker_id="qty-filter-field" mode="filter" selected_key=sem.active_field scope_label="All classes" option_testid="qty-filter-field-option" catalogue_url="" %}
         {% endif %}
       </div>
     </div>
@@ -193,11 +193,23 @@
     <span class="c5d-helper mb-0 ms-auto" data-testid="qty-batch-toolbar-count">0 selected</span>
     <span class="c5d-helper mb-0 text-secondary" data-testid="qty-selection-scope-note">{% if qty_prep.hierarchy.enabled %}Parent checkbox selects all matching descendant elements on Apply (including unloaded types). Instance checkbox selects that element only.{% else %}Current page only{% endif %}</span>
   </div>
+  {% with active_field=sem.active_field|default:'' %}
   {% if sem.unavailable.zone %}
-  <p class="c5d-helper mb-0 mt-1 text-secondary" data-testid="qty-zone-unavailable">
+  <p class="c5d-helper mb-0 mt-1 text-secondary{% if 'zone' not in active_field|lower %} d-none{% endif %}"
+     data-testid="qty-zone-unavailable-contextual"
+     id="qty-zone-unavailable-contextual"
+     data-zone-msg="{{ sem.unavailable.zone.message|escape }}">
     {{ sem.unavailable.zone.message }}
   </p>
   {% endif %}
+  {% if sem.unavailable.ifc_classification_ref %}
+  <p class="c5d-helper mb-0 mt-1 text-secondary{% if 'classification' not in active_field|lower and 'classref' not in active_field|lower %} d-none{% endif %}"
+     data-testid="qty-classref-unavailable-contextual"
+     id="qty-classref-unavailable-contextual">
+    {{ sem.unavailable.ifc_classification_ref.message }}
+  </p>
+  {% endif %}
+  {% endwith %}
 </div>
 
 <script type="application/json" id="qty-field-meta-json">{{ sem.field_meta_json|default:"{}"|safe }}</script>
@@ -226,6 +238,8 @@
 
   var metaByKey = {};
   try { metaByKey = JSON.parse(document.getElementById("qty-field-meta-json").textContent || "{}"); } catch (e) {}
+  window.CastorQtyFieldMeta = window.CastorQtyFieldMeta || metaByKey;
+  Object.keys(metaByKey).forEach(function (k) { window.CastorQtyFieldMeta[k] = metaByKey[k]; });
 
   function selectedClasses() {
     return Array.prototype.slice.call(classChecks)
@@ -236,14 +250,28 @@
   var valueBox = window.CastorQtyFieldPicker.initValueCombobox({
     input: valueEl,
     panel: document.getElementById("qty-semantic-value-panel"),
-    metaByKey: metaByKey,
+    metaByKey: window.CastorQtyFieldMeta,
     valuesUrl: valuesUrl,
     getFieldKey: function () { return fieldEl.value || ""; },
     getClasses: selectedClasses
   });
 
   function metaFor(key) {
-    return metaByKey[key] || {};
+    var fromJson = (window.CastorQtyFieldMeta && window.CastorQtyFieldMeta[key]) || metaByKey[key] || {};
+    var btn = picker ? picker.querySelector('.qty-field-picker-option[data-field-key="' + key.replace(/"/g, '') + '"]') : null;
+    if (btn) {
+      var vt = btn.getAttribute("data-value-type") || fromJson.value_type || "text";
+      return {
+        label: btn.getAttribute("data-field-label") || fromJson.label || key,
+        value_type: vt,
+        unit_label: btn.getAttribute("data-unit-label") || fromJson.unit_label || "",
+        operators: fromJson.operators || window.CastorQtyFieldPicker.defaultOpsFor(vt)
+      };
+    }
+    if (!fromJson.operators && fromJson.value_type) {
+      fromJson.operators = window.CastorQtyFieldPicker.defaultOpsFor(fromJson.value_type);
+    }
+    return fromJson;
   }
 
   function setFieldLabel(key, btn) {
@@ -318,6 +346,17 @@
     if (applyBtn && !bar.dataset.submitting) applyBtn.disabled = !valid;
   }
 
+  function refreshStructureNotices(key) {
+    var k = String(key || "").toLowerCase();
+    var zoneEl = document.getElementById("qty-zone-unavailable-contextual");
+    var classEl = document.getElementById("qty-classref-unavailable-contextual");
+    if (zoneEl) zoneEl.classList.toggle("d-none", k.indexOf("zone") === -1);
+    if (classEl) {
+      var showClass = k.indexOf("classification") !== -1 || k.indexOf("classref") !== -1;
+      classEl.classList.toggle("d-none", !showClass);
+    }
+  }
+
   function onFieldChange(key, btn, clearStale) {
     fieldEl.value = key || "";
     var meta = metaFor(key);
@@ -333,6 +372,7 @@
     refreshOperators();
     refreshUnit();
     refreshApply();
+    refreshStructureNotices(key);
     if (clearStale) closeFieldMenu();
   }
 
@@ -356,13 +396,22 @@
   });
 
   if (picker) {
-    window.CastorQtyFieldPicker.init(picker, {
-      // Picker notifies with (key, meta); meta.el is the option button.
-      onSelect: function (key, meta) {
-        var btn = meta && meta.el ? meta.el : null;
-        onFieldChange(key, btn, true);
-      }
-    });
+    picker._onSelect = function (key, meta) {
+      var btn = meta && meta.el ? meta.el : null;
+      onFieldChange(key, btn, true);
+    };
+    if (fieldToggle) {
+      fieldToggle.addEventListener("show.bs.dropdown", function () {
+        window.CastorQtyFieldPicker.ensureCatalogue(picker, {
+          onSelect: picker._onSelect,
+          onReady: function () {
+            if (picker._qtyPicker) picker._qtyPicker.resetSearch();
+            var search = document.getElementById("qty-filter-field-search");
+            if (search) search.focus();
+          }
+        });
+      });
+    }
   }
 
   opEl.addEventListener("change", function () {

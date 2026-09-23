@@ -18,6 +18,11 @@ from takeoff.services.quantity_prep_row_mapping import (
 )
 from takeoff.services.quantity_preparation_ui import build_preparation_ui
 
+# TABLE-04 renders core columns only by default; Assigned values are opt-in.
+_MAPPING_COL_ORDER = (
+    "ifc_class,name,classification_code,package_boq_mapping,work_package,status,actions"
+)
+
 
 def _pilot_like_project():
     project = ProjectFactory()
@@ -100,11 +105,19 @@ def test_excluded_field_no_input(client):
             "field_classification_code": "0",
             "source_classification_code": "manual_field",
             "source_package_boq_mapping": "manual_field",
+            "table_layout": "v2",
+            # Include Package only — the excluded Classification field must not
+            # become an assignable column even when Package is shown.
+            "col_order": "ifc_class,name,package_boq_mapping,status,actions",
         },
     ).content.decode()
     assert 'data-testid="qty-row-mapping-input-classification_code"' not in html
     assert 'data-testid="qty-row-mapping-input-package_boq_mapping"' in html
-    assert 'data-testid="qty-prep-classification-cell"' not in html
+    assert 'data-testid="qty-batch-field-classification_code"' not in html
+    assert 'data-testid="qty-batch-field-package_boq_mapping"' in html
+    table = html.split('data-testid="qty-prep-table"', 1)[1].split("</table>", 1)[0]
+    assert 'data-testid="qty-prep-classification-cell"' not in table
+    assert 'data-testid="qty-prep-package-cell"' in table
 
 
 @pytest.mark.django_db
@@ -116,6 +129,9 @@ def test_apply_classification_clears_missing_for_that_row_only(client):
         "source_package_boq_mapping": "future_modify_handoff",
         "source_work_package": "not_mapped",
         "basis_IfcWall": "NetArea",
+        # TABLE-04: the Classification column must be included to be rendered.
+        "table_layout": "v2",
+        "col_order": _MAPPING_COL_ORDER,
     }
     ui = build_preparation_ui(
         ModelQuantitiesService(project).build(),
@@ -148,7 +164,7 @@ def test_apply_classification_clears_missing_for_that_row_only(client):
     assert resp.status_code == 200
     body = resp.content.decode()
     assert "CL-BEAM-1" in body
-    assert 'data-testid="qty-manual-mapping-badge"' in body
+    assert 'data-testid="qty-manual-mapping-value"' in body
 
     # Re-overlay from session to assert counts.
     session = client.session
@@ -217,7 +233,7 @@ def test_clear_mapping_restores_missing_and_independence_from_review(client):
     row = ui["prep_rows"][0]
     mapping_url = reverse("takeoff:qty_prep_row_mapping", kwargs={"pk": project.pk})
     review_url = reverse("takeoff:qty_prep_row_review", kwargs={"pk": project.pk})
-    rq = "source_classification_code=manual_field"
+    rq = f"source_classification_code=manual_field&table_layout=v2&col_order={_MAPPING_COL_ORDER}"
 
     client.post(
         mapping_url,
@@ -271,7 +287,7 @@ def test_clear_mapping_restores_missing_and_independence_from_review(client):
         follow=True,
     ).content.decode()
     assert "CL-2" in html2
-    assert 'data-testid="qty-manual-mapping-badge"' in html2
+    assert 'data-testid="qty-manual-mapping-value"' in html2
 
 
 @pytest.mark.django_db

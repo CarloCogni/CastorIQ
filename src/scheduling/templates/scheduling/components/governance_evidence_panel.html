@@ -1,0 +1,25 @@
+<!-- scheduling/components/governance_evidence_panel.html — evidence detail drawer content -->
+
+<dl class="row mb-0 small">
+    <dt class="col-sm-3">Evidence label</dt>
+    <dd class="col-sm-9"><code>{{ evidence.evidence_label }}</code></dd>
+    <dt class="col-sm-3">Deterministic</dt>
+    <dd class="col-sm-9">{{ evidence.deterministic|yesno:"Yes,No" }}</dd>
+    <dt class="col-sm-3">Confidence</dt>
+    <dd class="col-sm-9">{% if evidence.confidence != None %}{{ evidence.confidence }}{% else %}—{% endif %}</dd>
+    <dt class="col-sm-3">Source</dt>
+    <dd class="col-sm-9">{{ evidence.source_field }} = {{ evidence.source_value|default:"—" }}</dd>
+    <dt class="col-sm-3">Explanation</dt>
+    <dd class="col-sm-9">{{ evidence.explanation }}</dd>
+    <dt class="col-sm-3">Trust implication</dt>
+    <dd class="col-sm-9">{{ evidence.trust_implication }}</dd>
+    <dt class="col-sm-3">Review required</dt>
+    <dd class="col-sm-9">{{ evidence.review_required|yesno:"Yes,No" }}</dd>
+    <dt class="col-sm-3">Policy</dt>
+    <dd class="col-sm-9"><code>{{ evidence.policy_id }}</code></dd>
+</dl>
+{% if warnings %}
+<ul class="mb-0 mt-2 small text-warning">
+    {% for w in warnings %}<li>{{ w }}</li>{% endfor %}
+</ul>
+{% endif %}

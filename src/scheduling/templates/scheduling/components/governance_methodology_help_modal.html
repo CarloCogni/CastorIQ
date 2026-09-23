@@ -1,0 +1,49 @@
+<!-- scheduling/components/governance_methodology_help_modal.html — link coverage methodology -->
+
+<div class="modal fade" id="governanceMethodologyHelpModal" tabindex="-1"
+     aria-labelledby="governanceMethodologyHelpLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border" style="background-color: var(--bs-tertiary-bg);">
+            <div class="modal-header border-bottom px-4 py-3">
+                <h5 class="modal-title fw-semibold fs-6 mb-0" id="governanceMethodologyHelpLabel">
+                    <i class="bi bi-calculator me-2 text-primary"></i>
+                    Link Coverage Methodology
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body px-4 py-4 fs-7">
+
+                <p class="fw-semibold mb-2">Applied / Confirmed vs review</p>
+                <p class="text-secondary mb-3">
+                    <strong>Applied / Confirmed</strong> links are active, confirmed, and not awaiting review.
+                    <strong>Review</strong> items are suggestions that still need Confirm Link or Ignore Suggestion.
+                    Inactive ignored / reversed / superseded links are excluded from Time View and Controls reads.
+                </p>
+
+                <p class="fw-semibold mb-2">Coverage denominators</p>
+                <p class="text-secondary mb-3">
+                    Task coverage numerator = distinct tasks with applied / confirmed links.
+                    Denominator = all schedule activities (includes non-model work).
+                    Entity coverage numerator = applied entity GlobalIds; denominator = indexed IFC entities.
+                </p>
+
+                <p class="fw-semibold mb-2">Evidence and confidence</p>
+                <p class="text-secondary mb-3">
+                    Evidence labels describe the match channel — not confirmation status.
+                    Confidence never auto-confirms. Property Activity ID metadata alone is not a binding.
+                </p>
+
+                <p class="fw-semibold mb-2">Lifecycle and audit</p>
+                <p class="text-secondary mb-3">
+                    Confirm Link, Ignore Suggestion, reaffirm, reverse, supersede, and parity repair create
+                    append-only events. Pre-audit rows may have no historical events.
+                </p>
+
+                <p class="fw-semibold mb-2">Reconciliation</p>
+                <p class="text-secondary mb-0">
+                    Reconciliation is diagnostic only — run explicitly; results are not cached on overview load.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>

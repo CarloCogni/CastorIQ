@@ -1,0 +1,12 @@
+<!-- scheduling/components/governance_decision_result.html — approval apply result -->
+
+<div class="alert alert-success py-2 small mb-0" role="status">
+    <div class="fw-semibold">{% if bulk %}Bulk approval{% else %}Approval{% endif %} committed</div>
+    <ul class="mb-0 ps-3">
+        <li>Promoted: {{ result.promoted_count }}</li>
+        <li>Already trusted / no-op: {{ result.noop_count }}</li>
+        <li>M2M additions: {{ result.m2m_additions }}</li>
+        <li>M2M existing: {{ result.m2m_noop }}</li>
+        <li>Reference: {{ result.audit_reference_id }} (operational only — not persisted audit)</li>
+    </ul>
+</div>

@@ -42,7 +42,10 @@ def test_inventory_route_serves_link_analysis(client):
     assert response.status_code == 200
     assert "4D Link Analysis" in html
     assert 'data-testid="link-analysis-page"' in html
-    assert "Model Readiness" not in html
+    # The page body no longer claims Model Readiness; the only remaining
+    # occurrence is the project nav link that routes here.
+    page = html.split('data-testid="link-analysis-page"', 1)[1]
+    assert "Model Readiness" not in page
 
 
 @pytest.mark.django_db

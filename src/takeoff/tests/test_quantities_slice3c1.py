@@ -189,8 +189,9 @@ def test_schema_builder_controls_and_source_mapping_interactive(client):
     ):
         assert phrase not in page, phrase
     assert "auto-selected" not in page.lower()
-    handoff = html.split('data-testid="qty-send-unresolved-to-modify"', 1)[0]
-    assert "disabled" in handoff[handoff.rfind("<button") :]
+    # TABLE-04 removed the Modify handoff control entirely.
+    assert 'data-testid="qty-send-unresolved-to-modify"' not in html
+    assert "Not Ask, not Modify, not BOQ, not cost" in html
 
 
 @pytest.mark.django_db

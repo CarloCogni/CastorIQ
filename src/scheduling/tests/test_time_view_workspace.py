@@ -58,11 +58,12 @@ def test_time_view_workspace_honesty_and_controls(client):
     assert 'data-testid="time-view-title"' in html
     assert ">Time View<" in html.split('data-testid="time-view-title"', 1)[1][:80]
     assert 'data-testid="time-view-subtitle"' in html
-    assert "Applied / Confirmed programme playback" in html
-    assert "Programme playback" in html
+    assert "Variance · Applied / Confirmed" in html
+    assert "Programme playback for applied / confirmed schedule-model links" in html
     assert "Playback date" in html
     assert "applied / confirmed" in html.lower()
-    assert "Model timeline" in html
+    # No IFC indexed in this fixture — the viewport says so instead of faking a model.
+    assert "Upload and process an IFC to enable programme playback." in html
     assert 'data-testid="time-view-viewport"' in html
     assert 'data-testid="time-view-playback-dock"' in html
     assert 'data-testid="time-view-dock-collapsed"' in html
@@ -97,34 +98,45 @@ def test_time_view_workspace_honesty_and_controls(client):
     assert 'id="la-speed-select"' not in html
     assert 'id="la-settings-speed"' not in html
 
-    # Appearance — Schedule state only; Task Legend Groups future; no IFC construction sets
+    # Appearance — Option-3 Planned / Actual / Variance modes; no IFC construction sets
     assert 'data-testid="time-view-appearance-setup"' in html
     assert 'data-testid="time-view-appearance-profile"' in html
-    assert "Schedule state" in html.split('data-testid="time-view-appearance-profile"', 1)[1][:120]
+    assert (
+        "Planned / Actual / Variance"
+        in html.split('data-testid="time-view-appearance-profile"', 1)[1][:160]
+    )
     assert 'data-testid="time-view-mode-construction"' not in html
     assert 'data-testid="time-view-legend-builder"' not in html
     assert "castor:appearance-colors" not in html
     assert "CONSTRUCTION_SETS_URL" not in html
     assert 'data-testid="time-view-colour-basis"' in html
-    assert (
-        "schedule state" in html.split('data-testid="time-view-colour-basis"', 1)[1][:200].lower()
-    )
-    assert 'data-testid="time-view-task-legend-groups-future"' in html
-    assert "Task Legend Groups" in html
-    assert "Not available in this release" in html
-    assert "not from IFC class" in html.lower() or "not from IFC class" in html
+    basis = html.split('data-testid="time-view-colour-basis"', 1)[1][:400]
+    assert "Colour basis follows the active mode on the playback date." in basis
+    assert "Planned never claims actual completion." in basis
+    assert "Actual never falls back to planned dates." in basis
+    # The three modes are real dock buttons, not a construction-set legend builder.
+    assert 'data-testid="time-view-mode-seg"' in html
+    assert 'data-testid="time-view-mode-planned"' in html
+    assert 'data-testid="time-view-mode-actual"' in html
+    assert 'data-testid="time-view-mode-variance"' in html
+    assert 'data-testid="time-view-mode-explain"' in html
+    assert "Compares planned and actual evidence at the playback date." in html
     assert 'data-testid="time-view-visibility"' in html
     assert 'data-testid="time-view-vis-complete"' in html
     assert 'data-bucket="complete"' in html
     assert "Reset playback colours" in html
 
-    # Legend generated from schedule-state appearance profile
+    # Legend generated from the active mode's canonical bucket list
     assert 'data-testid="time-view-legend"' in html
     assert 'data-testid="time-view-legend-body"' in html
     assert 'data-testid="time-view-settings-legend"' in html
-    assert "Legend · Schedule state" in html
+    assert "Legend · Variance" in html
     assert "_renderLegend" in html
-    assert "APPEARANCE_BUCKETS" in html
+    assert "MODE_LEGENDS" in html
+    assert "_legendForMode" in html
+    # Legend labels are mode-owned copy, never re-derived from IFC class.
+    assert "No linked schedule activity" in html
+    assert "No actual dates recorded" in html
     assert "_stepDelayMs" in html
     assert "TL_MIN_STEP_MS" in html
     assert 'data-testid="time-view-applied-status"' in html
@@ -134,7 +146,8 @@ def test_time_view_workspace_honesty_and_controls(client):
     assert 'data-testid="time-view-dock-play-btn"' in html
     assert 'aria-label="Play"' in html
     assert 'data-testid="time-view-scrubber"' in html
-    assert "Loading model state…" in html or "Loading model state" in html
+    assert 'data-testid="time-view-dock-loading"' in html
+    assert "Waiting for model colours…" in html
     assert "tv-workspace" in html
     assert "overflow: hidden" in html
     assert 'data-testid="time-view-lookahead-list"' not in html
@@ -159,15 +172,23 @@ def test_time_view_workspace_honesty_and_controls(client):
     help_html = html.split('id="lookaheadHelpLabel"', 1)[1].split("<style>", 1)[0]
     assert "TimeLiner" not in help_html
     assert "link proposals" not in help_html
-    assert "Walkthrough / camera-path playback is not available" in help_html
-    assert "This is not a walkthrough or construction simulation." in help_html
+    assert "This is not a walkthrough, playlist of activities, or construction simulation." in (
+        help_html
+    )
     assert "programme playback" in help_html.lower()
     assert "applied / confirmed" in help_html.lower()
-    assert "Playback Setup" in help_html
-    assert "Appearance" in help_html
-    assert "Schedule state" in help_html
-    assert "Task Legend Groups" in help_html
+    assert "Programme Playback controls" in help_html
+    assert "Full playback" in help_html
+    # Option-3 modes are documented; construction-set legends are not a feature.
+    assert "Modes" in help_html
+    assert "<strong>Planned</strong>" in help_html
+    assert "<strong>Actual</strong>" in help_html
+    assert "<strong>Variance</strong>" in help_html
     assert "Construction sets" not in help_html
+    assert "Task Legend Groups" not in help_html
+    # Honesty: no fabricated actuals, no invented percentage claims.
+    assert "does not invent history from status or percent-complete fields" in help_html
+    assert "read-only playback view" in help_html
     for phrase in _FORBIDDEN_WORKSPACE:
         assert phrase not in workspace, phrase
         assert phrase not in help_html, phrase
@@ -179,34 +200,26 @@ def test_time_view_workspace_honesty_and_controls(client):
 
 
 @pytest.mark.django_db
-def test_time_view_empty_state_when_no_tasks(client):
-    """Empty schedule shows import prompt (uses task_count, not full task list)."""
-    project = ProjectFactory()
-    client.force_login(project.owner)
-    response = client.get(
-        reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=lookahead"
-    )
-    html = response.content.decode()
-    assert response.status_code == 200
-    assert "No schedule to play" in html
-    assert 'data-testid="time-view-workspace"' not in html
+def test_time_view_viewport_embeds_viewer_when_ifc_indexed(client):
+    """With a completed IFC the viewport is the real embed iframe, not the empty state."""
+    from ifc_processor.tests.factories import IFCFileFactory
 
-
-@pytest.mark.django_db
-def test_time_view_lookahead_avoids_task_entity_prefetch(client, django_assert_max_num_queries):
-    """Lookahead shell must not prefetch all task↔entity links."""
     project = ProjectFactory()
     TaskFactory(project=project)
+    IFCFileFactory(project=project, status="completed")
     client.force_login(project.owner)
-    url = reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=lookahead"
-    # Bound is generous for auth/project chrome; forbids N+1 over entity bindings.
-    with django_assert_max_num_queries(80):
-        response = client.get(url)
-    assert response.status_code == 200
-    html = response.content.decode()
-    assert 'data-testid="time-view-title"' in html
-    # Ensure empty-state path was not taken when tasks exist
-    assert "No schedule to play" not in html
+
+    html = client.get(
+        reverse("scheduling:schedule", kwargs={"pk": project.pk}) + "?tab=lookahead"
+    ).content.decode()
+
+    viewport = html.split('data-testid="time-view-viewport"', 1)[1][:600]
+
+    assert 'title="Time View model timeline"' in viewport
+    assert reverse("ifc_viewer:viewer_embed", kwargs={"pk": project.pk}) in viewport
+    # The empty state only survives as a JS warning string, never as rendered markup.
+    assert "Upload and process an IFC to enable programme playback." not in viewport
+    assert "const HAS_IFC       = true;" in html
 
 
 @pytest.mark.django_db

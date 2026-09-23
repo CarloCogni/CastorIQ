@@ -8,7 +8,7 @@
     <div class="c5d-header-main" style="min-width:0;">
       <div class="d-flex align-items-center gap-2 flex-wrap">
         <h1 class="c5d-header-title mb-0" data-testid="quantities-workspace-title">
-          Quantities
+          IFC Quantity Preparation
         </h1>
         <button type="button"
                 class="help-pill c5d-action-subtle"
@@ -100,10 +100,23 @@
     <summary>Advanced &amp; reference</summary>
     <div class="c5d-advanced-body">
       <p class="c5d-helper mb-2" data-testid="quantities-boundary-copy">
-        Preparation from indexed IFC. Not Ask, not Modify, not BOQ, not cost.
+        IFC Quantity Preparation from indexed IFC. Not Ask, not Modify, not BOQ, not cost,
+        not rates/pricing, and not Quantity → Cost → Schedule integration.
       </p>
       <span class="visually-hidden" data-testid="quantities-not-boq-badge">Not BOQ</span>
       <span class="visually-hidden" data-testid="quantities-model-only-badge">Model quantities only</span>
+      {% with sem=qty_prep.semantic_filters %}
+      {% if sem.unavailable.zone %}
+      <p class="c5d-helper mb-2 text-secondary" data-testid="qty-zone-unavailable">
+        {{ sem.unavailable.zone.message }}
+      </p>
+      {% endif %}
+      {% if sem.unavailable.ifc_classification_ref %}
+      <p class="c5d-helper mb-2 text-secondary" data-testid="qty-classref-unavailable">
+        {{ sem.unavailable.ifc_classification_ref.message }}
+      </p>
+      {% endif %}
+      {% endwith %}
       <div id="qty-configure-section" data-testid="qty-configure-details">
         {% include "takeoff/components/quantities_prep_config_panel.html" %}
         <form method="get" action="" class="qty-prep-config-form" data-testid="qty-prep-config-form">

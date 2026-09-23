@@ -1,5 +1,10 @@
 # ifc_viewer/tests/test_viewer_playback_contract.py
-"""Viewer embed playback contract for Time View (Phase 5) + Links highlight (Phase 4)."""
+"""Viewer embed playback contract for Time View (Phase 5) + Links highlight (Phase 4).
+
+Founder-approved Option-3 paint uses ``not_due`` (with legacy ``not_started``
+accepted as an inbound alias). Isolate is opt-in via ``msg.isolate === true``
+on ``castor:focus-element``; ``castor:isolate`` always isolates.
+"""
 
 from __future__ import annotations
 
@@ -12,13 +17,15 @@ def _embed_text() -> str:
 
 
 def test_viewer_embed_supports_timeline_playback_events():
-    """Embed accepts timeline color payloads, hides not-started, acks parent."""
+    """Embed accepts timeline color payloads, Option-3 not_due paint, acks parent."""
     text = _embed_text()
 
     assert 'msg.type === "castor:timeline-colors"' in text
     assert "__castorPendingTimeline" in text
     assert 'type: "castor:timeline-applied"' in text
-    assert "hideGlobalIds(not_started" in text
+    # Option-3: not_due is the paint/hide bucket; legacy not_started remains an alias.
+    assert "const not_due = paint.not_due || msg.not_started || []" in text
+    assert "hideGlobalIds(not_due)" in text
     assert "colorByGlobalIds(complete" in text
     assert "colorByGlobalIds(in_progress" in text
     assert "colorByGlobalIds(delayed" in text
@@ -34,4 +41,6 @@ def test_viewer_embed_preserves_phase4_highlight_contract():
     assert "color_map" in text
     assert "_applyHighlightColors" in text
     assert 'msg.type === "castor:isolate"' in text
-    assert "msg.isolate === false" in text
+    # Founder contract: isolate is opt-in on focus-element (true), not false-clear.
+    assert "msg.isolate === true" in text
+    assert "_isolateHighlighted" in text

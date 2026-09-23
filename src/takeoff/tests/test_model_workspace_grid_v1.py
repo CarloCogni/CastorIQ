@@ -45,8 +45,11 @@ def test_model_hub_serves_link_analysis_layout(client):
     assert 'data-testid="link-analysis-charts"' in html
     assert 'data-testid="link-analysis-table"' in html
     assert "NetVolume" not in html
-    assert "Model Readiness" not in html
     assert "Not BOQ" not in html
+    # Page body carries Link Analysis chrome only — Model Readiness survives
+    # solely as the project nav label for this route.
+    page = html.split('data-testid="link-analysis-page"', 1)[1]
+    assert "Model Readiness" not in page
 
 
 @pytest.mark.django_db

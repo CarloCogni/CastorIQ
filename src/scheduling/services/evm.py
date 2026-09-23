@@ -2,41 +2,102 @@
 """Earned Value Management (EVM) — PV, EV, AC, SPI, CPI, S-curve series.
 
 Every metric declares required inputs; missing inputs produce explicit N/A rather
-than fabricated values. AC/CPI/EAC require real P6ResourceAssignment actual costs
-and are disabled when absent. When no cost data exists, a duration-weighted proxy
-is returned with cost_basis="task durations" and use_cost=False.
+than fabricated values. AC/CPI/EAC require real assignment actual costs and are
+disabled when absent. When no cost data exists, a duration-weighted proxy is
+returned with cost_basis="task durations" and use_cost=False.
+
+DF-E3: AC prefers canonical ResourceAssignment; falls back to P6ResourceAssignment
+only when the project has zero canonical assignment rows (never dual-sums).
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 from .calendar_utils import load_project_calendars, task_cal, working_day_diff
+from .evm_forecast import compute_spi_forecast, performance_mode_fields
 from .utils import get_project_data_date
 
 logger = logging.getLogger(__name__)
 
+AC_SOURCE_CANONICAL = "canonical_resource_assignment"
+AC_SOURCE_P6_FALLBACK = "legacy_p6_resource_assignment_fallback"
+AC_SOURCE_NONE = "none"
 
-def _load_actual_costs(task_pks: list[str]) -> dict[str, float]:
-    """Return {str(task_pk): total_actual_cost} from P6ResourceAssignment.
 
-    Sums all resource types (labor, material, equipment, expense) per task.
-    Returns {} if no ResourceAssignment rows exist or none have actual_cost > 0.
+@dataclass(frozen=True, slots=True)
+class ActualCostLoadResult:
+    """Task-keyed AC totals plus which store supplied them."""
+
+    by_task: dict[str, float]
+    source: str
+
+
+def _load_actual_costs(
+    task_pks: list[str],
+    *,
+    project_id: str | None = None,
+) -> ActualCostLoadResult:
+    """Return per-task actual cost totals for EVM (actual_cost > 0 only).
+
+    Prefer canonical ``ResourceAssignment`` when any non-pending canonical row
+    exists for the project. Otherwise fall back to ``P6ResourceAssignment``.
+    Never combine both sources for the same project (avoids double-counting).
+
+    Returns an empty ``by_task`` map when neither store has positive actual cost.
     Never raises.
     """
-    from scheduling.models import P6ResourceAssignment
+    if not task_pks:
+        return ActualCostLoadResult(by_task={}, source=AC_SOURCE_NONE)
 
-    result: dict[str, float] = {}
     try:
-        for ra in P6ResourceAssignment.objects.filter(
-            task_id__in=task_pks, actual_cost__gt=0
-        ).values("task_id", "actual_cost"):
+        from scheduling.models import P6ResourceAssignment, ResourceAssignment, Task
+
+        resolved_project_id = project_id
+        if resolved_project_id is None:
+            resolved_project_id = (
+                Task.objects.filter(pk=task_pks[0]).values_list("project_id", flat=True).first()
+            )
+            if resolved_project_id is not None:
+                resolved_project_id = str(resolved_project_id)
+
+        use_canonical = False
+        if resolved_project_id:
+            use_canonical = ResourceAssignment.objects.filter(
+                project_id=resolved_project_id,
+                is_pending=False,
+            ).exists()
+
+        if use_canonical:
+            rows = ResourceAssignment.objects.filter(
+                project_id=resolved_project_id,
+                task_id__in=task_pks,
+                is_pending=False,
+                actual_cost__gt=0,
+            ).values("task_id", "actual_cost")
+            source = AC_SOURCE_CANONICAL
+        else:
+            rows = P6ResourceAssignment.objects.filter(
+                task_id__in=task_pks,
+                actual_cost__gt=0,
+            ).values("task_id", "actual_cost")
+            if resolved_project_id:
+                rows = rows.filter(project_id=resolved_project_id)
+            source = AC_SOURCE_P6_FALLBACK
+
+        result: dict[str, float] = {}
+        for ra in rows:
             pk = str(ra["task_id"])
             result[pk] = result.get(pk, 0.0) + float(ra["actual_cost"] or 0)
+        if not result:
+            # Preserve source label so callers know which store was consulted.
+            return ActualCostLoadResult(by_task={}, source=source)
+        return ActualCostLoadResult(by_task=result, source=source)
     except Exception as exc:
         logger.debug("_load_actual_costs: %s", exc)
-    return result
+        return ActualCostLoadResult(by_task={}, source=AC_SOURCE_NONE)
 
 
 def _qto_task_costs(project_id: str, tasks: list) -> dict[str, float]:
@@ -72,7 +133,9 @@ def _qto_task_costs(project_id: str, tasks: list) -> dict[str, float]:
         return {}
 
     result: dict[str, float] = {}
-    for binding in TaskEntityBinding.objects.filter(task_id__in=no_cost_pks).values(
+    from scheduling.services.governance.active_state import apply_trusted
+
+    for binding in apply_trusted(TaskEntityBinding.objects.filter(task_id__in=no_cost_pks)).values(
         "task_id", "entity_global_id"
     ):
         cost = entity_costs.get(binding["entity_global_id"], 0.0)
@@ -91,15 +154,22 @@ def _planned_pct_at(task, d: date, cal=None) -> float:
     (half-open (start, end] — same semantics as ``.days``).  Falls back to
     calendar-day arithmetic when *cal* is None.
     """
-    if d >= task.end_date:
+    return _planned_pct_at_dates(task.start_date, task.end_date, d, cal)
+
+
+def _planned_pct_at_dates(start: date | None, end: date | None, d: date, cal=None) -> float:
+    """Linear planned progress for explicit start/end — 0 if dates missing."""
+    if start is None or end is None:
+        return 0.0
+    if d >= end:
         return 1.0
-    if d < task.start_date:
+    if d < start:
         return 0.0
     if cal is not None:
-        dur = max(working_day_diff(task.start_date, task.end_date, cal), 1)
-        return max(0.0, min(1.0, working_day_diff(task.start_date, d, cal) / dur))
-    dur = max((task.end_date - task.start_date).days, 1)
-    return (d - task.start_date).days / dur
+        dur = max(working_day_diff(start, end, cal), 1)
+        return max(0.0, min(1.0, working_day_diff(start, d, cal) / dur))
+    dur = max((end - start).days, 1)
+    return (d - start).days / dur
 
 
 def _earned_pct_at(task, d: date, cal=None) -> float:
@@ -314,11 +384,18 @@ def compute_wbs_heatmap(project_id: str) -> list[dict]:
     return result
 
 
-def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
+def compute_evm(
+    project_id: str,
+    as_of_date: date | None = None,
+    *,
+    baseline_version_id: str | None = None,
+) -> dict:
     """Compute EVM metrics and weekly S-curve series for *project_id*.
 
-    AC, CPI, CV, EAC, VAC require real actual cost from P6ResourceAssignment.
-    If absent: those metrics are None and ac_available=False.
+    AC, CPI, CV, EAC, VAC require real actual cost from resource assignments
+    (canonical ResourceAssignment preferred; P6ResourceAssignment fallback when
+    canonical rows are absent). If absent: those metrics are None and
+    ac_available=False.
 
     Returns a dict with:
         has_data           — bool
@@ -334,21 +411,57 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         ac_available       — bool
         ac_coverage_pct    — float | None (% cost-bearing tasks with actual cost)
         ac_disabled_reason — str | None
+        ac_source          — str (canonical_resource_assignment |
+                             legacy_p6_resource_assignment_fallback | none)
         as_of / project_start / project_end — ISO date strings
         series             — {pv, ev, ac}  (ac absent when not available)
     """
-    from scheduling.models import Task
+    from scheduling.models import BaselineVersion, Task
+    from scheduling.services.baseline.evm_scope import (
+        ActivityMatchKind,
+        BaselineEVMScopeService,
+        EVMMethodologyMode,
+    )
+
+    baseline_override = None
+    if baseline_version_id:
+        baseline_override = BaselineVersion.objects.filter(
+            pk=baseline_version_id,
+            project_id=project_id,
+        ).first()
 
     tasks = list(
         Task.objects.filter(project_id=project_id, is_non_physical=False)
         .exclude(start_date=None)
         .exclude(end_date=None)
+        .only(
+            "pk",
+            "start_date",
+            "end_date",
+            "cost",
+            "status",
+            "actual_start",
+            "actual_end",
+            "physical_percent_complete",
+            "duration_percent_complete",
+            "schedule_activity_id",
+            "is_non_physical",
+        )
     )
     if not tasks:
-        return {"has_data": False}
+        return {
+            "has_data": False,
+            "baseline_evm": {"methodology_mode": "derived_current_schedule_evm"},
+        }
 
     today = as_of_date or get_project_data_date(project_id)[0]
     total_tasks = len(tasks)
+
+    scope = BaselineEVMScopeService(str(project_id)).resolve(
+        tasks,
+        baseline=baseline_override,
+    )
+    baseline_evm = scope.to_metadata()
 
     # Per-task calendar for working-day span calculations (PV, EV fallback)
     cal_map = load_project_calendars(project_id)
@@ -356,45 +469,110 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         {str(t.pk): task_cal(t, cal_map) for t in tasks} if cal_map else {}
     )
 
-    sched_costs = {str(t.pk): float(t.cost or 0) for t in tasks}
-    total_sched = sum(sched_costs.values())
+    use_baseline_planned = scope.is_baseline_backed
 
-    qto_costs = _qto_task_costs(str(project_id), tasks)
-
-    values: dict[str, float] = {}
-    used_qto = False
-    for t in tasks:
-        pk = str(t.pk)
-        sc = sched_costs.get(pk, 0.0)
-        if sc > 0:
-            values[pk] = sc
-        elif pk in qto_costs:
-            values[pk] = qto_costs[pk]
-            used_qto = True
+    if scope.use_baseline_cost_evm:
+        values: dict[str, float] = {}
+        pv_slices: list[tuple] = []
+        ev_slices: list[tuple] = []
+        for entry in scope.matched_entries:
+            if entry.match_kind != ActivityMatchKind.MATCHED:
+                continue
+            if entry.baseline_cost is None:
+                continue
+            if not entry.planned_start or not entry.planned_finish:
+                continue
+            pk = str(entry.task.pk)
+            values[pk] = entry.baseline_cost
+            cal = task_cals.get(pk)
+            pv_slices.append((entry.task, entry.planned_start, entry.planned_finish, cal))
+            ev_slices.append((entry.task, entry.baseline_cost, cal))
+        use_cost = bool(values)
+        used_qto = False
+        tasks_with_cost = len(values)
+        cost_coverage_pct = scope.coverage.get("matched_cost_coverage_pct", 0.0)
+        bac = scope.coverage.get("represented_bac", 0.0)
+        cost_basis = f"BaselineTaskState ({scope.baseline.name})"
+        if scope.methodology_mode == EVMMethodologyMode.APPROVED_BASELINE_COST_EVM:
+            cost_basis = f"Approved baseline — {scope.baseline.name}"
+        elif scope.methodology_mode == EVMMethodologyMode.REFERENCE_BASELINE_COST_EVM:
+            cost_basis = f"Imported reference baseline — {scope.baseline.name}"
         else:
-            values[pk] = 0.0
-
-    total_value = sum(values.values())
-    use_cost = total_value > 0
-    tasks_with_cost = sum(1 for v in values.values() if v > 0)
-    cost_coverage_pct = round(tasks_with_cost / total_tasks * 100, 1) if total_tasks else 0.0
-
-    if use_cost:
-        bac = total_value
-        if total_sched > 0 and used_qto:
-            cost_basis = "schedule costs + QTO estimates"
-        elif total_sched > 0:
-            cost_basis = "schedule costs"
-        else:
-            cost_basis = "QTO estimates"
-    else:
-        # Duration proxy — not monetary EVM; caller must surface this clearly
-        values = {str(t.pk): float(max((t.end_date - t.start_date).days + 1, 1)) for t in tasks}
+            cost_basis = f"Working baseline — {scope.baseline.name}"
+        calc_tasks = [s[0] for s in pv_slices]
+    elif use_baseline_planned:
+        values = {}
+        pv_slices = []
+        ev_slices = []
+        for entry in scope.matched_entries:
+            if entry.match_kind != ActivityMatchKind.MATCHED:
+                continue
+            if not entry.planned_start or not entry.planned_finish:
+                continue
+            pk = str(entry.task.pk)
+            dur = max((entry.planned_finish - entry.planned_start).days + 1, 1)
+            values[pk] = float(dur)
+            cal = task_cals.get(pk)
+            pv_slices.append((entry.task, entry.planned_start, entry.planned_finish, cal))
+            ev_slices.append((entry.task, float(dur), cal))
+        use_cost = False
+        used_qto = False
+        tasks_with_cost = 0
+        cost_coverage_pct = scope.coverage.get("baseline_date_coverage_pct") or 0.0
         bac = sum(values.values())
-        cost_basis = "task durations"
+        cost_basis = f"Baseline planned dates — {scope.baseline.name}"
+        calc_tasks = [s[0] for s in pv_slices]
+        baseline_evm["methodology_mode"] = EVMMethodologyMode.SCHEDULE_PERFORMANCE_MODE
+    else:
+        pv_slices = []
+        ev_slices = []
+        sched_costs = {str(t.pk): float(t.cost or 0) for t in tasks}
+        total_sched = sum(sched_costs.values())
 
-    task_pks = [str(t.pk) for t in tasks]
-    actual_costs = _load_actual_costs(task_pks)
+        qto_costs = _qto_task_costs(str(project_id), tasks)
+
+        values = {}
+        used_qto = False
+        for t in tasks:
+            pk = str(t.pk)
+            sc = sched_costs.get(pk, 0.0)
+            if sc > 0:
+                values[pk] = sc
+            elif pk in qto_costs:
+                values[pk] = qto_costs[pk]
+                used_qto = True
+            else:
+                values[pk] = 0.0
+
+        total_value = sum(values.values())
+        use_cost = total_value > 0
+        tasks_with_cost = sum(1 for v in values.values() if v > 0)
+        cost_coverage_pct = round(tasks_with_cost / total_tasks * 100, 1) if total_tasks else 0.0
+
+        if use_cost:
+            bac = total_value
+            if total_sched > 0 and used_qto:
+                cost_basis = "schedule costs + QTO estimates"
+            elif total_sched > 0:
+                cost_basis = "schedule costs"
+            else:
+                cost_basis = "QTO estimates"
+        else:
+            values = {str(t.pk): float(max((t.end_date - t.start_date).days + 1, 1)) for t in tasks}
+            bac = sum(values.values())
+            cost_basis = "task durations"
+        calc_tasks = tasks
+
+    if not calc_tasks and scope.is_baseline_backed:
+        return {
+            "has_data": False,
+            "baseline_evm": baseline_evm,
+        }
+
+    task_pks = [str(t.pk) for t in calc_tasks]
+    ac_load = _load_actual_costs(task_pks, project_id=str(project_id))
+    actual_costs = ac_load.by_task
+    ac_source = ac_load.source
     ac_total = sum(actual_costs.values())
     ac_available = ac_total > 0
 
@@ -406,12 +584,17 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
     else:
         ac_coverage_pct = None
         ac_disabled_reason = (
-            "Actual cost not imported — CPI, CV, EAC, VAC disabled. "
-            "Import resource assignments with actual cost to enable cost-performance metrics."
+            "Assignment actual cost not imported — diagnostic only. "
+            "Company-cost metrics remain unavailable without ERP / invoice / QS / "
+            "payroll / procurement source."
         )
 
-    project_start = min(t.start_date for t in tasks)
-    project_end = max(t.end_date for t in tasks)
+    if use_baseline_planned and pv_slices:
+        project_start = min(s[1] for s in pv_slices)
+        project_end = max(s[2] for s in pv_slices)
+    else:
+        project_start = min(t.start_date for t in calc_tasks)
+        project_end = max(t.end_date for t in calc_tasks)
 
     spine_end = max(project_end, today)
     dates: list[date] = []
@@ -421,6 +604,8 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         cur += timedelta(weeks=1)
     if spine_end not in dates:
         dates.append(spine_end)
+    if today not in dates:
+        dates.append(today)
     dates.sort()
 
     # Each task's actual_cost is attributed to:
@@ -432,7 +617,7 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
     # as-of that date.
     ac_attribution: list[tuple[date, float]] = []
     if ac_available:
-        for t in tasks:
+        for t in calc_tasks:
             ta = actual_costs.get(str(t.pk), 0.0)
             if ta <= 0.0:
                 continue
@@ -442,23 +627,46 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
                 ac_attribution.append((today, ta))
         ac_attribution.sort()
 
+    ac_idx = 0
+    cum_ac = 0.0
+
+    pv_abs_by_date: list[float] | None = None
+    if not task_cals and not use_baseline_planned:
+        from scheduling.services.evm_series import cumulative_linear_calendar, pv_entries_from_tasks
+
+        pv_abs_by_date = cumulative_linear_calendar(
+            pv_entries_from_tasks(calc_tasks, values), dates
+        )
+
+    def _pv_at(d: date) -> float:
+        if pv_abs_by_date is not None:
+            return pv_abs_by_date[dates.index(d)]
+        if use_baseline_planned and pv_slices:
+            return sum(
+                _planned_pct_at_dates(ps, pf, d, cal) * values[str(t.pk)]
+                for t, ps, pf, cal in pv_slices
+            )
+        return sum(
+            _planned_pct_at(t, d, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in calc_tasks
+        )
+
+    def _ev_at(d: date) -> float:
+        if use_baseline_planned and ev_slices:
+            return sum(_earned_pct_at(t, d, cal) * weight for t, weight, cal in ev_slices)
+        return sum(
+            _earned_pct_at(t, d, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in calc_tasks
+        )
+
     pv_series: list[dict] = []
     ev_series: list[dict] = []
     ac_series: list[dict] = []
 
-    ac_idx = 0
-    cum_ac = 0.0
-
-    for d in dates:
-        pv_abs = sum(
-            _planned_pct_at(t, d, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks
-        )
+    for i, d in enumerate(dates):
+        pv_abs = pv_abs_by_date[i] if pv_abs_by_date is not None else _pv_at(d)
         pv_series.append({"date": d.isoformat(), "pct": round(pv_abs / bac * 100, 2) if bac else 0})
 
         if d <= today:
-            ev_abs = sum(
-                _earned_pct_at(t, d, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks
-            )
+            ev_abs = _ev_at(d)
             ev_series.append(
                 {"date": d.isoformat(), "pct": round(ev_abs / bac * 100, 2) if bac else 0}
             )
@@ -471,12 +679,8 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
                     {"date": d.isoformat(), "pct": round(cum_ac / bac * 100, 2) if bac else 0}
                 )
 
-    pv_today = sum(
-        _planned_pct_at(t, today, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks
-    )
-    ev_today = sum(
-        _earned_pct_at(t, today, task_cals.get(str(t.pk))) * values[str(t.pk)] for t in tasks
-    )
+    pv_today = _pv_at(today)
+    ev_today = _ev_at(today)
 
     spi = round(ev_today / pv_today, 3) if pv_today > 0 else 1.0
     sv = round(ev_today - pv_today, 2)
@@ -486,7 +690,7 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         # ac_available stays on the raw sum (intent: "is any AC imported?").
         ac_today: float | None = sum(
             ta
-            for t in tasks
+            for t in calc_tasks
             if (ta := actual_costs.get(str(t.pk), 0.0)) > 0
             and not (t.actual_start and t.actual_start > today)
         )
@@ -501,7 +705,7 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         eac = None
         vac = None
 
-    logger.info(
+    logger.debug(
         "EVM — project %s: BAC=%.0f SPI=%.2f CPI=%s EAC=%s ac_available=%s cost_coverage=%.0f%%",
         project_id,
         bac,
@@ -521,7 +725,7 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
     # when this count is > 0 because SPI will be overstated.
     overdue_linear_capped = sum(
         1
-        for t in tasks
+        for t in calc_tasks
         if t.actual_start
         and t.actual_start <= today
         and t.end_date < today
@@ -529,6 +733,15 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         and not (t.actual_end and t.actual_end <= today)
         and t.physical_percent_complete is None
         and t.duration_percent_complete is None
+    )
+
+    mode_fields = performance_mode_fields(use_cost, cost_basis)
+    spi_forecast = compute_spi_forecast(
+        spi=spi,
+        ev=ev_today,
+        project_start=project_start,
+        project_end=project_end,
+        as_of=today,
     )
 
     return {
@@ -549,9 +762,16 @@ def compute_evm(project_id: str, as_of_date: date | None = None) -> dict:
         "ac_available": ac_available,
         "ac_coverage_pct": ac_coverage_pct,
         "ac_disabled_reason": ac_disabled_reason,
+        "ac_source": ac_source,
         "overdue_linear_capped": overdue_linear_capped,
+        "is_monetary_evm": mode_fields["is_monetary_evm"],
+        "performance_mode": mode_fields["performance_mode"],
+        "performance_mode_label": mode_fields["performance_mode_label"],
+        "spi_forecast": spi_forecast,
         "as_of": today.isoformat(),
         "project_start": project_start.isoformat(),
         "project_end": project_end.isoformat(),
         "series": series,
+        "baseline_evm": baseline_evm,
+        "schedulable_tasks": total_tasks,
     }

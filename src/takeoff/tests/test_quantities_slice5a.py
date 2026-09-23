@@ -98,12 +98,10 @@ def test_apply_and_clear_session_review(client):
     assert resp.status_code == 200
     body = resp.content.decode()
     assert 'data-testid="qty-session-review-badge"' in body
+    assert 'data-testid="qty-session-review-status"' in body
     assert "Reviewed for preparation" in body
-    assert 'data-testid="qty-session-review-note-indicator"' in body
-    assert (
-        "Checked for preparation" not in body
-        or 'data-testid="qty-session-review-note-indicator"' in body
-    )
+    # The note rides on the Review row button as data, not as a table cell label.
+    assert 'data-qty-session-note="Checked for preparation"' in body
 
     # Register unchanged: recompute from same config and compare counts in HTML cards.
     qty_after = build_preparation_ui(ModelQuantitiesService(project).build())
@@ -144,7 +142,17 @@ def test_invalid_status_rejected(client):
 def test_forbidden_labels_absent_and_quantities_not_editable(client):
     project = _pilot_like_project()
     client.force_login(project.owner)
-    html = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk})).content.decode()
+    # Opt the value columns in — TABLE-04 defaults to core columns only.
+    html = client.get(
+        reverse("takeoff:qto", kwargs={"pk": project.pk}),
+        {
+            "table_layout": "v2",
+            "col_order": (
+                "ifc_class,name,quantity,classification_code,"
+                "package_boq_mapping,work_package,status,actions"
+            ),
+        },
+    ).content.decode()
     page_l = html.split('data-testid="quantities-page"', 1)[1].lower()
     for phrase in (
         "certified takeoff",
@@ -160,17 +168,21 @@ def test_forbidden_labels_absent_and_quantities_not_editable(client):
         assert bad not in ALLOWED_REVIEW_STATUSES
         assert all(bad not in label.lower() for label in REVIEW_STATUS_LABELS.values())
     assert 'data-testid="qty-prep-total-cell"' in html
-    assert 'name="total"' not in html
-    assert 'name="classification_code"' not in html
-    assert 'name="package_boq_mapping"' not in html
-    assert 'name="work_package"' not in html
-    assert "Send unresolved rows to Castor Modify" in html
-    assert (
-        "disabled"
-        in html.split('data-testid="qty-send-unresolved-to-modify"', 1)[0][
-            html.split('data-testid="qty-send-unresolved-to-modify"', 1)[0].rfind("<button") :
-        ]
-    )
+    # Quantity and mapping cells are display-only in the table itself; edits go
+    # through the Review row drawer and the batch Assign metadata modal.
+    table = html.split('data-testid="qty-prep-table"', 1)[1].split("</table>", 1)[0]
+    assert 'name="total"' not in table
+    assert 'name="classification_code"' not in table
+    assert 'name="package_boq_mapping"' not in table
+    assert 'name="work_package"' not in table
+    # Row-selection checkboxes are the only inputs; no value editors.
+    assert '<input type="text"' not in table
+    assert '<input type="number"' not in table
+    assert "<select" not in table
+    assert 'data-testid="qty-review-row-btn"' in table
+    # No Modify handoff control on this screen at all.
+    assert 'data-testid="qty-send-unresolved-to-modify"' not in html
+    assert "Send unresolved rows to Castor Modify" not in html
     assert "Raw Indexed Quantity Inventory" in html
     assert "reference" in html.lower()
 

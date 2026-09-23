@@ -1,5 +1,10 @@
 # ifc_viewer/tests/test_viewer_highlight_contract.py
-"""Viewer embed highlight contract for Links visual review (Phase 4)."""
+"""Viewer embed highlight contract for Links visual review (Phase 4).
+
+Founder-approved selection/focus: ``castor:isolate`` always isolates;
+``castor:focus-element`` isolates only when ``msg.isolate === true``
+(otherwise camera-focus without hiding context).
+"""
 
 from __future__ import annotations
 
@@ -16,7 +21,7 @@ def test_viewer_embed_supports_links_highlight_events():
     assert "_applyHighlightColors" in text
     assert 'msg.type === "castor:isolate"' in text
     assert "_isolateHighlighted" in text
-    assert "msg.isolate === false" in text
+    assert "msg.isolate === true" in text
     assert 'msg.type === "castor:reset-view"' in text
     assert 'msg.type === "castor:viewer-zoom"' in text
     # Preserve Explore/FM default focus-element toggle when isolate omitted.

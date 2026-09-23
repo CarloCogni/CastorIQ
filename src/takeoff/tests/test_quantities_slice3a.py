@@ -14,6 +14,9 @@ from takeoff.services.quantity_preparation_ui import (
     parse_basis_overrides_from_query,
 )
 
+# TABLE-04 renders core columns only by default; value columns are opt-in.
+_VALUE_COL_ORDER = "ifc_class,name,quantity,measurement,unit,classification_code,status,actions"
+
 
 def _wall_slab_project():
     """Project with Wall (NetArea + NetVolume) and Slab (NetVolume) for override tests."""
@@ -192,9 +195,16 @@ def test_page_get_overrides_and_boundaries(client):
         or 'data-testid="quantities-prep-table"' in default_html
     )
 
+    # TABLE-04 default layout is core columns only; opt the value columns in.
     overridden = client.get(
         url,
-        {"basis_IfcWall": "NetArea", "basis_IfcSlab": "NetVolume"},
+        {
+            "basis_IfcWall": "NetArea",
+            "basis_IfcSlab": "NetVolume",
+            "table_layout": "v2",
+            "col_order": _VALUE_COL_ORDER,
+            "source_classification_code": "manual_field",
+        },
     ).content.decode()
     # Match full prep row by ifc class attribute (unresolved flag precedes ifc class).
     wall_attr_pos = overridden.index('data-qty-ifc-class="IfcWall"')
@@ -286,21 +296,20 @@ def test_unit_basis_derivation_copy_and_available_measures(client):
     assert wall_rule["quantity_basis"] == "NetArea"
 
     client.force_login(project.owner)
-    html = client.get(reverse("takeoff:qto", kwargs={"pk": project.pk})).content.decode()
+    html = client.get(
+        reverse("takeoff:qto", kwargs={"pk": project.pk}),
+        {"table_layout": "v2", "col_order": _VALUE_COL_ORDER},
+    ).content.decode()
     # TABLE-04: detailed unit-basis derivation notes may live under Advanced only.
     assert (
         'data-testid="qty-unit-basis-derivation-note"' in html
         or 'data-testid="quantities-units-modal"' in html
         or "Output units" in html
     )
-    assert (
-        'data-testid="qty-prep-col-measurement"' in html
-        or 'data-testid="qty-prep-col-measurement-basis"' in html
-    )
-    assert (
-        'data-testid="qty-prep-col-model-unit"' in html or 'data-testid="qty-prep-col-unit"' in html
-    )
-    assert 'data-testid="qty-prep-col-total-quantity"' in html
+    # Quantity, Measurement and Unit stay separate opt-in columns.
+    assert 'data-testid="qty-prep-col-quantity"' in html
+    assert 'data-testid="qty-prep-col-measurement"' in html
+    assert 'data-testid="qty-prep-col-unit"' in html
     if 'data-testid="qty-basis-rules-table"' in html:
         assert (
             "model volume units"

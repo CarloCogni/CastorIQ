@@ -83,9 +83,23 @@ def test_not_mapped_does_not_count_as_missing(client):
     project = _pilot_like_project()
     client.force_login(project.owner)
     url = reverse("takeoff:qto", kwargs={"pk": project.pk})
-    html = client.get(url, {"source_classification_code": "not_mapped"}).content.decode()
+    included = {
+        "table_layout": "v2",
+        "col_order": "ifc_class,name,classification_code,status,actions",
+    }
+    html = client.get(
+        url, {**included, "source_classification_code": "not_mapped"}
+    ).content.decode()
     assert 'data-testid="qty-reg-missing-classification"' not in html
-    assert "Not mapped by session config" in html
+    # The column renders, but an intentionally-unmapped field invents no value.
+    table = html.split('data-testid="qty-prep-table"', 1)[1].split("</table>", 1)[0]
+    assert 'data-testid="qty-prep-classification-cell"' in table
+    assert 'data-testid="qty-manual-mapping-value"' not in table
+    # manual_field is the intent that does count as an unresolved gap.
+    counted = client.get(
+        url, {**included, "source_classification_code": "manual_field"}
+    ).content.decode()
+    assert 'data-testid="qty-reg-missing-classification"' in counted
     ui = build_preparation_ui(
         ModelQuantitiesService(project).build(),
         source_mappings=parse_source_mappings_from_query(
@@ -187,12 +201,9 @@ def test_insights_and_boundaries(client):
     ).content.decode()
     assert "Raw Indexed Quantity Inventory" in html
     assert "reference" in html.lower()
-    assert (
-        "disabled"
-        in html.split('data-testid="qty-send-unresolved-to-modify"', 1)[0][
-            html.split('data-testid="qty-send-unresolved-to-modify"', 1)[0].rfind("<button") :
-        ]
-    )
+    # TABLE-04 has no Modify handoff control; the boundary is stated instead.
+    assert 'data-testid="qty-send-unresolved-to-modify"' not in html
+    assert "Not Ask, not Modify, not BOQ, not cost" in html
     page = html.split('data-testid="quantities-page"', 1)[1].split(
         'data-testid="quantities-not-claims"', 1
     )[0]

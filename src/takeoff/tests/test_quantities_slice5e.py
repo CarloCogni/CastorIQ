@@ -114,7 +114,10 @@ def test_export_reflects_basis_schema_source_and_sessions(client):
         session=client.session,
         query=params,
     )
-    row_key = runtime["qty_prep"]["prep_rows"][0]["row_key"]
+    # Visible hierarchy rows are class-grain; export rows are instance-grain.
+    class_row = runtime["qty_prep"]["prep_rows"][0]
+    row_key = class_row["row_key"]
+    target_class = str(class_row.get("ifc_class") or "")
     rq = "&".join(f"{k}={v}" for k, v in params.items())
 
     client.post(
@@ -150,7 +153,12 @@ def test_export_reflects_basis_schema_source_and_sessions(client):
     assert doc["settings"]["schema_includes"].get("classification_code") is True
     assert doc["settings"]["source_mappings"]["classification_code"] == "manual_field"
 
-    exported = next(r for r in doc["rows"] if r["row_key"] == row_key)
+    # Class/type session overrides propagate onto instance export rows.
+    exported = next(
+        r
+        for r in doc["rows"]
+        if r.get("ifc_class") == target_class and r.get("classification_code") == "CL-5E-EXPORT"
+    )
     assert exported["session_review_status"] == "reviewing"
     assert "5e review note" in exported["session_review_note"]
     assert exported["classification_code"] == "CL-5E-EXPORT"
@@ -195,7 +203,9 @@ def test_export_excludes_ineligible_manual_mapping_and_includes_draft(client):
         session=client.session,
         query=params_manual,
     )
-    row_key = runtime["qty_prep"]["prep_rows"][0]["row_key"]
+    class_row = runtime["qty_prep"]["prep_rows"][0]
+    row_key = class_row["row_key"]
+    target_class = str(class_row.get("ifc_class") or "")
     client.post(
         reverse("takeoff:qty_prep_row_mapping", kwargs={"pk": project.pk}),
         {
@@ -217,10 +227,16 @@ def test_export_excludes_ineligible_manual_mapping_and_includes_draft(client):
     assert doc["settings"]["prep_config"] is not None
     assert doc["settings"]["prep_config"]["name"] == "5e-export-draft"
     assert doc["settings"]["source_mappings"]["classification_code"] == "future_modify_handoff"
-    exported = next(r for r in doc["rows"] if r["row_key"] == row_key)
-    assert exported.get("classification_code") in ("", None)
-    assert exported.get("classification_code_origin") == "deferred_modify"
-    assert "SHOULD-NOT-EXPORT" not in json.dumps(doc)
+    exported = next(r for r in doc["rows"] if r.get("ifc_class") == target_class)
+    # TABLE-04B: schema inclusion (not source intent) gates Assign values.
+    # Session override remains visible; origin honesty still reflects deferred intent.
+    assert exported.get("classification_code") == "SHOULD-NOT-EXPORT"
+    assert exported.get("classification_code_origin") in {
+        "manual_session",
+        "deferred_modify",
+        "manual_session_schema_node",
+    }
+    assert "SHOULD-NOT-EXPORT" in json.dumps(doc)
 
 
 @pytest.mark.django_db
@@ -239,7 +255,9 @@ def test_csv_injection_protection_and_legacy_separation(client):
         session=client.session,
         query=params,
     )
-    row_key = runtime["qty_prep"]["prep_rows"][0]["row_key"]
+    class_row = runtime["qty_prep"]["prep_rows"][0]
+    row_key = class_row["row_key"]
+    target_class = str(class_row.get("ifc_class") or "")
     client.post(
         reverse("takeoff:qty_prep_row_mapping", kwargs={"pk": project.pk}),
         {
@@ -255,7 +273,11 @@ def test_csv_injection_protection_and_legacy_separation(client):
     with _open_zip(resp) as zf:
         csv_text = zf.read("rows.csv").decode("utf-8")
         doc = json.loads(zf.read("preparation_export.json").decode("utf-8"))
-    exported = next(r for r in doc["rows"] if r["row_key"] == row_key)
+    exported = next(
+        r
+        for r in doc["rows"]
+        if r.get("ifc_class") == target_class and r.get("classification_code") == "=CMD"
+    )
     assert exported["classification_code"] == "=CMD"
     assert "'=CMD" in csv_text
 

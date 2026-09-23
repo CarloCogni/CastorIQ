@@ -92,13 +92,18 @@ def _pilot_like_project():
 @pytest.mark.django_db
 def test_catalogue_includes_real_pset_and_qto_not_category_family():
     project = _pilot_like_project()
-    session = SessionStore()
-    runtime = build_qty_prep_session_ui(
-        project=project, user=project.owner, session=session, query={}
-    )
-    sem = runtime["qty_prep"]["semantic_filters"]
-    keys = {f["key"] for f in (sem.get("filter_catalogue") or [])}
-    props = {c["source_property"] for c in (sem.get("property_columns_available") or [])}
+    from takeoff.services.quantity_field_catalogue import build_lazy_field_catalogue_context
+
+    ctx = build_lazy_field_catalogue_context(project=project, query={}, mode="filter")
+    # Flatten hierarchy back to field keys for assertions.
+    keys: set[str] = set()
+    props: set[str] = set()
+    for family in ctx.get("hierarchy") or []:
+        for group in family.get("groups") or []:
+            for field in group.get("fields") or []:
+                keys.add(str(field.get("key") or ""))
+                if field.get("source_property"):
+                    props.add(str(field["source_property"]))
     assert any(k.startswith("prop:") for k in keys)
     assert any("FireRating" in (p or "") for p in props)
     assert any("Qto_" in (p or "") and "NetVolume" in (p or "") for p in props)

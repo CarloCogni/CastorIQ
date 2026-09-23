@@ -2,7 +2,8 @@
 <div class="modal fade" id="qtyOpenTableModal" tabindex="-1"
      aria-labelledby="qtyOpenTableModalLabel" aria-hidden="true"
      data-testid="qty-open-table-modal"
-     data-qty-editable-dirty="{% if qty_editable_status == 'unsaved' %}1{% else %}0{% endif %}">
+     data-qty-editable-dirty="{% if qty_editable_status == 'unsaved' %}1{% else %}0{% endif %}"
+     data-qty-active-table-id="{% if qty_editable_binding %}{{ qty_editable_binding.id }}{% endif %}">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header py-2">
@@ -84,6 +85,10 @@
     return openModal && openModal.getAttribute("data-qty-editable-dirty") === "1";
   }
 
+  function activeTableId() {
+    return (openModal && openModal.getAttribute("data-qty-active-table-id")) || "";
+  }
+
   function submitOpen(tableId) {
     if (!openForm || !openId || !tableId) return;
     openId.value = tableId;
@@ -101,7 +106,9 @@
     row.addEventListener("click", function () {
       var id = row.getAttribute("data-table-id") || "";
       if (!id) return;
-      if (isDirty()) {
+      // Re-opening the active table replaces session overlays with the saved
+      // revision — skip the cross-table unsaved guard.
+      if (isDirty() && id !== activeTableId()) {
         if (window.bootstrap && openModal) {
           window.bootstrap.Modal.getOrCreateInstance(openModal).hide();
         }

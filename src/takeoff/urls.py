@@ -105,4 +105,9 @@ urlpatterns = [
         views.QTOExportView.as_view(),
         name="qto_export",
     ),
+    path(
+        "projects/<uuid:pk>/field-catalogue/",
+        views.QuantityFieldCatalogueView.as_view(),
+        name="qty_field_catalogue",
+    ),
 ]

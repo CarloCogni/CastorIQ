@@ -11,39 +11,41 @@
       <div class="modal-body">
         {% with ms=qty_prep.measurement_settings ou=qty_prep.output_units %}
         <p class="c5d-helper mb-2" data-testid="qty-measurement-settings-helper">
-          Configure <strong>by IFC class</strong>: measurement, compatible IFC source, source unit,
-          and output unit. Apply updates that class only. Existing per-target choices stay until Apply.
-        </p>
-        <p class="small text-secondary mb-2" data-testid="qty-measurement-settings-gap">
-          {{ ms.gap_note }}
-        </p>
-        <p class="small text-secondary mb-3" data-testid="qty-measurement-settings-precedence">
-          Session family units are defaults. A class Apply that sets an output unit
-          overrides that family <strong>for that IFC class only</strong>; other classes
-          keep their own units or inherit the session default. Source unit is read-only
-          project-unit fallback — not a verified per-property unit.
+          Settings are per IFC class: measurement, IFC source, source unit, and output unit.
         </p>
 
-        <details class="mb-3" data-testid="qty-measurement-settings-inherited-units">
-          <summary class="small fw-semibold">Session output units (inherited)</summary>
-          <p class="small text-secondary mt-1 mb-2">
-            Read-only view of current session family units. Prefer changing output unit
-            on the class card below when applying measurement for that class.
+        <details class="mb-3" data-testid="qty-measurement-how-units-work">
+          <summary class="small fw-semibold">How units work</summary>
+          <p class="small text-secondary mt-2 mb-1" data-testid="qty-measurement-settings-gap">
+            {{ ms.gap_note }}
           </p>
-          <div class="table-responsive">
-            <table class="table table-sm mb-0">
-              <thead><tr class="small text-secondary"><th>Family</th><th>Source</th><th>Output</th></tr></thead>
-              <tbody>
-                {% for row in ou.rows %}
-                <tr>
-                  <td class="small">{{ row.label }}</td>
-                  <td class="small">{{ row.model_unit_label }}</td>
-                  <td class="small">{{ row.output_unit_label }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
+          <p class="small text-secondary mb-2" data-testid="qty-measurement-settings-precedence">
+            Session family units are defaults. A class Apply that sets an output unit
+            overrides that family <strong>for that IFC class only</strong>; other classes
+            keep their own units or inherit the session default. Source unit is read-only
+            project-unit fallback — not a verified per-property unit.
+          </p>
+          <details class="mb-0" data-testid="qty-measurement-settings-inherited-units">
+            <summary class="small">Session output units (inherited)</summary>
+            <p class="small text-secondary mt-1 mb-2">
+              Read-only view of current session family units. Prefer changing output unit
+              on the class card below when applying measurement for that class.
+            </p>
+            <div class="table-responsive">
+              <table class="table table-sm mb-0">
+                <thead><tr class="small text-secondary"><th>Family</th><th>Source</th><th>Output</th></tr></thead>
+                <tbody>
+                  {% for row in ou.rows %}
+                  <tr>
+                    <td class="small">{{ row.label }}</td>
+                    <td class="small">{{ row.model_unit_label }}</td>
+                    <td class="small">{{ row.output_unit_label }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </details>
         </details>
 
         <div class="fw-semibold small mb-2">By IFC class</div>
@@ -85,6 +87,7 @@
             {% csrf_token %}
             <input type="hidden" name="return_query" value="{{ qty_prep_return_query }}">
             <input type="hidden" name="ifc_class" value="{{ crow.ifc_class }}">
+            <input type="hidden" name="apply_scope_token" value="{{ crow.apply_scope_token|default:'' }}">
 
             <div class="row g-2 align-items-end">
               <div class="col-md-3">

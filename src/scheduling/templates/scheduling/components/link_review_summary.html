@@ -6,19 +6,19 @@
     <div class="col-6 col-md-3">
         <div class="border rounded text-center py-2 px-1 bg-body-secondary">
             <div class="fs-4 fw-bold">{{ summary.total }}</div>
-            <div class="text-secondary" style="font-size:0.75rem;">Total bindings</div>
+            <div class="text-secondary" style="font-size:0.75rem;">Physical tasks</div>
         </div>
     </div>
     <div class="col-6 col-md-3">
         <div class="border rounded text-center py-2 px-1 {% if summary.needs_review %}border-warning bg-warning bg-opacity-10{% else %}bg-body-secondary{% endif %}">
             <div class="fs-4 fw-bold {% if summary.needs_review %}text-warning{% endif %}">{{ summary.needs_review }}</div>
-            <div class="text-secondary" style="font-size:0.75rem;">Needs review</div>
+            <div class="text-secondary" style="font-size:0.75rem;">Tasks in review</div>
         </div>
     </div>
     <div class="col-6 col-md-3">
         <div class="border rounded text-center py-2 px-1 bg-body-secondary">
             <div class="fs-4 fw-bold text-success">{{ summary.auto_accepted }}</div>
-            <div class="text-secondary" style="font-size:0.75rem;">Auto-accepted</div>
+            <div class="text-secondary" style="font-size:0.75rem;">Applied / Confirmed tasks</div>
         </div>
     </div>
     <div class="col-6 col-md-3">
@@ -45,20 +45,20 @@
 
 <div class="d-flex flex-wrap gap-2 mb-3">
     {% if summary.needs_review_high %}
-    <form hx-post="{% url 'scheduling:binding_bulk_accept' project.pk %}"
-          hx-target="#link-review-content"
-          hx-swap="outerHTML"
-          hx-indicator="#bulk-spinner">
-        {% csrf_token %}
-        <button type="submit" class="btn btn-warning btn-sm">
-            <span id="bulk-spinner" class="htmx-indicator spinner-border spinner-border-sm me-1"></span>
-            <i class="bi bi-check2-all me-1"></i>Bulk accept ≥95%
-            <span class="badge bg-dark ms-1">{{ summary.needs_review_high }}</span>
-        </button>
-    </form>
+    <!-- Navigation only — confirmation stays in Applied Links -->
+    <a href="{% url 'scheduling:link_governance_workspace' project.pk %}"
+       class="btn btn-outline-warning btn-sm"
+       data-testid="proposals-open-governance-cta"
+       title="Open Applied Links to confirm high-confidence proposals">
+        <i class="bi bi-shield-check me-1"></i>Open Applied Links for ≥95% proposals
+        <span class="badge bg-dark ms-1">{{ summary.needs_review_high }}</span>
+    </a>
     {% endif %}
     <a href="{% url 'scheduling:binding_export' project.pk %}"
        class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-download me-1"></i>Export CSV
     </a>
 </div>
+<p class="text-secondary mb-3" style="font-size:0.78rem;" data-testid="proposals-trust-note">
+    Proposed links require Applied Links confirmation before they become applied / confirmed map truth.
+</p>

@@ -1,0 +1,296 @@
+<!-- scheduling/components/governance_review_queue.html — HTMX partial for review queue -->
+
+{% with sc=queue.summary_counts %}
+<div id="governance-review-queue" class="d-flex flex-column gap-3">
+
+    <!-- Summary strip -->
+    <div class="d-flex flex-wrap gap-2" role="group" aria-label="Link coverage summary counts">
+        <span class="badge rounded-pill bg-success-subtle text-success-emphasis border">
+            Applied / Confirmed {{ sc.trusted_bindings }}
+        </span>
+        <span class="badge rounded-pill bg-warning-subtle text-warning-emphasis border">
+            Review {{ sc.review_bindings }}
+        </span>
+        <span class="badge rounded-pill bg-info-subtle text-info-emphasis border">
+            Property hints {% if sc.property_hints != None %}{{ sc.property_hints }}{% else %}—{% endif %}
+        </span>
+        <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis border">
+            Legacy M2M {{ sc.legacy_only }}
+        </span>
+        <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis border">
+            Multi-applied {{ sc.multiple_trusted_entities }}
+        </span>
+        <span class="badge rounded-pill bg-danger-subtle text-danger-emphasis border">
+            Conflicts {{ sc.possible_conflicts }}
+        </span>
+    </div>
+
+    <!-- Mode tabs -->
+    <ul class="nav nav-pills flex-wrap gap-1" style="font-size:0.82rem;" role="tablist"
+        aria-label="Link queue modes">
+        {% for mode, label in queue_modes %}
+        <li class="nav-item" role="presentation">
+            <a class="nav-link py-1 px-2 {% if queue.mode == mode %}active{% endif %}"
+               role="tab"
+               hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode={{ mode }}&page=1"
+               hx-target="#governance-queue-panel"
+               hx-swap="innerHTML"
+               href="#"
+               aria-selected="{% if queue.mode == mode %}true{% else %}false{% endif %}">
+                {{ label }}
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <!-- Filters -->
+    <form class="row g-2 align-items-end"
+          hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}"
+          hx-target="#governance-queue-panel"
+          hx-swap="innerHTML">
+        <input type="hidden" name="mode" value="{{ queue.mode }}">
+        <div class="col-auto">
+            <label class="form-label small mb-0" for="gq-method">Method</label>
+            <select id="gq-method" name="method" class="form-select form-select-sm">
+                <option value="">All</option>
+                <option value="exact" {% if filters.method == 'exact' %}selected{% endif %}>Exact</option>
+                <option value="normalized" {% if filters.method == 'normalized' %}selected{% endif %}>Normalized</option>
+                <option value="heuristic" {% if filters.method == 'heuristic' %}selected{% endif %}>Heuristic</option>
+                <option value="embedding" {% if filters.method == 'embedding' %}selected{% endif %}>Semantic</option>
+                <option value="manual" {% if filters.method == 'manual' %}selected{% endif %}>Manual</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label small mb-0" for="gq-conf-min">Conf min</label>
+            <input id="gq-conf-min" type="number" step="0.01" min="0" max="1" name="confidence_min"
+                   class="form-control form-control-sm" style="width:5rem;"
+                   value="{{ filters.confidence_min|default:'' }}">
+        </div>
+        <div class="col-auto">
+            <label class="form-label small mb-0" for="gq-ifc">IFC class</label>
+            <input id="gq-ifc" type="text" name="ifc_class" class="form-control form-control-sm"
+                   placeholder="IfcWall" value="{{ filters.ifc_class|default:'' }}">
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+            <a class="btn btn-sm btn-outline-secondary"
+               hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode={{ queue.mode }}&page=1"
+               hx-target="#governance-queue-panel"
+               hx-swap="innerHTML">Reset</a>
+        </div>
+    </form>
+
+    {% if queue.mode == 'review' %}
+    <div class="d-flex align-items-center gap-2 flex-wrap border rounded p-2 bg-body-tertiary">
+        <span class="small fw-semibold">Review decisions</span>
+        {% if sc.review_bindings == 0 %}
+        <span class="small text-secondary">No review bindings. Confirmed links are under Applied / Confirmed.</span>
+        {% else %}
+        <span class="small text-secondary">Select up to 100 items · explicit confirmation only</span>
+        {% endif %}
+        {% if governance_capabilities.capabilities.can_approve_bulk %}
+        <button type="button" class="btn btn-sm btn-outline-primary ms-auto"
+                hx-post="{% url 'scheduling:link_decision_bulk_preview' project.pk %}"
+                hx-include="#gq-selection-form"
+                hx-target="#governance-bulk-preview-slot"
+                hx-swap="innerHTML"
+                hx-vals='{"queue_mode": "{{ queue.mode }}", "queue_page": "{{ queue.pagination.page }}"}'>
+            Bulk preview
+        </button>
+        {% else %}
+        <span class="small text-secondary ms-auto">Bulk approval requires owner</span>
+        {% endif %}
+    </div>
+    <div id="governance-bulk-preview-slot"></div>
+    {% elif queue.mode == 'trusted' %}
+    <div class="alert alert-secondary py-2 small mb-0" role="status">
+        Applied / Confirmed links can be reaffirmed, reversed, or superseded with audited lifecycle events.
+    </div>
+    {% elif queue.mode == 'property_hints' %}
+    <div class="alert alert-info py-2 small mb-0" role="status">
+        Property hints are evidence only — approve requires an actual review binding row (use manual link workflow).
+    </div>
+    {% elif queue.mode == 'legacy_only' %}
+    <div class="alert alert-secondary py-2 small mb-0" role="status">
+        Legacy M2M rows cannot be approved as suggestions — create or accept a binding row first.
+    </div>
+    {% endif %}
+
+    {% if queue.warnings %}
+    <div class="alert alert-warning py-2 small mb-0" role="status">
+        {% for w in queue.warnings %}<div>{{ w }}</div>{% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Queue rows -->
+    {% if queue.items %}
+    <form id="gq-selection-form">
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0" style="font-size:0.82rem;">
+            <thead class="table-light">
+                <tr>
+                    {% if queue.mode == 'review' %}
+                    <th scope="col" style="width:2rem;"></th>
+                    {% endif %}
+                    <th scope="col">Task</th>
+                    <th scope="col">Entity</th>
+                    <th scope="col">Category</th>
+                    <th scope="col">Evidence</th>
+                    <th scope="col" class="text-center">Conf.</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in queue.items %}
+                <tr>
+                    {% if queue.mode == 'review' %}
+                    <td>
+                        {% if item.item_type == 'binding' and item.governance.needs_review %}
+                        <input type="checkbox" class="form-check-input gq-select"
+                               name="binding_ids" value="{{ item.item_id }}"
+                               aria-label="Select {{ item.identity.task_name }}">
+                        {% endif %}
+                    </td>
+                    {% endif %}
+                    <td>
+                        {% if item.identity.task_name %}
+                        <div class="fw-semibold text-truncate" style="max-width:160px;">{{ item.identity.task_name }}</div>
+                        <code class="small text-secondary">{{ item.identity.task_activity_code|default:"—" }}</code>
+                        {% else %}
+                        <span class="text-secondary">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="text-truncate" style="max-width:140px;">{{ item.identity.entity_name|default:item.identity.entity_global_id }}</div>
+                        <code class="small text-secondary">{{ item.identity.entity_class|default:"" }}</code>
+                    </td>
+                    <td>
+                        <span class="badge {% if item.governance.trusted %}bg-success-subtle text-success-emphasis{% elif item.governance.category == 'review' %}bg-warning-subtle text-warning-emphasis{% else %}bg-secondary-subtle text-secondary-emphasis{% endif %}">
+                            {{ item.governance.category }}
+                        </span>
+                    </td>
+                    <td class="small">{{ item.governance.evidence_label }}</td>
+                    <td class="text-center">
+                        {% if item.governance.confidence != None %}{{ item.governance.confidence|floatformat:2 }}{% else %}—{% endif %}
+                    </td>
+                    <td>
+                        <div class="d-flex gap-1 flex-wrap">
+                            {% if item.navigation.task_detail_url %}
+                            <a class="btn btn-sm btn-outline-primary py-0 px-1"
+                               href="{{ item.navigation.task_detail_url }}"
+                               hx-get="{{ item.navigation.task_detail_url }}"
+                               hx-target="#task-detail-panel"
+                               hx-swap="innerHTML">Task</a>
+                            {% endif %}
+                            {% if item.navigation.viewer_url %}
+                            <a class="btn btn-sm btn-outline-secondary py-0 px-1"
+                               href="{{ item.navigation.viewer_url }}"
+                               target="_self">Model</a>
+                            {% endif %}
+                            <button type="button" class="btn btn-sm btn-outline-info py-0 px-1"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#evidence-{{ forloop.counter }}"
+                                    aria-expanded="false"
+                                    aria-controls="evidence-{{ forloop.counter }}">
+                                Evidence
+                            </button>
+                            {% if queue.mode == 'review' and item.item_type == 'binding' and item.governance.needs_review %}
+                            {% if governance_capabilities.capabilities.can_approve_individual %}
+                            <button type="button" class="btn btn-sm btn-success py-0 px-1"
+                                    hx-post="{% url 'scheduling:link_decision_preview_one' project.pk item.item_id %}"
+                                    hx-target="#decision-slot-{{ forloop.counter }}"
+                                    hx-swap="innerHTML"
+                                    hx-vals='{"queue_mode": "{{ queue.mode }}", "queue_page": "{{ queue.pagination.page }}"}'>
+                                Confirm Link
+                            </button>
+                            {% if governance_capabilities.capabilities.can_reject %}
+                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
+                                    hx-post="{% url 'scheduling:link_lifecycle_reject_preview' project.pk item.item_id %}"
+                                    hx-target="#decision-slot-{{ forloop.counter }}"
+                                    hx-swap="innerHTML">
+                                Ignore Suggestion
+                            </button>
+                            {% endif %}
+                            {% endif %}
+                            {% elif queue.mode == 'trusted' and item.item_type == 'binding' and item.governance.trusted %}
+                            {% if governance_capabilities.capabilities.can_reaffirm %}
+                            <button type="button" class="btn btn-sm btn-outline-primary py-0 px-1"
+                                    hx-post="{% url 'scheduling:link_lifecycle_reaffirm_preview' project.pk item.item_id %}"
+                                    hx-target="#decision-slot-{{ forloop.counter }}"
+                                    hx-swap="innerHTML">
+                                Reaffirm
+                            </button>
+                            {% endif %}
+                            {% if governance_capabilities.capabilities.can_reverse %}
+                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
+                                    hx-post="{% url 'scheduling:link_lifecycle_reverse_preview' project.pk item.item_id %}"
+                                    hx-target="#decision-slot-{{ forloop.counter }}"
+                                    hx-swap="innerHTML">
+                                Reverse
+                            </button>
+                            {% endif %}
+                            {% if governance_capabilities.capabilities.can_supersede %}
+                            <button type="button" class="btn btn-sm btn-outline-warning py-0 px-1"
+                                    hx-get="{% url 'scheduling:link_lifecycle_supersede_pair' project.pk item.item_id %}"
+                                    hx-target="#decision-slot-{{ forloop.counter }}"
+                                    hx-swap="innerHTML">
+                                Supersede
+                            </button>
+                            {% endif %}
+                            {% if not governance_capabilities.capabilities.can_reaffirm and not governance_capabilities.capabilities.can_reverse and not governance_capabilities.capabilities.can_supersede %}
+                            <span class="small text-secondary" title="Requires project membership">No lifecycle authority</span>
+                            {% endif %}
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                <tr class="collapse" id="evidence-{{ forloop.counter }}">
+                    <td colspan="{% if queue.mode == 'review' %}7{% else %}6{% endif %}" class="bg-body-secondary small">
+                        {% include "scheduling/components/governance_evidence_panel.html" with evidence=item.evidence warnings=item.warnings %}
+                        <div id="decision-slot-{{ forloop.counter }}" class="mt-2"></div>
+                        {% if queue.mode == 'review' and item.item_type == 'binding' and item.governance.needs_review %}
+                        <div class="mt-2 text-secondary" style="font-size:0.75rem;">
+                            Confidence does not grant confirmation. Ignore Suggestion records an audited inactive state — it cannot be silently undone.
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    </form>
+    {% else %}
+    <div class="text-center text-secondary py-4" role="status">
+        <i class="bi bi-inbox fs-3 d-block mb-2" aria-hidden="true"></i>
+        {% if queue.mode == 'review' and sc.review_bindings == 0 %}
+        No review bindings. Confirmed links are under <strong>Applied / Confirmed</strong>.
+        {% else %}
+        No items match this governance queue mode and filters.
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Pagination -->
+    {% with p=queue.pagination %}
+    <nav aria-label="Link queue pagination" class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="small text-secondary">
+            Page {{ p.page }} of {{ p.total_pages }} · {{ p.total_items }} items
+        </span>
+        {% if p.has_previous %}
+        <a class="btn btn-sm btn-outline-secondary"
+           hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode={{ queue.mode }}&page={{ p.prev_page }}"
+           hx-target="#governance-queue-panel"
+           hx-swap="innerHTML">Previous</a>
+        {% endif %}
+        {% if p.has_next %}
+        <a class="btn btn-sm btn-outline-secondary"
+           hx-get="{% url 'scheduling:link_governance_review_queue' project.pk %}?mode={{ queue.mode }}&page={{ p.next_page }}"
+           hx-target="#governance-queue-panel"
+           hx-swap="innerHTML">Next</a>
+        {% endif %}
+    </nav>
+    {% endwith %}
+
+</div>
+{% endwith %}

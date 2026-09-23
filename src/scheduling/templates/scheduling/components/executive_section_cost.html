@@ -1,0 +1,53 @@
+<!-- scheduling/components/executive_section_cost.html -->
+<section id="exec-section-cost" class="exec-section mb-4" aria-labelledby="exec-cost-heading"
+         data-testid="exec-assignment-cost-indicators">
+    <h2 class="h6 fw-semibold mb-3" id="exec-cost-heading">
+        <i class="bi bi-speedometer2 me-1 text-primary"></i> Schedule Performance &amp; Readiness
+        <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">{{ performance_mode_label|default:"—" }}</span>
+    </h2>
+    <p class="small text-secondary mb-2" data-testid="exec-cost-source-caveat">
+        Schedule and readiness indicators only.
+        They are not ERP, invoice, QS, or company actual spend.
+    </p>
+    <p class="small text-secondary mb-2" data-testid="exec-company-cost-unavailable">
+        Unavailable — requires a company cost source (ERP / invoice / QS / payroll / procurement).
+        Castor has no ERP, invoice, QS, payroll, procurement, or company cost ledger integration.
+    </p>
+    {% if section_error %}
+    <div class="alert alert-danger" role="alert">{{ section_error }}</div>
+    {% elif section_available == False %}
+    <div class="alert alert-secondary" role="status">
+        Schedule performance indicators unavailable —
+        {{ unavailable_reason|default:"Insufficient schedule data." }}
+    </div>
+    {% else %}
+    {% for w in warnings %}
+    <div class="alert alert-warning py-2 small" role="status">{{ w }}</div>
+    {% endfor %}
+    {% if evm_detail_url %}
+    <p class="small mb-2">
+        <a href="{{ evm_detail_url }}" class="link-primary">Open Schedule Performance &amp; Readiness</a>
+        — schedule progress indicators and company-cost unavailable states.
+    </p>
+    {% endif %}
+    <div class="row g-3">
+        {% for card in cards %}
+        {% if card.available or card.metric_id == "e8.spi" or card.metric_id == "e8.pv" or card.metric_id == "e8.ev" %}
+        <div class="col-12 col-sm-6 col-lg-4">
+            {% include "scheduling/components/executive_kpi_card.html" with card=card %}
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+    <details class="mt-3 small" data-testid="exec-company-cost-metrics-hidden">
+        <summary class="text-secondary">Company-cost metrics (unavailable)</summary>
+        <ul class="mb-0 mt-1">
+            {% for card in cards %}
+            {% if not card.available and card.metric_id != "e8.spi" and card.metric_id != "e8.pv" and card.metric_id != "e8.ev" %}
+            <li><strong>{{ card.label }}</strong>: {{ card.unavailable_reason|default:"Unavailable — requires a company cost source." }}</li>
+            {% endif %}
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+</section>

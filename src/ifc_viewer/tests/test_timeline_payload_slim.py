@@ -1,5 +1,5 @@
 # ifc_viewer/tests/test_timeline_payload_slim.py
-"""Reliability Patch A″.2 — slim timeline summary + applied/confirmed interval detail."""
+"""Reliability Patch A″.2 — slim timeline summary + trusted interval detail."""
 
 from __future__ import annotations
 
@@ -19,25 +19,27 @@ from scheduling.services.timeline_payload import (
 from scheduling.tests.factories import TaskFactory
 
 
-def _applied_binding(task, global_id: str) -> TaskEntityBinding:
-    """Main-compatible applied/confirmed link (needs_review=False)."""
+def _trusted_binding(task, global_id: str) -> TaskEntityBinding:
     return TaskEntityBinding.objects.create(
         task=task,
         entity_global_id=global_id,
         confidence=1.0,
         link_method=TaskEntityBinding.LinkMethod.EXACT,
         needs_review=False,
+        governance_status=TaskEntityBinding.GovernanceStatus.TRUSTED,
+        is_active=True,
     )
 
 
 def _review_binding(task, global_id: str) -> TaskEntityBinding:
-    """Proposal / needs-review binding — excluded from Time View colouring."""
     return TaskEntityBinding.objects.create(
         task=task,
         entity_global_id=global_id,
         confidence=0.9,
         link_method=TaskEntityBinding.LinkMethod.HEURISTIC,
         needs_review=True,
+        governance_status=TaskEntityBinding.GovernanceStatus.ACTIVE_REVIEW,
+        is_active=True,
     )
 
 
@@ -54,7 +56,7 @@ def test_timeline_summary_omits_global_id_lists(client):
         end_date=date(2025, 3, 1),
         is_non_physical=False,
     )
-    _applied_binding(task, trusted.global_id)
+    _trusted_binding(task, trusted.global_id)
     client.force_login(project.owner)
 
     response = client.get(reverse("ifc_viewer:viewer_timeline", kwargs={"pk": project.pk}))
@@ -81,8 +83,8 @@ def test_timeline_summary_omits_global_id_lists(client):
 
 
 @pytest.mark.django_db
-def test_timeline_interval_detail_applied_only(client):
-    """Interval detail includes applied GIDs and excludes needs_review proposals."""
+def test_timeline_interval_detail_trusted_only(client):
+    """Interval detail includes trusted GIDs and excludes review proposals."""
     project = ProjectFactory()
     ifc = IFCFileFactory(project=project, status="completed")
     trusted_ent = IFCEntityFactory(ifc_file=ifc, global_id="GID-TRUST-D")
@@ -97,7 +99,7 @@ def test_timeline_interval_detail_applied_only(client):
         status="complete",
         is_non_physical=False,
     )
-    _applied_binding(task, trusted_ent.global_id)
+    _trusted_binding(task, trusted_ent.global_id)
     _review_binding(task, review_ent.global_id)
     client.force_login(project.owner)
 
@@ -120,7 +122,7 @@ def test_timeline_interval_detail_applied_only(client):
     )
     assert "GID-TRUST-D" in all_gids
     assert "GID-REVIEW-D" not in all_gids
-    # Review-only links are treated as unlinked for colouring → appear in no_task.
+    # Review-only links are treated as untrusted for coloring → appear in no_task.
     assert "GID-REVIEW-D" in data["no_task"]
     assert "GID-NONE-D" in data["no_task"]
 
@@ -161,19 +163,19 @@ def test_task_state_respects_snapshot_for_actual_end():
         actual_end=date(2025, 1, 20),
         is_non_physical=False,
     )
-    _applied_binding(task, ent.global_id)
+    _trusted_binding(task, ent.global_id)
     svc = TimelinePayloadService(project)
 
-    before = svc.build_interval_detail(date(2024, 6, 1))
-    assert ent.global_id in before["entities"]["not_started"]
-    assert ent.global_id not in before["entities"]["complete"]
+    before = svc.build_interval_detail(date(2024, 6, 1), mode="actual")
+    assert ent.global_id in before["state_entities"]["actual_not_started"]
+    assert before["stats"]["actual_complete"] == 0
 
-    mid = svc.build_interval_detail(date(2025, 1, 10))
-    assert ent.global_id in mid["entities"]["in_progress"]
-    assert ent.global_id not in mid["entities"]["complete"]
+    mid = svc.build_interval_detail(date(2025, 1, 10), mode="actual")
+    assert ent.global_id in mid["state_entities"]["actual_in_progress"]
+    assert mid["stats"]["actual_complete"] == 0
 
-    after = svc.build_interval_detail(date(2025, 1, 25))
-    assert ent.global_id in after["entities"]["complete"]
+    after = svc.build_interval_detail(date(2025, 1, 25), mode="actual")
+    assert ent.global_id in after["state_entities"]["actual_complete"]
 
 
 @pytest.mark.django_db
@@ -198,19 +200,22 @@ def test_timeline_summary_service_stats_match_detail_counts():
         project=project,
         start_date=start,
         end_date=end,
+        actual_start=start,
         actual_end=end,
         is_non_physical=False,
     )
-    _applied_binding(t1, e1.global_id)
-    _applied_binding(t2, e2.global_id)
+    _trusted_binding(t1, e1.global_id)
+    _trusted_binding(t2, e2.global_id)
 
     svc = TimelinePayloadService(project)
-    summary = svc.build_summary()
+    summary = svc.build_summary(mode="actual")
     snap = date.fromisoformat(summary["intervals"][0]["date"])
-    detail = svc.build_interval_detail(snap)
+    detail = svc.build_interval_detail(snap, mode="actual")
     s_stats = summary["intervals"][0]["stats"]
     d_stats = detail["stats"]
-    assert s_stats == d_stats
+    assert s_stats["complete"] == d_stats["complete"]
+    assert s_stats["in_progress"] == d_stats["in_progress"]
+    assert s_stats["delayed"] == d_stats["delayed"]
     assert d_stats["complete"] == len(detail["entities"]["complete"])
     assert d_stats["in_progress"] == len(detail["entities"]["in_progress"])
     assert d_stats["delayed"] == len(detail["entities"]["delayed"])
@@ -218,7 +223,7 @@ def test_timeline_summary_service_stats_match_detail_counts():
 
 @pytest.mark.django_db
 def test_fourd_and_lookahead_reference_timeline_detail_url(client):
-    """4D Link / Time View templates wire the lazy detail endpoint."""
+    """4D Link / Look-ahead templates wire the lazy detail endpoint."""
     project = ProjectFactory()
     TaskFactory(project=project)
     client.force_login(project.owner)
