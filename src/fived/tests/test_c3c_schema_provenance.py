@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from fived.models import FiveDModelRow
@@ -36,6 +38,29 @@ def _session() -> dict:
     return {}
 
 
+def _export_instance_row(
+    qty_prep: dict[str, Any], *, ifc_class: str, global_id: str
+) -> dict[str, Any]:
+    """Return the frozen instance export row for one IFC class + GlobalId."""
+    gid_token = f"gid:{global_id}"
+    matches = [
+        row
+        for row in (qty_prep.get("prep_rows_export") or [])
+        if isinstance(row, dict)
+        and str(row.get("level") or "") == "instance"
+        and str(row.get("ifc_class") or "") == ifc_class
+        and (
+            str(row.get("global_id") or "") == global_id
+            or gid_token in str(row.get("row_key") or "")
+        )
+    ]
+    assert matches, f"missing instance export row for {ifc_class} {global_id}"
+    row = matches[0]
+    assert str(row.get("level") or "") == "instance"
+    assert str(row.get("row_key") or "").startswith("v1|instance|")
+    return row
+
+
 def _walk_keys(obj, *, acc: set[str] | None = None) -> set[str]:
     keys: set[str] = acc if acc is not None else set()
     if isinstance(obj, dict):
@@ -56,7 +81,8 @@ def test_f2_schema_backed_row_copies_provenance_mapping():
     runtime = build_qty_prep_session_ui(
         project=project, user=project.owner, session=session, query=QUERY
     )
-    row_key = runtime["qty_prep"]["prep_rows"][0]["row_key"]
+    target = _export_instance_row(runtime["qty_prep"], ifc_class="IfcWall", global_id="GID-W-5B")
+    row_key = target["row_key"]
     QuantityPrepRowMappingService(project, project.owner, session).apply_values(
         row_key=row_key,
         values={
@@ -130,7 +156,8 @@ def test_f2_free_text_no_false_schema_meta():
     runtime = build_qty_prep_session_ui(
         project=project, user=project.owner, session=session, query=QUERY
     )
-    row_key = runtime["qty_prep"]["prep_rows"][0]["row_key"]
+    target = _export_instance_row(runtime["qty_prep"], ifc_class="IfcWall", global_id="GID-W-5B")
+    row_key = target["row_key"]
     QuantityPrepRowMappingService(project, project.owner, session).apply_values(
         row_key=row_key,
         values={"classification_code": "CL-FREE-C3C"},
