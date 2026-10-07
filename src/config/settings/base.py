@@ -1,5 +1,6 @@
 """Base Django settings for Castor project."""
 
+import mimetypes
 import os
 from pathlib import Path
 
@@ -229,6 +230,13 @@ STATICFILES_DIRS = [
     BASE_DIR / "static",
     BASE_DIR / "ifc_viewer" / "frontend",
 ]
+
+# On Windows, Python's mimetypes reads the registry, which can map .mjs (and on
+# some machines .js) to text/plain. Browsers refuse ES modules served that way,
+# so pin the types the IFC viewer needs (ES modules, web-ifc workers and WASM).
+mimetypes.add_type("text/javascript", ".js", strict=True)
+mimetypes.add_type("text/javascript", ".mjs", strict=True)
+mimetypes.add_type("application/wasm", ".wasm", strict=True)
 
 # Media files
 MEDIA_URL = "media/"
